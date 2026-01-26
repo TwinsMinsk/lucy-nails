@@ -201,6 +201,7 @@ export interface CourseResponse {
     price_self: number;
     price_support: number;
     is_published: boolean;
+    duration_seconds?: number;
     created_at: string;
 }
 
