@@ -2,7 +2,18 @@
  * API Client для взаимодействия с Backend
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+const getBaseUrl = () => {
+    let url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+    // Убеждаемся, что URL абсолютный
+    if (!url.startsWith("http")) {
+        url = `https://${url}`;
+    }
+    // Убираем лишний слеш в конце, если он есть
+    return url.replace(/\/$/, "");
+};
+
+const API_BASE_URL = getBaseUrl();
+console.log(`🚀 API Base URL initialized as: ${API_BASE_URL}`);
 
 /**
  * Получить токен из localStorage
@@ -24,13 +35,17 @@ async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> 
         ...options?.headers,
     };
 
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const fullUrl = `${API_BASE_URL}${endpoint}`;
+    console.log(`🌐 Fetching: ${fullUrl}`);
+
+    const response = await fetch(fullUrl, {
         ...options,
         headers,
     });
 
     if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: "Unknown error" }));
+        const errorData = await response.json().catch(() => ({ detail: `HTTP error ${response.status} at ${fullUrl}` }));
+        console.error(`❌ API Error [${response.status}] ${fullUrl}:`, errorData);
         throw new Error(errorData.detail || `HTTP ${response.status}`);
     }
 
