@@ -2,6 +2,7 @@
 Конфигурация приложения из переменных окружения.
 """
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -10,6 +11,15 @@ class Settings(BaseSettings):
     
     # === Database ===
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/nails_course"
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def assemble_db_connection(cls, v: str | None) -> str:
+        if not v:
+            return "postgresql+asyncpg://postgres:postgres@localhost:5432/nails_course"
+        if v.startswith("postgresql://"):
+            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v
     
     # === Redis ===
     REDIS_URL: str = "redis://localhost:6379/0"
