@@ -14,30 +14,29 @@ from app.core.security import get_password_hash
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Check and create initial users
+    # Startup: Check and create/update initial users
     async with async_session_maker() as session:
         try:
-            result = await session.execute(select(User).limit(1))
-            user = result.scalars().first()
-            if not user:
-                print("🚀 No users found. Seeding initial data...")
-                admin = User(
-                    email="admin@nails-course.ru",
-                    password_hash=get_password_hash("admin123"),
-                    role="admin"
-                )
-                student = User(
-                    email="student@test.ru",
-                    password_hash=get_password_hash("student123"),
-                    role="student"
-                )
-                session.add_all([admin, student])
-                await session.commit()
-                print("✅ Initial users created!")
-            else:
-                print("✅ Users already exist.")
+            for email, password, role in [
+                ("admin@nails-course.ru", "admin123", "admin"),
+                ("student@test.ru", "student123", "student")
+            ]:
+                result = await session.execute(select(User).where(User.email == email))
+                user = result.scalars().first()
+                
+                h = get_password_hash(password)
+                if not user:
+                    print(f"🚀 Creating {role}: {email}")
+                    user = User(email=email, password_hash=h, role=role)
+                    session.add(user)
+                else:
+                    print(f"🔄 Updating password for {role}: {email}")
+                    user.password_hash = h
+            
+            await session.commit()
+            print("✅ Initial users synced!")
         except Exception as e:
-            print(f"⚠️ Initial seeding failed (database might not be ready): {e}")
+            print(f"⚠️ Initial seeding/update failed: {e}")
             
     yield
     # Shutdown logic (if any)
