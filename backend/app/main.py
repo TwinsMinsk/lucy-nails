@@ -60,6 +60,11 @@ app.add_middleware(
 )
 
 
+@app.get("/")
+async def root():
+    return {"message": "Nails Course API is running"}
+
+
 @app.get("/health")
 async def health_check():
     """Проверка работоспособности API."""
