@@ -37,4 +37,4 @@ psycopg2-binary==2.9.10
 
 asyncpg==0.30.0
 
-greenlet==3.0.3
+greenlet==3.1.1
