@@ -53,8 +53,8 @@ app = FastAPI(
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL],
-    allow_credentials=True,
+    allow_origins=["*"],  # Разрешаем все домены для отладки
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
