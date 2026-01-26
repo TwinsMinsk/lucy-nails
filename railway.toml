@@ -1,0 +1,20 @@
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "echo 'Specify service'"
+
+[common]
+restartPolicyType = "ON_FAILURE"
+
+# === Backend Service ===
+[service.backend]
+root = "backend"
+buildCommand = "pip install -r requirements.txt"
+startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+
+# === Frontend Service ===
+[service.frontend]
+root = "frontend"
+buildCommand = "npm run build"
+startCommand = "npm start"
