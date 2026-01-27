@@ -16,9 +16,13 @@ const playfair = Playfair_Display({ // 2. Configure Playfair
   subsets: ["latin", "cyrillic"],
 });
 
-export const metadata: Metadata = { // Keep metadata
-  title: "Nails Course",
-  description: "Web platform for nails design courses",
+export const metadata: Metadata = {
+  title: "Обучающие курсы по маникюру от Люси Смирновой",
+  description: "Авторские курсы маникюра и дизайна ногтей от профессионала",
+  icons: {
+    icon: "/icon.png",
+    shortcut: "/favicon.ico",
+  },
 };
 
 export default function RootLayout({
