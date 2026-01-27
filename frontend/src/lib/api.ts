@@ -52,6 +52,12 @@ async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> 
     });
 
     if (!response.ok) {
+        // 🤫 Тихий режим для проверки авторизации: не пугаем пользователя красным логом,
+        // если он просто не залогинен (это нормальная ситуация при первом входе)
+        if (response.status === 401 && endpoint.includes('/auth/me')) {
+            throw new Error("Not authenticated");
+        }
+
         const errorData = await response.json().catch(() => ({ detail: `HTTP error ${response.status} at ${fullUrl}` }));
         console.error(`❌ API Error [${response.status}] ${fullUrl}:`, errorData);
         throw new Error(errorData.detail || `HTTP ${response.status}`);
