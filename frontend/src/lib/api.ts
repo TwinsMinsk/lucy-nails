@@ -9,7 +9,15 @@ const getBaseUrl = () => {
         url = `https://${url}`;
     }
     // Убираем лишний слеш в конце, если он есть
-    return url.replace(/\/$/, "");
+    url = url.replace(/\/$/, "");
+
+    // 🛡️ ЗАЩИТА ОТ ДУРАКА: Если в URL нет /api на конце, добавляем его сами
+    // Эту ошибку часто совершают при деплое
+    if (!url.endsWith("/api")) {
+        url += "/api";
+    }
+
+    return url;
 };
 
 const API_BASE_URL = getBaseUrl();
