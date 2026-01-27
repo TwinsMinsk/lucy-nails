@@ -2,13 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from "@/components/ui/dialog";
+
 
 export function Footer() {
     const pathname = usePathname();
@@ -29,23 +23,9 @@ export function Footer() {
                         <Link href="/privacy" className="text-xs text-text-secondary hover:text-primary transition-colors">
                             Политика конфиденциальности
                         </Link>
-                        <Dialog>
-                            <DialogTrigger asChild>
-                                <button className="text-xs text-text-secondary hover:text-primary transition-colors">
-                                    Публичная оферта
-                                </button>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-4xl h-[90vh] w-[95vw]">
-                                <DialogHeader>
-                                    <DialogTitle>Публичная оферта</DialogTitle>
-                                </DialogHeader>
-                                <iframe
-                                    src="/legal/offer-example.pdf"
-                                    className="w-full h-full rounded-md border"
-                                    title="Публичная оферта"
-                                />
-                            </DialogContent>
-                        </Dialog>
+                        <Link href="/terms" className="text-xs text-text-secondary hover:text-primary transition-colors">
+                            Публичная оферта
+                        </Link>
                     </div>
                 </div>
 
