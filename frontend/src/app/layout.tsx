@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   title: "Обучающие курсы по маникюру от Люси Смирновой",
   description: "Авторские курсы маникюра и дизайна ногтей от профессионала",
   icons: {
-    icon: "/icon.png",
+    icon: "/favicon.ico",
     shortcut: "/favicon.ico",
   },
 };
