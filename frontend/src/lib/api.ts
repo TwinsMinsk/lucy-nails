@@ -34,7 +34,10 @@ const getAuthToken = (): string | null => {
 /**
  * Базовый fetch с авторизацией
  */
-async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
+/**
+ * Базовый fetch с авторизацией (экспортируется для прямого использования)
+ */
+export async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const token = getAuthToken();
 
     const headers: HeadersInit = {
@@ -552,3 +555,27 @@ export const adminGetAnalytics = async (): Promise<AnalyticsResponse> => {
 export const adminUploadFile = uploadFile;
 
 
+/**
+ * ============================================
+ * PAYMENTS METHODS
+ * ============================================
+ */
+
+export interface PaymentLinkRequest {
+    course_id: string;
+    tariff: "self" | "support";
+}
+
+export interface PaymentLinkResponse {
+    url: string;
+}
+
+/**
+ * Получить ссылку на оплату Prodamus
+ */
+export const getPaymentLink = async (data: PaymentLinkRequest): Promise<PaymentLinkResponse> => {
+    return apiFetch<PaymentLinkResponse>("/payments/link", {
+        method: "POST",
+        body: JSON.stringify(data),
+    });
+};

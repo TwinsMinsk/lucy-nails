@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
+import { getPaymentLink } from "@/lib/api";
 
 interface PaymentButtonProps {
   courseId: string;
@@ -16,25 +17,17 @@ export function PaymentButton({ courseId, tariff, children }: PaymentButtonProps
   const handlePayment = async () => {
     try {
       setLoading(true);
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const res = await fetch(`${API_URL}/api/payments/link`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ course_id: courseId, tariff }),
-      });
-      
-      const data = await res.json();
-      
+
+      const data = await getPaymentLink({ course_id: courseId, tariff });
+
       if (data.url) {
         window.location.href = data.url;
       } else {
         alert("Ошибка при генерации ссылки. Попробуйте позже.");
       }
     } catch (e) {
-      console.error(e);
-      alert("Ошибка сети. Проверьте подключение и повторите попытку.");
+      console.error("Payment link error:", e);
+      alert("Ошибка при переходе к оплате. Попробуйте позже.");
     } finally {
       setLoading(false);
     }
