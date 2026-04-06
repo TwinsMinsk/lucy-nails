@@ -72,12 +72,14 @@ async def health_check():
 
 
 # Подключение роутеров
-from app.api import auth, courses, modules, lessons, purchases, admin, upload
+from app.api import auth, courses, modules, lessons, purchases, admin, upload, payments
 
-app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
-app.include_router(courses.router, prefix="/api/courses", tags=["Courses"])
-app.include_router(modules.router, prefix="/api/modules", tags=["Modules"])
-app.include_router(lessons.router, prefix="/api/lessons", tags=["Lessons"])
-app.include_router(purchases.router, prefix="/api/purchases", tags=["Purchases"])
-app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
-app.include_router(upload.router, prefix="/api/admin", tags=["Upload"])
+app.include_router(auth.router,       prefix="/api/auth",     tags=["Authentication"])
+app.include_router(courses.router,    prefix="/api/courses",  tags=["Courses"])
+app.include_router(modules.router,    prefix="/api/modules",  tags=["Modules"])
+app.include_router(lessons.router,    prefix="/api/lessons",  tags=["Lessons"])
+app.include_router(purchases.router,  prefix="/api/purchases", tags=["Purchases"])
+app.include_router(payments.router,   prefix="/api/payments", tags=["Payments"])
+app.include_router(admin.router,      prefix="/api/admin",    tags=["Admin"])
+app.include_router(upload.router,     prefix="/api/admin",    tags=["Upload"])
+

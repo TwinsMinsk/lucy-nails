@@ -22,6 +22,9 @@ redis==5.2.1
 
 # === HTTP Client ===
 httpx==0.28.1
+firecrawl-py==4.22.0
+python-dotenv==1.0.1
+rich==14.3.3
 
 # === Telegram ===
 python-telegram-bot==21.10
@@ -33,3 +36,4 @@ ruff==0.9.4
 
 gunicorn==21.2.0
 email-validator==2.1.0.post1
+aiosmtplib>=3.0

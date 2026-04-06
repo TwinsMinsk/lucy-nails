@@ -35,10 +35,17 @@ class Settings(BaseSettings):
     KINESCOPE_PROJECT_ID: str = ""
     
     # === Prodamus ===
-    PRODAMUS_API_KEY: str = ""
+    PRODAMUS_URL: str = ""              # e.g. https://yourshop.payform.ru/
     PRODAMUS_SECRET_KEY: str = ""
     PRODAMUS_SHOP_ID: str = ""
     
+    # === SMTP (Email) ===
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_NAME: str = "Lucy Nails Academy"
+
     # === Telegram ===
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_SUPPORT_GROUP_INVITE: str = ""

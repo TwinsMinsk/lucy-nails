@@ -76,9 +76,11 @@
   - [x] Signed URL для видео
   - [x] Watermark с email
   - [x] Embed-плеер
-- [ ] 4.2 Prodamus интеграция
-  - [ ] Создание платёжной ссылки
-  - [ ] Обработка webhook
+- [x] 4.2 Prodamus интеграция
+  - [x] Email Service (aiosmtplib, HTML-письмо с кредами)
+  - [x] Prodamus Service (generate_payment_link, verify_signature HMAC)
+  - [x] Webhook handler POST /api/payments/webhook (авто-регистрация пользователя)
+  - [x] Endpoint POST /api/payments/link (генерация ссылки для фронта)
 - [ ] 4.3 Telegram Bot
   - [ ] Привязка аккаунта
   - [ ] Уведомление о покупке
