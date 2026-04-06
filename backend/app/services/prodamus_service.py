@@ -35,7 +35,7 @@ def _make_signature(data: dict, secret_key: str) -> str:
     sorted_data = _to_str(data)
     json_str = json.dumps(sorted_data, ensure_ascii=False, separators=(",", ":"))
     # Шаг 4: экранируем /
-    json_str = json_str.replace("/", r"\/")
+    json_str = json_str.replace("/", "\\/")
     return hmac.new(
         secret_key.encode("utf-8"),
         json_str.encode("utf-8"),
