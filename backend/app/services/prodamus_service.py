@@ -5,7 +5,7 @@ Prodamus Service: генерация платёжной ссылки и пров
   1. Все значения привести к строкам.
   2. Отсортировать по ключам в алфавитном порядке (рекурсивно).
   3. Перевести в JSON-строку.
-  4. Экранировать символ "/" → "\/"
+  4. Экранировать символ "/" → "\\/"
   5. HMAC-SHA256 с секретным ключом.
 """
 
@@ -71,20 +71,28 @@ class ProdamusService:
         base_url = settings.PRODAMUS_URL.rstrip("/") + "/"
         secret   = settings.PRODAMUS_SECRET_KEY
 
+        # Backend API URL for webhook notifications
+        backend_url = settings.BACKEND_URL.rstrip("/") if settings.BACKEND_URL else "http://localhost:8000"
+
         params: dict[str, Any] = {
             "do": "pay",
             "products[0][name]":     course_name,
             "products[0][price]":    str(price),
             "products[0][quantity]": "1",
             "products[0][type]":     "course",
-            "urlSuccess":  f"{settings.FRONTEND_URL}/dashboard",
-            "urlReturn":   f"{settings.FRONTEND_URL}/",
+            "urlSuccess":  f"{settings.FRONTEND_URL}/payment-success",
+            "urlReturn":   f"{settings.FRONTEND_URL}/#pricing",
+            "urlNotification": f"{backend_url}/api/payments/webhook",
             # callbackType=json — вебхуки будут приходить в JSON
             "callbackType": "json",
         }
 
         if order_id:
             params["order_id"] = order_id
+
+        # demo_mode=1 for test payments (when not in production)
+        if settings.ENVIRONMENT != "production":
+            params["demo_mode"] = "1"
 
         # Подпись считается по «плоскому» dict (без вложенности product[0][name])
         # Prodamus принимает как flat params в URL, так и подпись по исходному dict.
@@ -109,12 +117,22 @@ class ProdamusService:
             logger.error("PRODAMUS_SECRET_KEY is not configured")
             return False
 
+        # First, try standard signature
         expected = _make_signature(payload, secret)
-        result   = hmac.compare_digest(expected, signature)
-        if not result:
-            logger.warning(
-                "Prodamus signature mismatch. Expected=%s, Got=%s",
-                expected[:16] + "...",
-                signature[:16] + "...",
-            )
-        return result
+        if hmac.compare_digest(expected, signature):
+            return True
+
+        # Second, try demo mode signature (suffix 'demo')
+        # В документации: "при демо-платежах используется намеренно отличающаяся подпись (secret key с суффиксом demo)"
+        expected_demo = _make_signature(payload, secret + "demo")
+        if hmac.compare_digest(expected_demo, signature):
+            logger.info("Matched demo signature for Prodamus webhook")
+            return True
+
+        logger.warning(
+            "Prodamus signature mismatch. Expected normal=%s or demo=%s, Got=%s",
+            expected[:16] + "...",
+            expected_demo[:16] + "...",
+            signature[:16] + "...",
+        )
+        return False

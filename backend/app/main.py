@@ -26,17 +26,17 @@ async def lifespan(app: FastAPI):
                 
                 h = get_password_hash(password)
                 if not user:
-                    print(f"🚀 Creating {role}: {email}")
+                    print(f"[STARTUP] Creating {role}: {email}")
                     user = User(email=email, password_hash=h, role=role)
                     session.add(user)
                 else:
-                    print(f"🔄 Updating password for {role}: {email}")
+                    print(f"[STARTUP] Updating password for {role}: {email}")
                     user.password_hash = h
             
             await session.commit()
-            print("✅ Initial users synced!")
+            print("[STARTUP] Initial users synced!")
         except Exception as e:
-            print(f"⚠️ Initial seeding/update failed: {e}")
+            print(f"[WARN] Initial seeding/update failed: {e}")
             
     yield
     # Shutdown logic (if any)

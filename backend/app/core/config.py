@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     # === Frontend ===
     FRONTEND_URL: str = "http://localhost:3000"
     
+    # === Backend (public URL for webhooks) ===
+    BACKEND_URL: str = "http://localhost:8000"
+    
     # === Environment ===
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
