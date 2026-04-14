@@ -2,6 +2,7 @@
 Конфигурация приложения из переменных окружения.
 """
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -10,6 +11,15 @@ class Settings(BaseSettings):
     
     # === Database ===
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/nails_course"
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def assemble_db_connection(cls, v: str | None) -> str:
+        if not v:
+            return "postgresql+asyncpg://postgres:postgres@localhost:5432/nails_course"
+        if v.startswith("postgresql://"):
+            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v
     
     # === Redis ===
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -25,16 +35,26 @@ class Settings(BaseSettings):
     KINESCOPE_PROJECT_ID: str = ""
     
     # === Prodamus ===
-    PRODAMUS_API_KEY: str = ""
+    PRODAMUS_URL: str = ""              # e.g. https://yourshop.payform.ru/
     PRODAMUS_SECRET_KEY: str = ""
     PRODAMUS_SHOP_ID: str = ""
     
+    # === SMTP (Email) ===
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_NAME: str = "Lucy Nails Academy"
+
     # === Telegram ===
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_SUPPORT_GROUP_INVITE: str = ""
     
     # === Frontend ===
     FRONTEND_URL: str = "http://localhost:3000"
+    
+    # === Backend (public URL for webhooks) ===
+    BACKEND_URL: str = "http://localhost:8000"
     
     # === Environment ===
     ENVIRONMENT: str = "development"

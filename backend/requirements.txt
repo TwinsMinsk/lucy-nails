@@ -9,17 +9,22 @@ python-multipart==0.0.20
 sqlalchemy[asyncio]==2.0.37
 asyncpg==0.30.0
 alembic==1.14.1
+psycopg2-binary==2.9.10
+greenlet==3.1.1
 
 # === Auth ===
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-bcrypt==4.2.1
+bcrypt==4.0.1
 
 # === Redis (опционально) ===
 redis==5.2.1
 
 # === HTTP Client ===
 httpx==0.28.1
+firecrawl-py==4.22.0
+python-dotenv==1.0.1
+rich==14.3.3
 
 # === Telegram ===
 python-telegram-bot==21.10
@@ -30,3 +35,5 @@ pytest-asyncio==0.25.2
 ruff==0.9.4
 
 gunicorn==21.2.0
+email-validator==2.1.0.post1
+aiosmtplib>=3.0

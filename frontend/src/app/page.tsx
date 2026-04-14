@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { ModuleList, Module } from "@/components/course/ModuleList";
 import Image from "next/image";
 import { NailsGallery } from "@/components/landing/NailsGallery";
+import { PaymentButton } from "@/components/landing/PaymentButton";
 
 // Full course data based on CONTENT.md & PRD.md
 const COURSE_DATA = {
@@ -36,8 +37,8 @@ const COURSE_DATA = {
   level: "Для начинающих и опытных",
   certificate: true,
   prices: {
-    self: 5000,
-    support: 20000,
+    self: 5900,
+    support: 11900,
   },
   modules: [
     {
@@ -223,7 +224,7 @@ export default function Home() {
 
 
       {/* Program Section */}
-      <section id="modules" className="py-24 bg-white">
+      <section id="program" className="py-24 bg-white">
         <div className="container px-4 md:px-6">
           <div className="text-center mb-16">
             <h2 className="font-serif text-4xl md:text-5xl text-text-primary mb-4">
@@ -287,12 +288,9 @@ export default function Home() {
                 </ul>
               </CardContent>
               <CardFooter className="pb-8 px-8">
-                <Button asChild className="relative overflow-hidden group w-full h-14 rounded-full text-sm uppercase tracking-[0.2em] font-bold bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white hover:to-[#db3f6e] transition-all duration-500 shadow-[0_10px_25px_rgba(219,63,110,0.3)] hover:shadow-[0_15px_35px_rgba(219,63,110,0.45)] hover:-translate-y-1 border-none ring-1 ring-white/10">
-                  <Link href="/auth/register?tariff=self">
-                    <span className="relative z-10 drop-shadow-md">Начать обучение</span>
-                    <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/30 to-transparent z-0" />
-                  </Link>
-                </Button>
+                <PaymentButton courseId="default" tariff="self">
+                  Начать обучение
+                </PaymentButton>
               </CardFooter>
             </Card>
 
@@ -329,12 +327,9 @@ export default function Home() {
                   </ul>
                 </CardContent>
                 <CardFooter className="pb-8 px-8">
-                  <Button asChild className="relative overflow-hidden group w-full h-14 rounded-full text-sm uppercase tracking-[0.2em] font-bold bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white hover:to-[#db3f6e] transition-all duration-500 shadow-[0_10px_25px_rgba(219,63,110,0.3)] hover:shadow-[0_15px_35px_rgba(219,63,110,0.45)] hover:-translate-y-1 border-none ring-1 ring-white/10">
-                    <Link href="/auth/register?tariff=support">
-                      <span className="relative z-10 drop-shadow-md">Начать обучение</span>
-                      <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/30 to-transparent z-0" />
-                    </Link>
-                  </Button>
+                  <PaymentButton courseId="default" tariff="support">
+                    Начать обучение
+                  </PaymentButton>
                 </CardFooter>
               </Card>
             </div>

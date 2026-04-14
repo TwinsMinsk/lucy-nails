@@ -2,7 +2,26 @@
  * API Client для взаимодействия с Backend
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+const getBaseUrl = () => {
+    let url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+    // Убеждаемся, что URL абсолютный
+    if (!url.startsWith("http")) {
+        url = `https://${url}`;
+    }
+    // Убираем лишний слеш в конце, если он есть
+    url = url.replace(/\/$/, "");
+
+    // 🛡️ ЗАЩИТА ОТ ДУРАКА: Если в URL нет /api на конце, добавляем его сами
+    // Эту ошибку часто совершают при деплое
+    if (!url.endsWith("/api")) {
+        url += "/api";
+    }
+
+    return url;
+};
+
+const API_BASE_URL = getBaseUrl();
+console.log(`🚀 API Base URL initialized as: ${API_BASE_URL}`);
 
 /**
  * Получить токен из localStorage
@@ -15,7 +34,10 @@ const getAuthToken = (): string | null => {
 /**
  * Базовый fetch с авторизацией
  */
-async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
+/**
+ * Базовый fetch с авторизацией (экспортируется для прямого использования)
+ */
+export async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const token = getAuthToken();
 
     const headers: HeadersInit = {
@@ -24,13 +46,23 @@ async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> 
         ...options?.headers,
     };
 
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const fullUrl = `${API_BASE_URL}${endpoint}`;
+    console.log(`🌐 Fetching: ${fullUrl}`);
+
+    const response = await fetch(fullUrl, {
         ...options,
         headers,
     });
 
     if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: "Unknown error" }));
+        // 🤫 Тихий режим для проверки авторизации: не пугаем пользователя красным логом,
+        // если он просто не залогинен (это нормальная ситуация при первом входе)
+        if (response.status === 401 && endpoint.includes('/auth/me')) {
+            throw new Error("Not authenticated");
+        }
+
+        const errorData = await response.json().catch(() => ({ detail: `HTTP error ${response.status} at ${fullUrl}` }));
+        console.error(`❌ API Error [${response.status}] ${fullUrl}:`, errorData);
         throw new Error(errorData.detail || `HTTP ${response.status}`);
     }
 
@@ -201,6 +233,7 @@ export interface CourseResponse {
     price_self: number;
     price_support: number;
     is_published: boolean;
+    duration_seconds?: number;
     created_at: string;
 }
 
@@ -522,3 +555,27 @@ export const adminGetAnalytics = async (): Promise<AnalyticsResponse> => {
 export const adminUploadFile = uploadFile;
 
 
+/**
+ * ============================================
+ * PAYMENTS METHODS
+ * ============================================
+ */
+
+export interface PaymentLinkRequest {
+    course_id: string;
+    tariff: "self" | "support";
+}
+
+export interface PaymentLinkResponse {
+    url: string;
+}
+
+/**
+ * Получить ссылку на оплату Prodamus
+ */
+export const getPaymentLink = async (data: PaymentLinkRequest): Promise<PaymentLinkResponse> => {
+    return apiFetch<PaymentLinkResponse>("/payments/link", {
+        method: "POST",
+        body: JSON.stringify(data),
+    });
+};

@@ -14,6 +14,14 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+# Overwrite sqlalchemy.url with the production DB URL from settings
+# We must ensure it uses the synchronous driver (psycopg2) for Alembic
+from app.core.config import settings
+db_url = settings.DATABASE_URL
+if db_url.startswith("postgresql+asyncpg://"):
+    db_url = db_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+config.set_main_option("sqlalchemy.url", db_url)
+
 # add your model's MetaData object here
 # for 'autogenerate' support
 from app.core.database import Base
