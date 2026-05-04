@@ -34,7 +34,7 @@ class ModuleService:
         """
         query = select(Module).where(
             Module.course_id == course_id,
-            Module.is_published == True
+            Module.is_published
         ).order_by(Module.order_index)
         
         if include_lessons:

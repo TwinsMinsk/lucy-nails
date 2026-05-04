@@ -108,7 +108,7 @@ git push -u origin main
 
 1.  После настройки переменных Railway автоматически перезапустит деплой (Redeploy).
 2.  Следи за вкладкой **Deployments** → **View Logs**.
-    - **Backend Logs:** Должно быть написано `Application startup complete`.
+    - **Backend Logs:** при старте выполняются миграции Alembic (`alembic upgrade head`), затем должен быть `Application startup complete` от Uvicorn.
     - **Frontend Logs:** Должно быть `Ready in ... ms`.
 3.  Открой публичный домен Frontend сервиса. Проверь регистрацию и вход.
 

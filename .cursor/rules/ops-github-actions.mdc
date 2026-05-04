@@ -1,0 +1,11 @@
+---
+description: GitHub Actions и CI конфигурация
+globs: .github/**/*
+alwaysApply: false
+---
+
+# CI
+
+- Эталон: `.github/workflows/ci.yml` — backend Postgres 15 + ruff + pytest; frontend npm ci + lint + build.
+- Меняя job — сохраняй совместимость с `Docs/04_Setup_Ops/DEVELOPMENT_WORKFLOW.md` и `AGENTS.md`.
+- Секреты CI только через GitHub Secrets / переменные — не коммить.

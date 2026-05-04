@@ -2,7 +2,7 @@
 
 import { use } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, CheckCircle, Loader2, PlayCircle, Check } from "lucide-react";
+import { ChevronLeft, ChevronRight, CheckCircle, Loader2, Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getLesson, LessonResponse, getPublicCourseModules, ModuleResponse, getCourseProgress, updateLessonProgress } from "@/lib/api";
 import { toast } from "sonner";
@@ -42,7 +42,7 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
                 setProgressPercent(progressData.progress_percent);
 
                 // Calculate navigation
-                let allLessons: { id: string, module_id: string }[] = [];
+                const allLessons: { id: string, module_id: string }[] = [];
                 // Sort modules just in case
                 const sortedModules = [...modulesData].sort((a, b) => a.order_index - b.order_index);
 

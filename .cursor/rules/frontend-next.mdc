@@ -1,0 +1,13 @@
+---
+description: Next.js 16 frontend — App Router, API client, env
+globs: frontend/**/*.tsx
+alwaysApply: false
+---
+
+# Frontend (Next.js + React)
+
+- Маршруты и страницы: `frontend/src/app/`. Компоненты: `frontend/src/components/`.
+- **Env:** значения сборки/`NEXT_PUBLIC_*` — в `frontend/.env.local` (шаблон `frontend/.env.example`). Корневой `.env` Next не подхватывает.
+- **API:** общий клиент `frontend/src/lib/api.ts`; не дублируй базовый URL — используй `apiFetch` / существующие функции.
+- **UI:** переиспользуй `frontend/src/components/ui/*` (shadcn-паттерн). Настройки: `frontend/components.json`.
+- **Lint/build:** из `frontend/` — `npm run lint`, `npm run build` (см. `AGENTS.md` для переменных при сборке).

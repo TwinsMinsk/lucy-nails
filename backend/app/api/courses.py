@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.schemas.course import CourseResponse, CourseListResponse
-from app.schemas.module import ModuleResponse, ModuleWithLessonsResponse
+from app.schemas.module import ModuleWithLessonsResponse
 from app.services.course_service import CourseService
 from app.services.module_service import ModuleService
 
@@ -156,7 +156,7 @@ async def get_my_course_progress(
         .where(
             and_(
                 Progress.user_id == current_user.id,
-                Progress.is_completed == True,
+                Progress.is_completed,
                 Progress.lesson_id.in_(all_lesson_ids)
             )
         )

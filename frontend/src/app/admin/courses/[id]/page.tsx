@@ -182,14 +182,14 @@ export default function AdminCourseDetailPage() {
         } else {
             // Create Mode
             setEditingLesson(null);
-            const module = modules.find(m => m.id === moduleId);
+            const courseModule = modules.find(m => m.id === moduleId);
             setLessonForm({
                 title: "",
                 description: "",
                 content: "",
                 kinescope_video_id: "",
                 duration_seconds: 0,
-                order_index: module?.lessons?.length || 0,
+                order_index: courseModule?.lessons?.length || 0,
                 is_preview: false,
             });
             setLessonDialogOpen(true);

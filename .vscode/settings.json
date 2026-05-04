@@ -1,0 +1,18 @@
+{
+  "editor.formatOnSave": false,
+  "files.eol": "\n",
+  "eslint.workingDirectories": ["frontend"],
+  "eslint.validate": ["javascript", "javascriptreact", "typescript", "typescriptreact"],
+  "python.analysis.extraPaths": ["backend"],
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/venv/Scripts/python.exe",
+  "python.terminal.activateEnvironment": true,
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true
+  },
+  "ruff.enable": true,
+  "ruff.configuration": "${workspaceFolder}/pyproject.toml",
+  "python.testing.pytestEnabled": true,
+  "python.testing.cwd": "${workspaceFolder}",
+  "python.testing.pytestArgs": ["backend/tests", "-q"]
+}

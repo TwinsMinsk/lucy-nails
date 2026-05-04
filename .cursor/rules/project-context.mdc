@@ -1,0 +1,13 @@
+---
+description: Базовый контекст Lucy-nails для Cursor Agent (монорепо, безопасность, проверки)
+alwaysApply: true
+---
+
+# Lucy-nails — базовые правила
+
+- Монорепо: `backend/` (FastAPI), `frontend/` (Next.js), `Docs/`, `scripts/`.
+- **Первые чтения:** `AGENTS.md`, `CODEBASE.md`, `Docs/04_Setup_Ops/DEVELOPMENT_WORKFLOW.md`.
+- **Секреты:** не читать и не процитировать реальный `.env` / `frontend/.env.local`; шаблоны — `.env.example`, `frontend/.env.example`.
+- **Перед финалом задачи:** выполни проверки из `AGENTS.md` или явно напиши блокер (нет Postgres, нет Node и т.д.).
+- **Миграции:** изменения моделей БД только вместе с Alembic в `backend/alembic/versions/`.
+- **Язык:** ответ пользователю на русском, если он пишет по-русски.

@@ -31,7 +31,7 @@ class CourseService:
         query = select(Course)
         
         if only_published:
-            query = query.where(Course.is_published == True)
+            query = query.where(Course.is_published)
         
         query = query.order_by(Course.created_at.desc())
         
@@ -80,7 +80,7 @@ class CourseService:
         # Количество модулей
         modules_count_query = select(func.count(Module.id)).where(
             Module.course_id == course_id,
-            Module.is_published == True
+            Module.is_published
         )
         modules_count_result = await db.execute(modules_count_query)
         modules_count = modules_count_result.scalar()
@@ -91,7 +91,7 @@ class CourseService:
             func.sum(Lesson.duration_seconds)
         ).join(Module).where(
             Module.course_id == course_id,
-            Module.is_published == True
+            Module.is_published
         )
         lessons_result = await db.execute(lessons_query)
         lessons_count, total_duration = lessons_result.one()

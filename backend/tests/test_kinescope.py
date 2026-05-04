@@ -5,11 +5,7 @@
 import pytest
 import uuid
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.lesson import Lesson
-from app.models.module import Module
-from app.models.course import Course
 from app.services.kinescope_service import kinescope_service
 
 

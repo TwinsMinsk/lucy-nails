@@ -1,0 +1,23 @@
+﻿# Dependencies and build artifacts
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+
+backend/venv/
+backend/**/__pycache__/
+backend/.pytest_cache/
+
+# Secrets (never index)
+.env
+.env.*
+!.env.example
+frontend/.env.local
+frontend/.env.*.local
+
+# Caches
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
+*.log

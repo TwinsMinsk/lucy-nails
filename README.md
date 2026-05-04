@@ -2,12 +2,13 @@
 
 > Веб-платформа для продажи видео-курсов с защитой контента через Kinescope
 
-## Tech Stack
-
-- **Frontend:** Next.js 14+, TypeScript, Tailwind CSS
+**Cursor / AI:** см. [`AGENTS.md`](./AGENTS.md), карта репозитория [`CODEBASE.md`](./CODEBASE.md). Правила агента: [`.cursor/rules/`](./.cursor/rules/).
+- **Frontend:** Next.js (см. `frontend/package.json`), TypeScript, Tailwind CSS
 - **Backend:** Python 3.11+, FastAPI, SQLAlchemy 2.0
-- **Database:** PostgreSQL 15, Redis
+- **Database:** PostgreSQL 15, Redis (опционально)
 - **Интеграции:** Kinescope, Prodamus, Telegram Bot
+
+**Профессиональный процесс разработки (окружения, PR, Railway, проверки):** [Docs/04_Setup_Ops/DEVELOPMENT_WORKFLOW.md](./Docs/04_Setup_Ops/DEVELOPMENT_WORKFLOW.md)
 
 ## Быстрый старт
 
@@ -39,12 +40,14 @@
 
 ### 1. Клонирование и настройка
 
-```bash
-git clone <repo-url>
-cd Course-nails-design
-cp .env.example .env
-# Заполни .env своими ключами
+```powershell
+git clone https://github.com/TwinsMinsk/lucy-nails.git
+cd lucy-nails
+Copy-Item .env.example .env
+# Заполните корневой .env и создайте frontend/.env.local по frontend/.env.example
 ```
+
+Подробнее: [DEVELOPMENT_WORKFLOW.md](./Docs/04_Setup_Ops/DEVELOPMENT_WORKFLOW.md).
 
 ### 2. Backend
 
@@ -53,6 +56,7 @@ cd backend
 python -m venv venv
 .\venv\Scripts\Activate.ps1  # Windows
 pip install -r requirements.txt
+alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
@@ -61,11 +65,13 @@ uvicorn app.main:app --reload
 ```bash
 cd frontend
 npm install
+# при необходимости: скопируйте frontend/.env.example -> frontend/.env.local
 npm run dev
 ```
 
 ## Документация
 
+- [Professional dev workflow](./Docs/04_Setup_Ops/DEVELOPMENT_WORKFLOW.md) — окружения, команды, Git, качество перед деплоем
 - [PRD](./Docs/PRD.md) — требования
 - [Architecture](./Docs/ARCHITECTURE.md) — техническая архитектура
 - [Tasks](./Docs/TASKS.md) — трекер задач
@@ -73,7 +79,7 @@ npm run dev
 ## Структура
 
 ```
-├── frontend/       # Next.js 14
+├── frontend/       # Next.js
 ├── backend/        # FastAPI
 ├── Docs/           # Документация
 └── scripts/        # Утилиты

@@ -3,7 +3,7 @@
 """
 
 import httpx
-from typing import Dict, Optional
+from typing import Dict
 
 from app.core.config import settings
 from app.models.user import User

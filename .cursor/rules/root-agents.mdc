@@ -1,0 +1,10 @@
+---
+description: AGENTS.md — основной onboarding для Cursor
+globs: AGENTS.md
+alwaysApply: false
+---
+
+# AGENTS.md
+
+- Держать этот файл **кратким**: стек, ссылки, секреты, команды проверки, ключевые пути.
+- Дублирование огромными инструкциями не нужно — подробности в `DEVELOPMENT_WORKFLOW` и правилах `.cursor/rules/`.

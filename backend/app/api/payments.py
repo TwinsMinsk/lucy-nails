@@ -7,7 +7,7 @@ import secrets
 import string
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -145,7 +145,7 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
             # Если курс не найден — берём первый опубликованный (fallback)
             if not course:
                 result = await db.execute(
-                    select(Course).where(Course.is_published == True).limit(1)
+                    select(Course).where(Course.is_published).limit(1)
                 )
                 course = result.scalars().first()
 
@@ -234,7 +234,7 @@ async def get_payment_link(data: PaymentLinkRequest) -> dict[str, str]:
     async with async_session_maker() as db:
         if data.course_id == "default":
             result = await db.execute(
-                select(Course).where(Course.is_published == True).limit(1)
+                select(Course).where(Course.is_published).limit(1)
             )
         else:
             result = await db.execute(

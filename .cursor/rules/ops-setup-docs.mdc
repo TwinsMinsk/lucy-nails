@@ -1,0 +1,11 @@
+---
+description: Документы эксплуатации и setup (Ops)
+globs: Docs/04_Setup_Ops/**/*.md
+alwaysApply: false
+---
+
+# Setup / Ops документация
+
+- Поддерживай согласованность между `railway.toml`, CI и этими документами.
+- Команды вставляй в формате **PowerShell** (целевая ОС разработчиков — Windows).
+- При изменении переменных окружения синхронизируй `.env.example` и `frontend/.env.example`.

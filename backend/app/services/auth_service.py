@@ -2,14 +2,13 @@
 Сервис аутентификации.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_password_hash, verify_password, create_access_token, create_refresh_token
-from app.core.config import settings
 from app.models.user import User
 from app.schemas.auth import UserRegister, UserLogin, Token
 

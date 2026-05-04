@@ -1,0 +1,11 @@
+---
+description: Продуктовая и техническая документация в Docs/
+globs: Docs/**/*.md
+alwaysApply: false
+---
+
+# Docs
+
+- Крупный контекст: `Docs/ARCHITECTURE.md`, `Docs/PRD.md`, `Docs/TASKS.md`.
+- При изменении поведения продукта — обнови релевантный раздел в `Docs/` (и при необходимости трекер `Docs/TASKS.md`).
+- Не дублируй огромными кусками — лучше ссылка из README/AGENTS на источник правды.

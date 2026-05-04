@@ -1,0 +1,19 @@
+# Ruff (линтер Python) — конфиг на уровне монорепозитория.
+# Запуск из корня: `ruff check backend/app backend/tests`
+#
+# E402: в проекте есть крупные модули с импортами после исполняемого кода (legacy).
+# E741: короткие имена в comprehensions — выправляем по мере правок файлов.
+# F821 в ORM: ложные срабатывания на строковые forward references в relationship().
+
+[tool.ruff]
+target-version = "py311"
+respect-gitignore = true
+
+[tool.ruff.lint]
+ignore = [
+    "E402",
+    "E741",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"backend/app/models/**" = ["F821"]

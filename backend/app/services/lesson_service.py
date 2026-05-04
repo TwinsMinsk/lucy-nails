@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select, and_, desc
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -110,7 +110,6 @@ class LessonService:
         if progress:
             # Обновляем
             progress.watched_seconds = data.watched_seconds
-            update_completed = False
             
             # Если статус поменялся на completed
             if data.is_completed and not progress.is_completed:

@@ -7,10 +7,8 @@ from sqlalchemy.orm import selectinload
 
 from app.models.course import Course
 from app.models.purchase import Purchase
-from app.models.user import User
 from app.models.progress import Progress
 from app.models.module import Module
-from app.models.lesson import Lesson
 from app.schemas.purchase import PurchaseCreate, TariffType
 
 
@@ -120,7 +118,7 @@ class PurchaseService:
             .where(
                 and_(
                     Progress.user_id == user_id,
-                    Progress.is_completed == True
+                    Progress.is_completed
                 )
             )
         )

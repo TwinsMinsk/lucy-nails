@@ -14,8 +14,14 @@ trigger: always_on
 
 > **CRITICAL:** These rules override any generic defaults.
 
+### 0. Cursor IDE (приоритет для этого репозитория)
+
+- Главный onboarding для AI в **Cursor**: **`AGENTS.md`** + правила в **`.cursor/rules/`** + карта **`CODEBASE.md`**.
+- Файл **`GEMINI.md`** и дерево **`.agent/`** — перенос из прошлой среды (Antigravity/др.): это **справочный архив** глубоких сценариев и skill-файлов. Не читай всё подряд из `.agent/` — только релевантный `SKILL.md` по задаче.
+- Если инструкции в `GEMINI.md` расходятся с `AGENTS.md` / `.cursor/rules` для Cursor — **выигрывают** `AGENTS.md` и `.cursor/rules`.
+
 ### 1. Tech Stack & Architecture
-- **Frontend:** Next.js 14+ (App Router), TypeScript, Tailwind CSS, shadcn/ui, `lucide-react`.
+- **Frontend:** Next.js **16** (App Router), React **19**, TypeScript, Tailwind CSS, shadcn/ui, `lucide-react` (см. `frontend/package.json`).
 - **Backend:** Python 3.11+, FastAPI, SQLAlchemy 2.0 (async), Alembic, Pydantic V2.
 - **Database:** PostgreSQL 15 (asyncpg), Redis (Optional).
 - **Testing:** pytest (backend).
@@ -27,7 +33,8 @@ trigger: always_on
   - Activate venv: `.\backend\venv\Scripts\Activate.ps1`
   - Run Dev: `.\scripts\dev.ps1`
   - Run Tests: `$env:PYTHONPATH="backend"; .\backend\venv\Scripts\python.exe -m pytest backend/tests -v`
-- **DB Access:** Localhost (`localhost:5432`). Password in `.env`.
+- **Secrets:** корневой `.env` (+ опционально `backend/.env`). Для Next используйте `frontend/.env.local` (см. `frontend/.env.example` и `Docs/04_Setup_Ops/DEVELOPMENT_WORKFLOW.md`).
+- **DB Access:** Localhost (`localhost:5432`). Пароль и `DATABASE_URL` в `.env`.
 
 ### 3. Database Schema (7 Tables)
 | Table | Key Fields |
@@ -44,20 +51,24 @@ trigger: always_on
 - **Auth:** ONLY via FastAPI Dependencies (`get_current_user`). **NO RLS in DB.**
 - **ORM:** Always use `async_session`. Eager load via `.options(selectinload(...))`.
 - **UI:** Server Components by default. 'use client' only for interactivity.
-- **Language:** **Russian** (Русский) for all explanations and comments. В чате тоже всегда отвечай на РУССКОМ ЯЗЫКЕ!!!
+- **Language:**
+  - Ответы пользователю — **на русском**.
+  - Комментарии в коде и стиль имён — **как в затрагиваемом файле/модуле** (в проекте часто русские docstring/комментарии на backend; во frontend чаще короткий английский — не ломай без нужды).
 
 ---
 
 ## CRITICAL: AGENT & SKILL PROTOCOL (START HERE)
 
-> **MANDATORY:** You MUST read the appropriate agent file and its skills BEFORE performing any implementation. This is the highest priority rule.
+> **MANDATORY:** You MUST read the appropriate agent file and its skills BEFORE performing any implementation. Это правило пришло из Antigravity-потока.
+
+> **Cursor note:** В **Cursor** базовый onboarding — **`AGENTS.md` + `.cursor/rules/` + `CODEBASE.md`**. Файлы в **`.agent/agents/`** открывай **только если** задача действительно про тот workflow/роль; не читай архив целиком «на всякий случай».
 
 ### 1. Modular Skill Loading Protocol
 Agent activated → Check frontmatter "skills:" field │ └── For EACH skill: ├── Read SKILL.md (INDEX only) ├── Find relevant sections from content map └── Read ONLY those section files
 
 
 - **Selective Reading:** DO NOT read ALL files in a skill folder. Read `SKILL.md` first, then only read sections matching the user's request.
-- **Rule Priority:** P0 (Project Context above) > P1 (Agent .md) > P2 (SKILL.md).
+- **Rule Priority:** P0 (**`AGENTS.md` + `.cursor/rules/`**, затем Project Context в `GEMINI.md`) > P1 (Agent `.agent/agents/*.md` при необходимости) > P2 (конкретный `SKILL.md` в `.agent/skills/...`).
 
 ### 2. Enforcement Protocol
 1. **When agent is activated:**
@@ -91,11 +102,11 @@ Agent activated → Check frontmatter "skills:" field │ └── For EACH ski
 When user's prompt is NOT in English:
 1. **Internally translate** for better comprehension
 2. **Respond in user's language** - match their communication (Russian/Русский)
-3. **Code comments/variables** remain in English
+3. Комментарии/идентификаторы в коде — **согласованно с текущим файлом** (см. PROJECT CONTEXT §4)
 
 ### 🧹 Clean Code (Global Mandatory)
 
-**ALL code MUST follow `@[skills/clean-code]` rules. No exceptions.**
+**ALL code MUST follow** `.agent/skills/clean-code/SKILL.md` (читай выборочно: INDEX → нужные секции). **No exceptions.**
 
 - Concise, direct, solution-focused
 - No verbose explanations
@@ -104,13 +115,13 @@ When user's prompt is NOT in English:
 ### 📁 File Dependency Awareness
 
 **Before modifying ANY file:**
-1. Check `CODEBASE.md` (if exists) or imports.
+1. Прочитай `CODEBASE.md` (есть в репозитории) или проследуй по imports.
 2. Identify dependent files
 3. Update ALL affected files together
 
 ### 🗺️ System Map Read
 
-> 🔴 **MANDATORY:** Read `ARCHITECTURE.md` (if available) at session start.
+> 🔴 **MANDATORY:** Read `Docs/ARCHITECTURE.md` (и при первом входе — `CODEBASE.md`) at session start.
 
 ---
 

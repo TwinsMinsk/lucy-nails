@@ -1,0 +1,10 @@
+---
+description: Корневой README — синхронность с onboarding
+globs: README.md
+alwaysApply: false
+---
+
+# README
+
+- Quick start совпадает с `Docs/04_Setup_Ops/DEVELOPMENT_WORKFLOW.md` и скриптами `scripts/*.ps1`.
+- Ссылки для AI: [`AGENTS.md`](AGENTS.md), [`CODEBASE.md`](CODEBASE.md), профессиональный workflow в `Docs/04_Setup_Ops/`.

@@ -7,7 +7,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
-from app.core.config import settings
 from app.core.database import async_session_maker
 from app.models.user import User
 from app.core.security import get_password_hash

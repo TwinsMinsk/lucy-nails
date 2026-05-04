@@ -1,0 +1,12 @@
+---
+description: Railway, CI, скрипты, ops-документы
+globs: railway.toml
+alwaysApply: false
+---
+
+# Ops / деплой
+
+- Railway: `railway.toml` — два сервиса (backend Alembic + uvicorn, frontend build + start).
+- GitHub Actions: `.github/workflows/ci.yml` — эталон команд проверки.
+- Локально Windows: `scripts/*.ps1`, гайды `Docs/04_Setup_Ops/`.
+- Меняя деплой или env — обновляй соответствующий документ в `Docs/04_Setup_Ops/` и при необходимости `DEPLOY_GUIDE.md`.

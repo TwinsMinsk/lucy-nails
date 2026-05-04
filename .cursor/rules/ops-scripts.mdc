@@ -1,0 +1,11 @@
+---
+description: Локальные PowerShell скрипты запуска
+globs: scripts/**/*
+alwaysApply: false
+---
+
+# Scripts (Windows PowerShell)
+
+- Запуск из **корня** репо: `scripts/dev.ps1`, `scripts/dev-backend.ps1`, и т.д.
+- После добавления нового скрипта — упомяни в `Docs/04_Setup_Ops/dev_scripts.md` или README.
+- Избегай хардкода секретов; используй `.env`/переменные окружения.

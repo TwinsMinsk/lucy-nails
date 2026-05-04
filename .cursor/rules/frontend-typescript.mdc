@@ -1,0 +1,11 @@
+---
+description: Общие TS-файлы frontend (lib, types)
+globs: frontend/**/*.ts
+alwaysApply: false
+---
+
+# Frontend (TypeScript вне JSX)
+
+- Разделяй: `frontend/src/lib/*` — утилиты и API; `frontend/src/app/*` — маршруты.
+- Избегай `any`; если наследие — улучшай типами по возможности без большого рефакторинга.
+- ESLint конфиг: `frontend/eslint.config.mjs`.
