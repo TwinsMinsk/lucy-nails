@@ -15,9 +15,14 @@ function Invoke-SmokeRequest {
     )
 
     Write-Host "Checking $Url"
-    $response = Invoke-WebRequest -Uri $Url -Method GET -MaximumRedirection 5 -TimeoutSec 20
-    if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 400) {
-        throw "Unexpected status $($response.StatusCode) for $Url"
+    $statusCode = & curl.exe --location --silent --show-error --output "NUL" --write-out "%{http_code}" --max-time "20" "$Url"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Request failed for $Url"
+    }
+
+    $status = [int]$statusCode
+    if ($status -lt 200 -or $status -ge 400) {
+        throw "Unexpected status $status for $Url"
     }
 }
 
