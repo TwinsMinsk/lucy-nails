@@ -9,15 +9,27 @@ from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, status
 from pydantic import BaseModel
 
 from app.api.admin import require_admin
+from app.core.config import settings
 from app.models.user import User
 
 
 router = APIRouter()
 
 
-# Директория для сохранения файлов
-# Абсолютный путь от backend к frontend/public/uploads
-UPLOAD_DIR = Path(__file__).parent.parent.parent.parent / "frontend" / "public" / "uploads"
+def _is_production() -> bool:
+    return settings.ENVIRONMENT.lower() == "production"
+
+
+def _upload_dir() -> Path:
+    if settings.UPLOAD_STORAGE_DIR:
+        return Path(settings.UPLOAD_STORAGE_DIR)
+    return Path(__file__).parent.parent.parent.parent / "frontend" / "public" / "uploads"
+
+
+def _public_upload_url(filename: str) -> str:
+    if settings.UPLOAD_PUBLIC_BASE_URL:
+        return f"{settings.UPLOAD_PUBLIC_BASE_URL.rstrip('/')}/{filename}"
+    return f"/uploads/{filename}"
 
 
 class UploadResponse(BaseModel):
@@ -28,7 +40,7 @@ class UploadResponse(BaseModel):
 
 def ensure_upload_dir():
     """Создать директорию для загрузок, если не существует."""
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    os.makedirs(_upload_dir(), exist_ok=True)
 
 
 @router.post("/upload", response_model=UploadResponse)
@@ -40,6 +52,12 @@ async def upload_file(
     Загрузить файл (только для админов).
     Поддерживаемые форматы: jpg, jpeg, png, webp, gif.
     """
+    if _is_production() and (not settings.UPLOAD_STORAGE_DIR or not settings.UPLOAD_PUBLIC_BASE_URL):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Uploads are disabled in production. Configure persistent storage and public URL first.",
+        )
+
     # Проверка типа файла
     allowed_extensions = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
     file_ext = Path(file.filename).suffix.lower()
@@ -57,7 +75,7 @@ async def upload_file(
     ensure_upload_dir()
     
     # Полный путь к файлу
-    file_path = UPLOAD_DIR / unique_filename
+    file_path = _upload_dir() / unique_filename
     
     # Сохраняем файл
     try:
@@ -72,6 +90,6 @@ async def upload_file(
     
     # Возвращаем URL (относительный путь от public/)
     return UploadResponse(
-        url=f"/uploads/{unique_filename}",
+        url=_public_upload_url(unique_filename),
         filename=unique_filename
     )

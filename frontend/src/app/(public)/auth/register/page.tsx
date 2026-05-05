@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/form"
 import { RegisterSchema } from "@/lib/schemas"
 import { register, login } from "@/lib/api"
+import { safeNextPath } from "@/lib/navigation"
 
 export default function RegisterPage() {
     const [isLoading, setIsLoading] = useState(false)
@@ -67,8 +68,8 @@ export default function RegisterPage() {
                 description: "Вход выполнен автоматически."
             })
 
-            // 3. Редирект на dashboard
-            router.push("/dashboard")
+            const next = new URLSearchParams(window.location.search).get("next")
+            router.push(safeNextPath(next))
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Ошибка регистрации"
             toast.error("Ошибка", {

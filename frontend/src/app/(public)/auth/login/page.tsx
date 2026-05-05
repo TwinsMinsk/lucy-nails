@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/form"
 import { LoginSchema } from "@/lib/schemas"
 import { login } from "@/lib/api"
+import { safeNextPath } from "@/lib/navigation"
 
 export default function LoginPage() {
     const [isLoading, setIsLoading] = useState(false)
@@ -53,8 +54,8 @@ export default function LoginPage() {
                 description: "Добро пожаловать обратно."
             })
 
-            // Редирект на dashboard
-            router.push("/dashboard")
+            const next = new URLSearchParams(window.location.search).get("next")
+            router.push(safeNextPath(next))
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Ошибка входа"
             toast.error("Ошибка", {

@@ -62,8 +62,8 @@ async def get_course(
     Raises:
         HTTPException 404: Курс не найден
     """
-    course = await CourseService.get_course_by_id(db, course_id)
-    
+    course = await CourseService.get_course_by_id(db, course_id, only_published=True)
+
     if not course:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -94,7 +94,7 @@ async def get_course_modules(
         Список модулей с уроками
     """
     # Проверить существование курса
-    course = await CourseService.get_course_by_id(db, course_id)
+    course = await CourseService.get_course_by_id(db, course_id, only_published=True)
     if not course:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -120,6 +120,7 @@ from app.models.user import User
 from app.models.progress import Progress
 from app.models.module import Module
 from app.models.lesson import Lesson
+from app.services.purchase_service import PurchaseService
 from sqlalchemy import select, and_
 from pydantic import BaseModel
 
@@ -131,17 +132,30 @@ class CourseProgressResponse(BaseModel):
 async def get_my_course_progress(
     course_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
-    Получить прогресс пользователя по курсу.
+    Получить прогресс пользователя по курсу (нужна активная успешная покупка;
+    админ — без ограничения).
     """
+    if current_user.role != "admin":
+        access = await PurchaseService.get_active_purchase(db, current_user.id, course_id)
+        if not access:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Course access required",
+            )
     # 1. Получаем все уроки курса для подсчета общего количества
     # Используем join для эффективности
     query_lessons = (
         select(Lesson.id)
         .join(Module, Module.id == Lesson.module_id)
-        .where(Module.course_id == course_id)
+        .where(
+            and_(
+                Module.course_id == course_id,
+                Module.is_published.is_(True),
+            )
+        )
     )
     result_lessons = await db.execute(query_lessons)
     all_lesson_ids = result_lessons.scalars().all()

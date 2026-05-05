@@ -51,6 +51,13 @@ jobs:
       - name: Ruff check
         run: ruff check backend/app backend/tests
 
+      - name: Alembic upgrade
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/nails_course
+          PYTHONPATH: .
+        run: alembic upgrade head
+
       - name: Pytest
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/nails_course

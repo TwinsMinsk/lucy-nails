@@ -16,9 +16,17 @@ class TariffType(str, Enum):
 
 class PurchaseCreate(BaseModel):
     """Схема создания заказа."""
-    
+
     course_id: UUID = Field(..., description="UUID курса")
     tariff: TariffType = Field(..., description="Тариф (self/support)")
+
+
+class PaymentStartResponse(BaseModel):
+    """Ответ при старте оплаты (редирект на Prodamus)."""
+
+    payment_url: str = Field(..., description="URL платёжной формы Prodamus")
+    course_id: UUID = Field(..., description="UUID курса")
+    tariff: str = Field(..., description="Тариф")
 
 
 class PurchaseResponse(BaseModel):
@@ -42,6 +50,7 @@ class PurchaseResponse(BaseModel):
 
 class MyCourseResponse(BaseModel):
     """Схема курса в личном кабинете с прогрессом."""
+
     id: UUID
     title: str
     description: str | None = None
@@ -51,6 +60,12 @@ class MyCourseResponse(BaseModel):
     last_lesson_id: UUID | None = None
     last_lesson_title: str | None = None
     cover_image_url: str | None = None
+    tariff: str | None = None
+    expires_at: datetime | None = None
+    support_chat_url: str | None = Field(
+        None,
+        description="Ссылка на Telegram-чат (только тариф support)",
+    )
     
     class Config:
         from_attributes = True

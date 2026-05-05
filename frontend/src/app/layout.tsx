@@ -5,6 +5,7 @@ import "./globals.css";
 // 1. Импортируем компоненты (убедись, что пути правильные)
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
+import { getPublicSiteUrl } from "@/lib/env";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -16,12 +17,31 @@ const playfair = Playfair_Display({ // 2. Configure Playfair
   subsets: ["latin", "cyrillic"],
 });
 
+const siteUrl = getPublicSiteUrl();
+
 export const metadata: Metadata = {
-  title: "Обучающие курсы по маникюру от Люси Смирновой",
-  description: "Авторские курсы маникюра и дизайна ногтей от профессионала",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "Обучающие курсы по маникюру от Люси Смирновой",
+    template: "%s — Lucy Nails Academy",
+  },
+  description: "Авторские онлайн-курсы маникюра и дизайна ногтей с защищёнными видео-уроками.",
+  openGraph: {
+    type: "website",
+    locale: "ru_RU",
+    url: siteUrl,
+    siteName: "Lucy Nails Academy",
+    title: "Обучающие курсы по маникюру от Люси Смирновой",
+    description: "Авторские онлайн-курсы маникюра и дизайна ногтей с защищёнными видео-уроками.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Обучающие курсы по маникюру от Люси Смирновой",
+    description: "Авторские онлайн-курсы маникюра и дизайна ногтей с защищёнными видео-уроками.",
+  },
   icons: {
-    icon: "/favicon.ico",
-    shortcut: "/favicon.ico",
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
   },
 };
 

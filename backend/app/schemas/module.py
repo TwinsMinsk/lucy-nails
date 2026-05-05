@@ -28,10 +28,11 @@ class ModuleResponse(ModuleBase):
         use_enum_values = True
 
 
-from app.schemas.lesson import LessonResponse
+from app.schemas.lesson import LessonOutlineResponse
+
 
 class ModuleWithLessonsResponse(ModuleResponse):
     """Схема модуля со списком уроков."""
-    
-    lessons: list[LessonResponse] = Field(default_factory=list, description="Список уроков")
+
+    lessons: list[LessonOutlineResponse] = Field(default_factory=list, description="Список уроков")
 

@@ -3,8 +3,8 @@ import { CheckCircle, ArrowRight, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export const metadata = {
-  title: "Оплата прошла успешно — Lucy Nails Academy",
-  description: "Ваша оплата успешно обработана. Добро пожаловать на курс!",
+  title: "Платёж принят — Lucy Nails Academy",
+  description: "Платёж принят Prodamus. Доступ откроется после подтверждения webhook.",
 };
 
 export default function PaymentSuccessPage() {
@@ -28,10 +28,10 @@ export default function PaymentSuccessPage() {
             </span>
           </div>
           <h1 className="font-serif text-3xl md:text-4xl text-text-primary">
-            Оплата прошла успешно!
+            Платёж принят!
           </h1>
           <p className="text-text-secondary text-lg leading-relaxed max-w-md mx-auto">
-            Спасибо за покупку курса! На вашу почту отправлены данные для входа в личный кабинет.
+            Спасибо за покупку курса. Обычно доступ появляется в личном кабинете в течение пары минут после подтверждения оплаты.
           </p>
         </div>
 
@@ -43,15 +43,15 @@ export default function PaymentSuccessPage() {
           <ul className="space-y-3 text-text-secondary text-sm">
             <li className="flex items-start gap-3">
               <span className="w-6 h-6 rounded-full bg-[#D4AF37]/10 text-[#D4AF37] flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">1</span>
-              <span>Проверьте почту — мы отправили логин и пароль для входа</span>
+              <span>Если вы покупали после входа в аккаунт, просто вернитесь в личный кабинет</span>
             </li>
             <li className="flex items-start gap-3">
               <span className="w-6 h-6 rounded-full bg-[#D4AF37]/10 text-[#D4AF37] flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">2</span>
-              <span>Войдите в личный кабинет с полученными данными</span>
+              <span>Если Prodamus создавал аккаунт по email, проверьте письмо с данными для входа</span>
             </li>
             <li className="flex items-start gap-3">
               <span className="w-6 h-6 rounded-full bg-[#D4AF37]/10 text-[#D4AF37] flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">3</span>
-              <span>Начните обучение — все уроки уже доступны!</span>
+              <span>Если доступ не появился сразу, подождите 1-2 минуты и обновите кабинет</span>
             </li>
           </ul>
         </div>
@@ -59,7 +59,7 @@ export default function PaymentSuccessPage() {
         {/* CTA Buttons */}
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <Button asChild className="relative overflow-hidden group rounded-full text-sm uppercase tracking-[0.15em] font-bold px-8 py-5 h-auto bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white hover:to-[#db3f6e] transition-all duration-500 shadow-[0_10px_25px_rgba(219,63,110,0.3)] hover:shadow-[0_15px_35px_rgba(219,63,110,0.45)] hover:-translate-y-1 border-none ring-1 ring-white/10">
-            <Link href="/login">
+            <Link href="/auth/login">
               <span className="relative z-10 drop-shadow-md flex items-center gap-2">
                 Войти в кабинет
                 <ArrowRight className="w-4 h-4" />
@@ -76,7 +76,7 @@ export default function PaymentSuccessPage() {
 
         {/* Support note */}
         <p className="text-xs text-text-secondary/60">
-          Если письмо не пришло, проверьте папку «Спам» или напишите нам в{" "}
+          Если доступ или письмо не появились, проверьте папку «Спам» или напишите нам в{" "}
           <a href="https://t.me/lucysmirnova_nails" className="text-[#db3f6e] hover:underline" target="_blank" rel="noopener">
             Telegram
           </a>

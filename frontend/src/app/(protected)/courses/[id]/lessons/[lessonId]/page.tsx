@@ -2,10 +2,12 @@
 
 import { use } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, CheckCircle, Loader2, Check } from "lucide-react";
-import { useEffect, useState } from "react";
-import { getLesson, LessonResponse, getPublicCourseModules, ModuleResponse, getCourseProgress, updateLessonProgress } from "@/lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { getLesson, LessonResponse, getPublicCourseModules, ModuleResponse, getCourseProgress, updateLessonProgress, isAuthError } from "@/lib/api";
 import { toast } from "sonner";
+import { sanitizeHtml } from "@/lib/sanitize";
 
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -16,6 +18,7 @@ import { VideoPlayer } from "@/components/course/VideoPlayer";
 
 export default function LessonPage({ params }: { params: Promise<{ id: string, lessonId: string }> }) {
     const { id, lessonId } = use(params);
+    const router = useRouter();
 
     const [lesson, setLesson] = useState<LessonResponse | null>(null);
     const [modules, setModules] = useState<ModuleResponse[]>([]);
@@ -61,13 +64,17 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
 
             } catch (error) {
                 console.error(error);
+                if (isAuthError(error)) {
+                    router.push("/auth/login");
+                    return;
+                }
                 toast.error("Ошибка загрузки данных урока");
             } finally {
                 setIsLoading(false);
             }
         };
         fetchData();
-    }, [id, lessonId]);
+    }, [id, lessonId, router]);
 
     const handleToggleComplete = async () => {
         if (!lesson) return;
@@ -108,6 +115,11 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
         const mins = Math.floor(seconds / 60);
         return `${mins} мин`;
     };
+
+    const sanitizedContent = useMemo(
+        () => (lesson?.content ? sanitizeHtml(lesson.content) : ""),
+        [lesson?.content]
+    );
 
     if (isLoading) {
         return (
@@ -168,7 +180,7 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
                             <div />
                         </div>
 
-                        {lesson.content && (
+                        {sanitizedContent && (
                             <div className="mt-10 p-6 md:p-10 bg-white rounded-3xl border shadow-sm">
                                 <h2 className="text-xl font-bold mb-6 text-text-primary">Конспект урока</h2>
                                 <div
@@ -176,7 +188,7 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
                                     prose-headings:font-serif prose-headings:text-text-primary
                                     prose-p:text-text-secondary prose-p:leading-relaxed
                                     prose-li:text-text-secondary"
-                                    dangerouslySetInnerHTML={{ __html: lesson.content }}
+                                    dangerouslySetInnerHTML={{ __html: sanitizedContent }}
                                 />
                             </div>
                         )}

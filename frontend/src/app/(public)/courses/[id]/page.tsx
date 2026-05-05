@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { CheckCircle, Clock, Video, Star, ShieldCheck, ChevronRight } from "lucide-react";
+import type { Metadata } from "next";
+import { CheckCircle, Clock, Video, Star, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ModuleList, Module } from "@/components/course/ModuleList";
@@ -7,6 +8,32 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 
 import { getPublicCourse, getPublicCourseModules, CourseResponse, ModuleResponse } from "@/lib/api";
 import { notFound } from "next/navigation";
+import { CoursePaymentCTA } from "@/components/course/CoursePaymentCTA";
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+    const { id } = await params;
+
+    try {
+        const course = await getPublicCourse(id);
+        return {
+            title: course.title,
+            description: course.description || "Онлайн-курс Lucy Nails Academy по дизайну ногтей.",
+            alternates: {
+                canonical: `/courses/${id}`,
+            },
+            openGraph: {
+                title: course.title,
+                description: course.description || "Онлайн-курс Lucy Nails Academy по дизайну ногтей.",
+                url: `/courses/${id}`,
+                images: course.cover_image_url ? [course.cover_image_url] : undefined,
+            },
+        };
+    } catch {
+        return {
+            title: "Курс не найден",
+        };
+    }
+}
 
 // Helper to format duration like "20 мин" or "1 час"
 const formatDuration = (seconds?: number) => {
@@ -52,7 +79,7 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
     const course = {
         ...courseData,
         level: "Для всех уровней", // Placeholder or add to DB
-        certificate: true, // Placeholder
+        certificate: false, // Сертификаты вынесены в post-MVP.
         prices: {
             self: courseData.price_self,
             support: courseData.price_support,
@@ -143,9 +170,9 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                                         </ul>
                                     </CardContent>
                                     <CardFooter>
-                                        <Button className="w-full" size="lg" asChild>
-                                            <Link href="/checkout?tariff=self">Выбрать тариф</Link>
-                                        </Button>
+                                        <CoursePaymentCTA courseId={id} tariff="self" className="w-full h-12 rounded-lg text-sm uppercase tracking-wide font-bold bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white">
+                                            Выбрать тариф
+                                        </CoursePaymentCTA>
                                     </CardFooter>
                                 </Card>
 
@@ -164,7 +191,7 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                                         <ul className="space-y-3">
                                             <li className="flex gap-3 text-sm">
                                                 <CheckCircle className="w-5 h-5 text-success shrink-0" />
-                                                <span>Доступ ко всем урокам (60 дней)</span>
+                                                <span>Доступ ко всем урокам (30 дней)</span>
                                             </li>
                                             <li className="flex gap-3 text-sm">
                                                 <CheckCircle className="w-5 h-5 text-success shrink-0" />
@@ -181,9 +208,9 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                                         </ul>
                                     </CardContent>
                                     <CardFooter>
-                                        <Button className="w-full shadow-lg shadow-primary/20" size="lg" asChild>
-                                            <Link href="/checkout?tariff=support">Выбрать тариф</Link>
-                                        </Button>
+                                        <CoursePaymentCTA courseId={id} tariff="support" className="w-full h-12 rounded-lg text-sm uppercase tracking-wide font-bold bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white shadow-lg shadow-primary/20">
+                                            Выбрать тариф
+                                        </CoursePaymentCTA>
                                     </CardFooter>
                                 </Card>
                             </div>
@@ -199,9 +226,6 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                                     <div className="flex items-baseline justify-center gap-2">
                                         <span className="text-3xl font-bold text-primary">
                                             {course.prices.self.toLocaleString('ru-RU')} ₽
-                                        </span>
-                                        <span className="text-sm text-text-secondary line-through opacity-70">
-                                            8 000 ₽
                                         </span>
                                     </div>
                                 </div>

@@ -62,26 +62,28 @@ class ProdamusService:
         price: float,
         tariff: str,
         order_id: str | None = None,
+        customer_email: str | None = None,
+        customer_phone: str | None = None,
     ) -> str:
         """
         Генерирует прямую ссылку на оплату (GET-параметры + подпись).
 
-        Покупатель — гость, email пока неизвестен, Prodamus попросит его сам.
+        Покупатель может быть гостём: email/телефон опциональны (Prodamus попросит при оплате).
         """
         base_url = settings.PRODAMUS_URL.rstrip("/") + "/"
-        secret   = settings.PRODAMUS_SECRET_KEY
+        secret = settings.PRODAMUS_SECRET_KEY
 
         # Backend API URL for webhook notifications
         backend_url = settings.BACKEND_URL.rstrip("/") if settings.BACKEND_URL else "http://localhost:8000"
 
         params: dict[str, Any] = {
             "do": "pay",
-            "products[0][name]":     course_name,
-            "products[0][price]":    str(price),
+            "products[0][name]": course_name,
+            "products[0][price]": str(price),
             "products[0][quantity]": "1",
-            "products[0][type]":     "course",
-            "urlSuccess":  f"{settings.FRONTEND_URL}/payment-success",
-            "urlReturn":   f"{settings.FRONTEND_URL}/#pricing",
+            "products[0][type]": "course",
+            "urlSuccess": f"{settings.FRONTEND_URL.rstrip('/')}/payment-success",
+            "urlReturn": f"{settings.FRONTEND_URL.rstrip('/')}/#pricing",
             "urlNotification": f"{backend_url}/api/payments/webhook",
             # callbackType=json — вебхуки будут приходить в JSON
             "callbackType": "json",
@@ -89,6 +91,10 @@ class ProdamusService:
 
         if order_id:
             params["order_id"] = order_id
+        if customer_email:
+            params["customer_email"] = customer_email.strip().lower()
+        if customer_phone:
+            params["customer_phone"] = str(customer_phone).strip()
 
         # demo_mode=1 for test payments (when not in production)
         if settings.ENVIRONMENT != "production":
@@ -101,8 +107,8 @@ class ProdamusService:
         params["signature"] = _make_signature(flat_for_sign, secret)
 
         query = urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
-        link  = f"{base_url}?{query}"
-        logger.debug("Generated Prodamus link: %s", link)
+        link = f"{base_url}?{query}"
+        logger.debug("Prodamus link generated (order_id present: %s)", bool(order_id))
         return link
 
     @staticmethod

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Users, BookOpen, ShoppingCart, LayoutDashboard, LogOut, BarChart3 } from "lucide-react";
-import { getMe, UserResponse, logout } from "@/lib/api";
+import { getMe, isAuthError, UserResponse, logout } from "@/lib/api";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -36,9 +36,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
                 setUser(userData);
             } catch (error) {
-                toast.error("Ошибка", {
-                    description: "Не удалось проверить права доступа"
-                });
+                if (!isAuthError(error)) {
+                    toast.error("Ошибка", {
+                        description: "Не удалось проверить права доступа"
+                    });
+                }
                 router.push("/auth/login");
             } finally {
                 setIsLoading(false);

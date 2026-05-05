@@ -1,14 +1,22 @@
 # Task List: Платформа видео-курсов
 
 > Статус: [ ] Not Started | [/] In Progress | [x] Done
-> **Последнее обновление:** 11.04.2026
+> **Последнее обновление:** 05.05.2026
 
 ---
+
+## Production readiness (MVP)
+- [x] Инварианты: 30 дней доступа после оплаты, два тарифа, Prodamus webhook + phone/email, premium Telegram в ЛК
+- [/] Полный чеклист деплоя и hardening — текущий MVP scope: безопасная покупка Prodamus, доступ к урокам, кабинет, базовая админка, Railway deploy
+- [ ] Backend hardening: CORS/Trusted Hosts/JWT/seed/rate limit/Kinescope без mock в prod
+- [ ] Payment hardening: идемпотентный webhook, повторы, гонки, проверки подписи и суммы
+- [ ] Frontend hardening: auth/session UX, protected/admin guards, безопасный payment CTA
+- [ ] Staging smoke-test перед production
 
 ## Фаза 0: Setup (2-3 дня) — 90%
 - [x] 0.1 Инициализация репозитория (.gitignore, README.md)
 - [x] 0.2 Создание .env.example
-- [x] 0.3 Setup Frontend (Next.js 14 + TypeScript + Tailwind)
+- [x] 0.3 Setup Frontend (Next.js 16 + TypeScript + Tailwind)
   - [x] Инициализация Next.js
   - [ ] Настройка ESLint + Prettier
   - [x] Установка shadcn/ui (21 компонент)
@@ -87,8 +95,8 @@
 - [x] 4.2 Prodamus интеграция
   - [x] Email Service (aiosmtplib, HTML-письмо с кредами)
   - [x] Prodamus Service (generate_payment_link, verify_signature HMAC)
-  - [x] Webhook handler POST /api/payments/webhook (авто-регистрация пользователя)
-  - [x] Endpoint POST /api/payments/link (генерация ссылки для фронта)
+  - [x] Webhook handler POST /api/payments/webhook (registered-only checkout, идемпотентность, проверка суммы)
+  - [x] Endpoint POST /api/payments/link (генерация ссылки для авторизованного пользователя)
   - [x] PaymentButton.tsx (фронтенд)
 - [ ] 4.3 Telegram Bot
   - [ ] Привязка аккаунта
@@ -116,8 +124,9 @@
   - [ ] sitemap.xml
   - [ ] robots.txt
 - [ ] 6.2 PWA (manifest, service worker)
-- [ ] 6.3 CI/CD (GitHub Actions)
-  - [ ] Lint + Test на PR
+- [/] 6.3 CI/CD (GitHub Actions)
+  - [x] Lint + Test на PR
+  - [ ] Alembic upgrade/head check в CI
   - [ ] Auto-deploy на Railway
 - [ ] 6.4 Деплой на Railway
   - [/] Backend (Dockerfile есть)
@@ -130,7 +139,13 @@
 ---
 
 ## Отложено (Post-MVP)
+- [ ] Payment audit log + outbox/retry для писем и админского восстановления доступа
+- [ ] Redis-backed rate limits для нескольких backend-инстансов
+- [ ] Refresh-token rotation/revocation и полноценная session model
+- [ ] Расширенные E2E/component tests для frontend и payment/playback smoke
+- [ ] Telegram-бот и уведомления
 - [ ] Сертификаты (шаблон не готов)
 - [ ] Уведомления об окончании доступа (за 3 дня, за 1 день)
+- [ ] PWA
 - [ ] Расширенная аналитика
 - [ ] Страница профиля пользователя

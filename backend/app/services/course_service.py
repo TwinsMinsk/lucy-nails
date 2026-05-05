@@ -40,28 +40,32 @@ class CourseService:
     
     @staticmethod
     async def get_course_by_id(
-        db: AsyncSession, 
+        db: AsyncSession,
         course_id: UUID,
-        include_modules: bool = False
+        include_modules: bool = False,
+        only_published: bool = False,
     ) -> Course | None:
         """
         Получить курс по ID.
-        
+
         Args:
             db: Сессия БД
             course_id: UUID курса
             include_modules: Загрузить модули курса
-        
+            only_published: Только опубликованный курс (для публичного API)
+
         Returns:
             Course или None
         """
         query = select(Course).where(Course.id == course_id)
-        
+        if only_published:
+            query = query.where(Course.is_published.is_(True))
+
         if include_modules:
             query = query.options(
                 selectinload(Course.modules).selectinload(Module.lessons)
             )
-        
+
         result = await db.execute(query)
         return result.scalar_one_or_none()
     

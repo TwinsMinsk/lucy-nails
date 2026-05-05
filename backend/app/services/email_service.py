@@ -5,6 +5,7 @@ Email-сервис: отправка писем через SMTP (aiosmtplib).
 import logging
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from html import escape
 
 import aiosmtplib
 
@@ -14,10 +15,16 @@ logger = logging.getLogger(__name__)
 
 
 class EmailService:
+    @staticmethod
+    def is_configured() -> bool:
+        """Returns whether SMTP credentials are available."""
+        return bool(settings.SMTP_USER and settings.SMTP_PASSWORD)
 
     @staticmethod
     def _build_credentials_html(email: str, password: str) -> str:
         login_url = f"{settings.FRONTEND_URL}/auth/login"
+        safe_email = escape(email)
+        safe_password = escape(password)
         return f"""
 <!DOCTYPE html>
 <html lang="ru">
@@ -53,8 +60,8 @@ class EmailService:
   <div class="body">
     <p>Поздравляем! Ваш заказ успешно оплачен. Вот ваши данные для входа:</p>
     <div class="creds">
-      <p>🔑 <strong>Логин (email):</strong> {email}</p>
-      <p>🔒 <strong>Пароль:</strong> {password}</p>
+      <p>🔑 <strong>Логин (email):</strong> {safe_email}</p>
+      <p>🔒 <strong>Пароль:</strong> {safe_password}</p>
     </div>
     <p>Сохраните пароль — после первого входа вы сможете его изменить в личном кабинете.</p>
     <p style="text-align:center; margin-top:28px;">
@@ -72,7 +79,7 @@ class EmailService:
     @staticmethod
     async def send_credentials(email: str, password: str) -> None:
         """Отправляет email с логином и сгенерированным паролем."""
-        if not settings.SMTP_USER or not settings.SMTP_PASSWORD:
+        if not EmailService.is_configured():
             logger.warning("SMTP credentials not configured — skipping email to %s", email)
             return
 

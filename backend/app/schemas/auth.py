@@ -3,6 +3,8 @@ Pydantic схемы для аутентификации.
 """
 
 from uuid import UUID
+from datetime import datetime
+
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -30,11 +32,13 @@ class Token(BaseModel):
 
 class UserResponse(BaseModel):
     """Схема ответа с данными пользователя."""
-    
+
     id: UUID = Field(..., description="UUID пользователя")
     email: str = Field(..., description="Email")
+    phone: str | None = Field(None, description="Телефон (если указан)")
     role: str = Field(..., description="Роль (student/admin)")
     telegram_id: int | None = Field(None, description="Telegram ID")
+    created_at: datetime = Field(..., description="Дата регистрации")
     
     class Config:
         from_attributes = True

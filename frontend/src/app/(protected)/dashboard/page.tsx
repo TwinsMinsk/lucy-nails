@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { BookOpen, Loader2 } from "lucide-react";
 import Image from "next/image";
 
@@ -15,10 +16,11 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { getMyCourses, getMe, MyCourseResponse, UserResponse } from "@/lib/api";
+import { getMyCourses, getMe, isAuthError, MyCourseResponse, UserResponse } from "@/lib/api";
 import { toast } from "sonner";
 
 export default function DashboardPage() {
+    const router = useRouter();
     const [user, setUser] = useState<UserResponse | null>(null);
     const [courses, setCourses] = useState<MyCourseResponse[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -35,6 +37,10 @@ export default function DashboardPage() {
                 setUser(userData);
                 setCourses(coursesData);
             } catch (error) {
+                if (isAuthError(error)) {
+                    router.push("/auth/login");
+                    return;
+                }
                 const errorMessage = error instanceof Error ? error.message : "Ошибка загрузки данных";
                 toast.error("Ошибка", {
                     description: errorMessage,
@@ -45,7 +51,7 @@ export default function DashboardPage() {
         };
 
         fetchData();
-    }, []);
+    }, [router]);
 
     if (isLoading) {
         return (
@@ -109,6 +115,32 @@ export default function DashboardPage() {
                                 </CardHeader>
 
                                 <CardContent className="flex-1 space-y-4">
+                                    {course.expires_at && (
+                                        <p className="text-xs text-text-secondary">
+                                            Доступ до{" "}
+                                            <span className="font-medium text-text-primary">
+                                                {new Date(course.expires_at).toLocaleDateString("ru-RU")}
+                                            </span>
+                                        </p>
+                                    )}
+                                    {course.tariff && (
+                                        <p className="text-xs text-text-secondary">
+                                            Тариф:{" "}
+                                            <span className="font-medium text-text-primary">
+                                                {course.tariff === "support" ? "С поддержкой" : "Самостоятельный"}
+                                            </span>
+                                        </p>
+                                    )}
+                                    {course.support_chat_url && (
+                                        <a
+                                            href={course.support_chat_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center justify-center w-full rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
+                                        >
+                                            Чат с куратором в Telegram
+                                        </a>
+                                    )}
                                     <div className="space-y-2">
                                         <div className="flex justify-between text-sm">
                                             <span className="font-medium text-text-primary">

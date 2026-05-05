@@ -10,7 +10,7 @@
 
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/app/core/config.py -> backend = parents[2], repo root = parents[3]
@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     
     # === Database ===
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/nails_course"
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 10
+    DB_POOL_RECYCLE_SECONDS: int = 1800
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
@@ -74,6 +77,7 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM_NAME: str = "Lucy Nails Academy"
+    SMTP_REQUIRED_FOR_PAYMENT_EMAIL: bool = False
 
     # === Telegram ===
     TELEGRAM_BOT_TOKEN: str = ""
@@ -88,6 +92,52 @@ class Settings(BaseSettings):
     # === Environment ===
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
+
+    # Сколько дней доступа к курсу после успешной оплаты (production v1)
+    COURSE_ACCESS_DAYS: int = 30
+
+    # Список разрешённых Origin для CORS (через запятую). Пусто — только FRONTEND_URL.
+    CORS_ORIGINS: str = ""
+
+    # Для production: список Host заголовков (через запятую), например api.example.com,localhost
+    TRUSTED_HOSTS: str = ""
+
+    # Persistent upload directory. Leave empty in production to disable local uploads.
+    UPLOAD_STORAGE_DIR: str = ""
+    UPLOAD_PUBLIC_BASE_URL: str = ""
+
+    @model_validator(mode="after")
+    def validate_production_safety(self):
+        """Fail fast when production starts with unsafe defaults."""
+        if self.ENVIRONMENT.lower() != "production":
+            return self
+
+        errors: list[str] = []
+        if self.DEBUG:
+            errors.append("DEBUG must be false in production")
+        if self.JWT_SECRET_KEY == "your-super-secret-key-change-in-production":
+            errors.append("JWT_SECRET_KEY must be changed in production")
+        if not self.KINESCOPE_API_KEY:
+            errors.append("KINESCOPE_API_KEY is required in production")
+        if not self.PRODAMUS_URL:
+            errors.append("PRODAMUS_URL is required in production")
+        if not self.PRODAMUS_SECRET_KEY:
+            errors.append("PRODAMUS_SECRET_KEY is required in production")
+        if not self.PRODAMUS_SHOP_ID:
+            errors.append("PRODAMUS_SHOP_ID is required in production")
+        if self.SMTP_REQUIRED_FOR_PAYMENT_EMAIL and (not self.SMTP_USER or not self.SMTP_PASSWORD):
+            errors.append("SMTP_USER and SMTP_PASSWORD are required in production")
+        if "localhost" in self.FRONTEND_URL or "127.0.0.1" in self.FRONTEND_URL:
+            errors.append("FRONTEND_URL must be public in production")
+        if "localhost" in self.BACKEND_URL or "127.0.0.1" in self.BACKEND_URL:
+            errors.append("BACKEND_URL must be public in production")
+        if not self.TRUSTED_HOSTS:
+            errors.append("TRUSTED_HOSTS is required in production")
+
+        if errors:
+            raise ValueError("; ".join(errors))
+
+        return self
 
 
 settings = Settings()

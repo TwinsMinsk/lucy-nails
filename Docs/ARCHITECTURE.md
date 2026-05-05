@@ -240,18 +240,19 @@ async def list_users(admin: User = Depends(require_admin)):
 | GET | `/api/lessons/{id}` | Урок с видео-токеном |
 | POST | `/api/lessons/{id}/progress` | Обновить прогресс |
 
-#### Покупки
+#### Покупки и платежи
 | Метод | Путь | Описание |
 |-------|------|----------|
 | POST | `/api/purchases/create` | Создать платёж |
-| POST | `/api/purchases/webhook` | Webhook от платёжки |
 | GET | `/api/purchases/my` | Мои покупки |
+| POST | `/api/payments/link` | Создать публичную ссылку оплаты Prodamus |
+| POST | `/api/payments/webhook` | Webhook Prodamus с проверкой подписи |
 
-#### Telegram
+#### Telegram (post-MVP)
 | Метод | Путь | Описание |
 |-------|------|----------|
-| POST | `/api/telegram/link` | Привязать Telegram |
-| POST | `/api/telegram/webhook` | Webhook от бота |
+| POST | `/api/telegram/link` | Привязать Telegram (не подключено в MVP) |
+| POST | `/api/telegram/webhook` | Webhook от бота (не подключено в MVP) |
 
 #### Админ
 | Метод | Путь | Описание |
@@ -365,75 +366,29 @@ interface Certificate {
 
 ```
 frontend/
-├── app/
-│   ├── (public)/              # Публичные страницы
-│   │   ├── page.tsx           # Главная
-│   │   ├── courses/
-│   │   │   └── [id]/page.tsx  # Страница курса (с модулями)
-│   │   └── auth/
-│   │       ├── login/page.tsx
-│   │       └── register/page.tsx
-│   │
-│   ├── (protected)/           # Требуют авторизации
-│   │   ├── dashboard/page.tsx # Личный кабинет
-│   │   ├── courses/
-│   │   │   └── [id]/
-│   │   │       ├── page.tsx   # Мой курс (список модулей)
-│   │   │       ├── modules/
-│   │   │       │   └── [moduleId]/page.tsx  # Модуль (список уроков)
-│   │   │       └── lessons/
-│   │   │           └── [lessonId]/page.tsx  # Урок (видео)
-│   │   └── certificates/page.tsx
-│   │
-│   ├── admin/                 # Админ-панель
-│   │   ├── page.tsx           # Дашборд
-│   │   ├── users/page.tsx
-│   │   ├── courses/
-│   │   │   ├── page.tsx       # Список курсов
-│   │   │   └── [id]/
-│   │   │       ├── page.tsx   # Редактирование курса
-│   │   │       └── modules/page.tsx  # Управление модулями
-│   │   └── analytics/page.tsx
-│   │
-│   ├── layout.tsx
-│   └── globals.css
-│
-├── components/
-│   ├── ui/                    # Базовые UI компоненты
-│   │   ├── Button.tsx
-│   │   ├── Card.tsx
-│   │   ├── Input.tsx
-│   │   └── Modal.tsx
-│   │
-│   ├── course/                # Компоненты курса
-│   │   ├── CourseCard.tsx
-│   │   ├── ModuleList.tsx
-│   │   ├── ModuleCard.tsx
-│   │   ├── LessonList.tsx
-│   │   └── VideoPlayer.tsx
-│   │
-│   ├── progress/
-│   │   ├── ProgressBar.tsx
-│   │   └── ModuleProgressBar.tsx
-│   │
-│   └── layout/
-│       ├── Header.tsx
-│       ├── Footer.tsx
-│       └── Sidebar.tsx
-│
-├── lib/
-│   ├── api.ts                 # API клиент
-│   ├── auth.ts                # Работа с токенами
-│   └── kinescope.ts           # Интеграция Kinescope
-│
-├── hooks/
-│   ├── useAuth.ts
-│   ├── useCourse.ts
-│   ├── useModule.ts
-│   └── useProgress.ts
-│
-└── types/
-    └── index.ts               # Все TypeScript типы
+├── src/
+│   ├── app/
+│   │   ├── page.tsx                 # Главная
+│   │   ├── (public)/auth/           # Вход и регистрация
+│   │   ├── (public)/courses/[id]/   # Публичная страница курса
+│   │   ├── (protected)/dashboard/   # Личный кабинет
+│   │   ├── (protected)/profile/     # Профиль
+│   │   ├── (protected)/courses/[id]/lessons/[lessonId]/ # Урок
+│   │   ├── admin/                   # Админ-панель
+│   │   ├── payment-success/
+│   │   ├── privacy/
+│   │   ├── terms/
+│   │   ├── layout.tsx
+│   │   └── globals.css
+│   ├── components/
+│   │   ├── ui/                      # shadcn/Radix-паттерн
+│   │   ├── course/                  # Модули и видео
+│   │   ├── landing/                 # Лендинг и оплата
+│   │   └── layout/                  # Header/Footer
+│   └── lib/
+│       ├── api.ts                   # API клиент и токены
+│       ├── schemas.ts               # Валидация форм
+│       └── utils.ts
 ```
 
 ### 4.2 Backend (FastAPI)
@@ -451,16 +406,15 @@ backend/
 │   │   ├── modules.py         # /api/modules/*
 │   │   ├── lessons.py         # /api/lessons/*
 │   │   ├── purchases.py       # /api/purchases/*
-│   │   ├── telegram.py        # /api/telegram/*
 │   │   └── admin.py           # /api/admin/*
 │   │
 │   ├── services/
 │   │   ├── auth_service.py
 │   │   ├── course_service.py
 │   │   ├── module_service.py
-│   │   ├── payment_service.py
+│   │   ├── prodamus_service.py
 │   │   ├── kinescope_service.py
-│   │   ├── telegram_service.py
+│   │   ├── purchase_service.py
 │   │   └── certificate_service.py
 │   │
 │   ├── models/
@@ -480,7 +434,6 @@ backend/
 │   │
 │   ├── core/
 │   │   ├── database.py        # Подключение к PostgreSQL
-│   │   ├── redis.py           # Redis для сессий
 │   │   └── security.py        # JWT, хеширование
 │   │
 │   └── utils/
@@ -533,7 +486,7 @@ class KinescopeService:
 - ✅ Работает в РФ/СНГ
 
 ```python
-# backend/app/services/payment_service.py
+# backend/app/services/prodamus_service.py
 
 class ProdamusService:
     """Интеграция с Prodamus."""
@@ -582,35 +535,12 @@ class ProdamusService:
         pass
 ```
 
-### 5.3 Telegram Bot + Закрытая группа
+### 5.3 Telegram Bot + Закрытая группа (post-MVP)
 
 **Модель:** Закрытая Telegram-группа для тарифа "С поддержкой"
 
-```python
-# backend/app/services/telegram_service.py
-
-class TelegramService:
-    """Telegram бот для уведомлений."""
-    
-    def __init__(self, bot_token: str, support_group_invite_link: str):
-        self.bot_token = bot_token
-        self.support_group_invite_link = support_group_invite_link
-    
-    async def send_purchase_notification(self, user: User, course: Course, tariff: str):
-        """
-        Уведомление о покупке.
-        Если tariff == 'support', добавляет ссылку на закрытую группу.
-        """
-        pass
-
-    async def send_expiry_reminder(self, user: User, days_left: int):
-        """Напоминание об окончании доступа."""
-        pass
-
-    async def send_support_chat_link(self, user: User):
-        """Ссылка на закрытый чат (для тарифа С поддержкой)."""
-        pass
-```
+В текущем MVP ссылка на закрытый чат отображается в личном кабинете для тарифа `support`.
+Полноценная привязка Telegram, webhook бота и уведомления об окончании доступа вынесены в post-MVP.
 
 ---
 
@@ -620,11 +550,11 @@ class TelegramService:
 |--------|---------|
 | **Аутентификация** | JWT токены (access + refresh) |
 | **Пароли** | bcrypt хеширование |
-| **API Rate Limiting** | Redis + slowapi |
+| **API Rate Limiting** | slowapi по IP; Redis можно добавить post-MVP для нескольких инстансов |
 | **CORS** | Только разрешённые домены |
 | **SQL Injection** | SQLAlchemy ORM, параметризованные запросы |
 | **XSS** | Санитизация на фронте, CSP headers |
-| **Видео-защита** | Kinescope DRM + signed URLs + watermark |
+| **Видео-защита** | Kinescope DRM/embed + watermark; доступ к embed выдаётся только после проверки покупки |
 
 ---
 

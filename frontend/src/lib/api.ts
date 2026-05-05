@@ -1,27 +1,16 @@
 /**
  * API Client для взаимодействия с Backend
  */
+import { getPublicApiUrl } from "@/lib/env";
 
 const getBaseUrl = () => {
-    let url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
-    // Убеждаемся, что URL абсолютный
-    if (!url.startsWith("http")) {
-        url = `https://${url}`;
-    }
-    // Убираем лишний слеш в конце, если он есть
-    url = url.replace(/\/$/, "");
-
-    // 🛡️ ЗАЩИТА ОТ ДУРАКА: Если в URL нет /api на конце, добавляем его сами
-    // Эту ошибку часто совершают при деплое
-    if (!url.endsWith("/api")) {
-        url += "/api";
-    }
-
-    return url;
+    return getPublicApiUrl();
 };
 
 const API_BASE_URL = getBaseUrl();
-console.log(`🚀 API Base URL initialized as: ${API_BASE_URL}`);
+if (process.env.NODE_ENV === "development") {
+    console.log(`🚀 API Base URL initialized as: ${API_BASE_URL}`);
+}
 
 /**
  * Получить токен из localStorage
@@ -31,39 +20,127 @@ const getAuthToken = (): string | null => {
     return localStorage.getItem("access_token");
 };
 
+const getRefreshToken = (): string | null => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("refresh_token");
+};
+
+const setSessionCookie = () => {
+    if (typeof document === "undefined") return;
+    const secure = window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `auth_session=1; Path=/; Max-Age=604800; SameSite=Lax${secure}`;
+};
+
+const clearSessionCookie = () => {
+    if (typeof document === "undefined") return;
+    document.cookie = "auth_session=; Path=/; Max-Age=0; SameSite=Lax";
+};
+
+const getCookie = (name: string): string | null => {
+    if (typeof document === "undefined") return null;
+    const prefix = `${name}=`;
+    const cookie = document.cookie
+        .split("; ")
+        .find((item) => item.startsWith(prefix));
+    return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : null;
+};
+
+const isUnsafeMethod = (method: string | undefined): boolean => {
+    const normalized = (method || "GET").toUpperCase();
+    return !["GET", "HEAD", "OPTIONS", "TRACE"].includes(normalized);
+};
+
+const saveTokens = (tokens: TokenResponse) => {
+    if (typeof window === "undefined") return;
+    void tokens;
+    // Tokens are set as httpOnly cookies by the backend. Remove legacy localStorage copies.
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    setSessionCookie();
+};
+
+const clearTokens = () => {
+    if (typeof window === "undefined") return;
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    clearSessionCookie();
+};
+
+const parseErrorDetail = (detail: unknown, fallback: string): string => {
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) return detail.map((item) => item?.msg ?? String(item)).join("; ");
+    if (detail && typeof detail === "object") return JSON.stringify(detail);
+    return fallback;
+};
+
+export const isAuthError = (error: unknown): boolean => (
+    error instanceof Error && error.message === "Требуется вход в аккаунт"
+);
+
+async function refreshAccessToken(): Promise<string | null> {
+    const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(getRefreshToken() ? { refresh_token: getRefreshToken() } : {}),
+    });
+
+    if (!response.ok) {
+        clearTokens();
+        return null;
+    }
+
+    const tokens = await response.json() as TokenResponse;
+    saveTokens(tokens);
+    return tokens.access_token;
+}
+
 /**
  * Базовый fetch с авторизацией
  */
 /**
  * Базовый fetch с авторизацией (экспортируется для прямого использования)
  */
-export async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
+export async function apiFetch<T>(endpoint: string, options?: RequestInit, retryOnUnauthorized = true): Promise<T> {
     const token = getAuthToken();
 
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
         "Content-Type": "application/json",
         ...(token && { Authorization: `Bearer ${token}` }),
-        ...options?.headers,
+        ...(options?.headers as Record<string, string> | undefined),
     };
+    const csrfToken = getCookie("csrf_token");
+    if (csrfToken && isUnsafeMethod(options?.method)) {
+        headers["X-CSRF-Token"] = csrfToken;
+    }
 
     const fullUrl = `${API_BASE_URL}${endpoint}`;
-    console.log(`🌐 Fetching: ${fullUrl}`);
+    if (process.env.NODE_ENV === "development") {
+        console.log(`🌐 Fetching: ${fullUrl}`);
+    }
 
     const response = await fetch(fullUrl, {
         ...options,
         headers,
+        credentials: "include",
     });
 
     if (!response.ok) {
-        // 🤫 Тихий режим для проверки авторизации: не пугаем пользователя красным логом,
-        // если он просто не залогинен (это нормальная ситуация при первом входе)
-        if (response.status === 401 && endpoint.includes('/auth/me')) {
-            throw new Error("Not authenticated");
+        const isAuthEndpoint = endpoint.startsWith("/auth/login")
+            || endpoint.startsWith("/auth/register")
+            || endpoint.startsWith("/auth/refresh");
+
+        if (response.status === 401 && retryOnUnauthorized && !isAuthEndpoint) {
+            const newAccessToken = await refreshAccessToken();
+            if (newAccessToken) {
+                return apiFetch<T>(endpoint, options, false);
+            }
+            throw new Error("Требуется вход в аккаунт");
         }
 
         const errorData = await response.json().catch(() => ({ detail: `HTTP error ${response.status} at ${fullUrl}` }));
         console.error(`❌ API Error [${response.status}] ${fullUrl}:`, errorData);
-        throw new Error(errorData.detail || `HTTP ${response.status}`);
+        throw new Error(parseErrorDetail(errorData.detail, `HTTP ${response.status}`));
     }
 
     return response.json();
@@ -85,8 +162,10 @@ async function uploadFile(file: File): Promise<UploadResponse> {
 
     const response = await fetch(`${API_BASE_URL}/admin/upload`, {
         method: 'POST',
+        credentials: "include",
         headers: {
             ...(token && { Authorization: `Bearer ${token}` }),
+            ...(getCookie("csrf_token") && { "X-CSRF-Token": getCookie("csrf_token") as string }),
         },
         body: formData,
     });
@@ -123,6 +202,7 @@ export interface LessonResponse {
 export interface UserResponse {
     id: string;
     email: string;
+    phone?: string | null;
     role: "student" | "admin";
     telegram_id?: number;
     created_at: string;
@@ -159,11 +239,7 @@ export const login = async (credentials: LoginCredentials): Promise<TokenRespons
         body: JSON.stringify(credentials),
     });
 
-    // Сохраняем токен в localStorage
-    if (typeof window !== "undefined") {
-        localStorage.setItem("access_token", response.access_token);
-        localStorage.setItem("refresh_token", response.refresh_token);
-    }
+    saveTokens(response);
 
     return response;
 };
@@ -193,10 +269,7 @@ export const logout = async (): Promise<void> => {
         await apiFetch("/auth/logout", { method: "POST" });
     } finally {
         // Удаляем токены из localStorage в любом случае
-        if (typeof window !== "undefined") {
-            localStorage.removeItem("access_token");
-            localStorage.removeItem("refresh_token");
-        }
+        clearTokens();
     }
 };
 
@@ -232,9 +305,27 @@ export interface CourseResponse {
     description: string;
     price_self: number;
     price_support: number;
+    cover_image_url?: string | null;
     is_published: boolean;
     duration_seconds?: number;
-    created_at: string;
+    created_at?: string;
+}
+
+export interface CourseListResponse {
+    courses: CourseResponse[];
+    total: number;
+}
+
+/**
+ * Публичный каталог курсов (без авторизации). Для SSR на лендинге.
+ */
+export async function getPublishedCourses(): Promise<CourseListResponse> {
+    const base = getBaseUrl();
+    const res = await fetch(`${base}/courses`, { next: { revalidate: 120 } });
+    if (!res.ok) {
+        throw new Error(`Failed to load courses: ${res.status}`);
+    }
+    return res.json();
 }
 
 export interface MyCourseResponse {
@@ -247,6 +338,9 @@ export interface MyCourseResponse {
     last_lesson_id?: string;
     last_lesson_title?: string;
     cover_image_url?: string;
+    tariff?: string | null;
+    expires_at?: string | null;
+    support_chat_url?: string | null;
 }
 
 /**
@@ -412,6 +506,20 @@ export interface AnalyticsResponse {
     recent_registrations: number;
 }
 
+export interface AdminPurchaseResponse {
+    id: string;
+    payment_id?: string | null;
+    user_email: string;
+    course_title: string;
+    tariff: "self" | "support";
+    amount_kopecks: number;
+    payment_status: "pending" | "success" | "failed";
+    expires_at: string;
+    paid_at?: string | null;
+    created_at: string;
+    customer_phone?: string | null;
+}
+
 // --- Course CRUD ---
 
 export interface CourseCreateRequest {
@@ -550,6 +658,10 @@ export const adminGetAnalytics = async (): Promise<AnalyticsResponse> => {
     return apiFetch<AnalyticsResponse>("/admin/analytics");
 };
 
+export const adminGetPurchases = async (): Promise<AdminPurchaseResponse[]> => {
+    return apiFetch<AdminPurchaseResponse[]>("/admin/purchases");
+};
+
 // --- File Upload ---
 
 export const adminUploadFile = uploadFile;
@@ -564,6 +676,8 @@ export const adminUploadFile = uploadFile;
 export interface PaymentLinkRequest {
     course_id: string;
     tariff: "self" | "support";
+    customer_email?: string;
+    customer_phone?: string;
 }
 
 export interface PaymentLinkResponse {

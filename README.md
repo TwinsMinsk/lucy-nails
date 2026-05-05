@@ -3,7 +3,7 @@
 > Веб-платформа для продажи видео-курсов с защитой контента через Kinescope
 
 **Cursor / AI:** см. [`AGENTS.md`](./AGENTS.md), карта репозитория [`CODEBASE.md`](./CODEBASE.md). Правила агента: [`.cursor/rules/`](./.cursor/rules/).
-- **Frontend:** Next.js (см. `frontend/package.json`), TypeScript, Tailwind CSS
+- **Frontend:** Next.js 16 (см. `frontend/package.json`), TypeScript, Tailwind CSS
 - **Backend:** Python 3.11+, FastAPI, SQLAlchemy 2.0
 - **Database:** PostgreSQL 15, Redis (опционально)
 - **Интеграции:** Kinescope, Prodamus, Telegram Bot
@@ -74,7 +74,7 @@ npm run dev
 - [Professional dev workflow](./Docs/04_Setup_Ops/DEVELOPMENT_WORKFLOW.md) — окружения, команды, Git, качество перед деплоем
 - [PRD](./Docs/PRD.md) — требования
 - [Architecture](./Docs/ARCHITECTURE.md) — техническая архитектура
-- [Tasks](./Docs/TASKS.md) — трекер задач
+- [Tasks](./Docs/06_Tracking/TASKS.md) — трекер задач
 
 ## Структура
 

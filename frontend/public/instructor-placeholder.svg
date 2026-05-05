@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1100" role="img" aria-label="Lucy Nails Academy instructor placeholder">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff1f4"/>
+      <stop offset="1" stop-color="#ebc8c8"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#db3f6e"/>
+      <stop offset="1" stop-color="#b02a52"/>
+    </linearGradient>
+  </defs>
+  <rect width="900" height="1100" fill="url(#bg)"/>
+  <circle cx="450" cy="350" r="150" fill="#f7d7df"/>
+  <path d="M210 1000c42-260 145-390 240-390s198 130 240 390z" fill="#f7d7df"/>
+  <path d="M235 675c95-90 334-90 430 0 35 34 54 77 60 128H175c6-51 25-94 60-128z" fill="url(#accent)" opacity=".88"/>
+  <path d="M300 338c43-110 168-170 278-93 70 50 88 135 42 213-71-88-179-94-320-120z" fill="#50323a"/>
+  <text x="450" y="865" text-anchor="middle" font-family="Arial, sans-serif" font-size="52" font-weight="700" fill="#5a4b4b">Lucy Nails</text>
+  <text x="450" y="925" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" fill="#7a6268">online academy</text>
+</svg>

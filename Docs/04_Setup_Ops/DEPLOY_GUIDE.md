@@ -74,11 +74,18 @@ git push -u origin main
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` |
 | `KINESCOPE_API_KEY` | *(Взять из Kinescope ЛК)* |
 | `KINESCOPE_PROJECT_ID` | *(Взять из Kinescope ЛК)* |
-| `PRODAMUS_API_KEY` | *(Взять из Prodamus)* |
+| `PRODAMUS_URL` | URL платёжной формы Prodamus, например `https://...prodamus.ru` |
 | `PRODAMUS_SECRET_KEY` | *(Взять из Prodamus)* |
 | `PRODAMUS_SHOP_ID` | *(Взять из Prodamus)* |
-| `TELEGRAM_BOT_TOKEN` | *(Твой токен от BotFather)* |
-| `TELEGRAM_SUPPORT_GROUP_INVITE`| *(Ссылка на группу)* |
+| `SMTP_USER` | Опционально: SMTP-логин, если включаете guest checkout с отправкой credentials |
+| `SMTP_PASSWORD` | Опционально: SMTP-пароль / app password |
+| `SMTP_FROM_NAME` | Опционально: `Lucy Nails Academy` |
+| `FRONTEND_URL` | `https://<твое-frontend-домен>.up.railway.app` |
+| `BACKEND_URL` | `https://<твой-backend-домен>.up.railway.app` |
+| `CORS_ORIGINS` | Production frontend origin, например `https://lucysmirnova.ru` |
+| `TRUSTED_HOSTS` | Домены backend без схемы, через запятую |
+| `TELEGRAM_BOT_TOKEN` | *(Post-MVP; можно не задавать для MVP)* |
+| `TELEGRAM_SUPPORT_GROUP_INVITE`| *(Post-MVP; можно не задавать для MVP)* |
 | `NEXT_PUBLIC_SITE_URL` | `https://<твое-frontend-домен>.up.railway.app` (появится после деплоя фронта) |
 | `NEXT_PUBLIC_API_URL` | `https://<твой-backend-домен>.up.railway.app/api` |
 
@@ -110,6 +117,19 @@ git push -u origin main
 2.  Следи за вкладкой **Deployments** → **View Logs**.
     - **Backend Logs:** при старте выполняются миграции Alembic (`alembic upgrade head`), затем должен быть `Application startup complete` от Uvicorn.
     - **Frontend Logs:** Должно быть `Ready in ... ms`.
-3.  Открой публичный домен Frontend сервиса. Проверь регистрацию и вход.
+3.  В личном кабинете Prodamus настрой webhook на `BACKEND_URL` + `/api/payments/webhook`.
+4.  Создай первого администратора через Railway shell backend-сервиса:
+
+```powershell
+ADMIN_EMAIL=owner@example.com ADMIN_PASSWORD="long-random-password" python scripts/create_admin.py
+```
+
+5.  Проверь production-контент:
+
+```powershell
+python scripts/check_production_content.py
+```
+
+6.  Открой публичный домен Frontend сервиса. Проверь регистрацию, вход, создание ссылки оплаты, webhook, появление доступа в кабинете и запуск урока.
 
 **Поздравляю! Твой проект в продакшене! 🎉**

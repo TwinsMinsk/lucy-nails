@@ -1,9 +1,12 @@
+from datetime import datetime, timedelta
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.course import Course
 from app.models.module import Module
 from app.models.lesson import Lesson
+from app.models.purchase import Purchase
 
 @pytest.mark.asyncio
 async def test_get_courses_empty(client: AsyncClient):
@@ -72,8 +75,11 @@ async def test_get_modules_and_lessons(client: AsyncClient, db: AsyncSession):
     # Check Lessons
     res_lessons = await client.get(f"/api/modules/{module.id}/lessons")
     assert res_lessons.status_code == 200
-    assert len(res_lessons.json()) == 1
-    assert res_lessons.json()[0]["title"] == "Lesson 1"
+    payload = res_lessons.json()
+    assert len(payload) == 1
+    assert payload[0]["title"] == "Lesson 1"
+    assert "kinescope_video_id" not in payload[0]
+    assert "content" not in payload[0]
 
 @pytest.mark.asyncio
 async def test_lesson_detail(client: AsyncClient, db: AsyncSession):
@@ -114,5 +120,122 @@ async def test_lesson_detail(client: AsyncClient, db: AsyncSession):
     assert response.status_code == 200
     data = response.json()
     assert data["title"] == "Preview Lesson"
-    # Preview lesson should have video_url populated (mocked in API)
+    assert data.get("kinescope_video_id") in (None, "")
     assert data["video_url"] is not None
+
+
+@pytest.mark.asyncio
+async def test_lesson_detail_hides_content_without_purchase(client: AsyncClient, db: AsyncSession):
+    course = Course(title="Paid Content", price_self=1, price_support=2, is_published=True)
+    db.add(course)
+    await db.flush()
+    module = Module(course_id=course.id, title="M", order_index=1, is_published=True)
+    db.add(module)
+    await db.flush()
+    lesson = Lesson(
+        module_id=module.id,
+        title="Paid Lesson",
+        content="<p>Secret paid notes</p>",
+        duration_seconds=100,
+        order_index=1,
+        is_preview=False,
+        kinescope_video_id="paid-video",
+    )
+    db.add(lesson)
+    await db.commit()
+    await db.refresh(lesson)
+
+    await client.post(
+        "/api/auth/register",
+        json={"email": "no-access@t.com", "password": "password123", "password_confirm": "password123"},
+    )
+    login = await client.post("/api/auth/login", json={"email": "no-access@t.com", "password": "password123"})
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    response = await client.get(f"/api/lessons/{lesson.id}", headers=headers)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["video_url"] is None
+    assert data["content"] is None
+
+
+@pytest.mark.asyncio
+async def test_course_progress_counts_only_published_modules(client: AsyncClient, db: AsyncSession):
+    course = Course(title="Progress C", price_self=1, price_support=2, is_published=True)
+    db.add(course)
+    await db.flush()
+    published = Module(course_id=course.id, title="Visible", order_index=1, is_published=True)
+    hidden = Module(course_id=course.id, title="Hidden", order_index=2, is_published=False)
+    db.add_all([published, hidden])
+    await db.flush()
+    visible_lesson = Lesson(module_id=published.id, title="Visible L", duration_seconds=100, order_index=1)
+    hidden_lesson = Lesson(module_id=hidden.id, title="Hidden L", duration_seconds=100, order_index=1)
+    db.add_all([visible_lesson, hidden_lesson])
+    await db.commit()
+
+    await client.post(
+        "/api/auth/register",
+        json={"email": "progress@t.com", "password": "password123", "password_confirm": "password123"},
+    )
+    login = await client.post("/api/auth/login", json={"email": "progress@t.com", "password": "password123"})
+    token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    from app.models.user import User
+    from sqlalchemy import select
+
+    user_result = await db.execute(select(User).where(User.email == "progress@t.com"))
+    user = user_result.scalar_one()
+    db.add(
+        Purchase(
+            user_id=user.id,
+            course_id=course.id,
+            tariff="self",
+            amount_kopecks=100,
+            payment_status="success",
+            payment_id="progress_test_payment",
+            expires_at=datetime.utcnow() + timedelta(days=30),
+        )
+    )
+    await db.commit()
+
+    await client.post(
+        f"/api/lessons/{visible_lesson.id}/progress",
+        json={"watched_seconds": 100, "is_completed": True},
+        headers=headers,
+    )
+
+    response = await client.get(f"/api/courses/{course.id}/my-progress", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["progress_percent"] == 100
+
+
+@pytest.mark.asyncio
+async def test_lesson_progress_caps_watched_seconds_to_lesson_duration(client: AsyncClient, db: AsyncSession):
+    course = Course(title="Cap C", price_self=1, price_support=2, is_published=True)
+    db.add(course)
+    await db.flush()
+    module = Module(course_id=course.id, title="M", order_index=1, is_published=True)
+    db.add(module)
+    await db.flush()
+    lesson = Lesson(module_id=module.id, title="Cap L", duration_seconds=60, order_index=1, is_preview=True)
+    db.add(lesson)
+    await db.commit()
+
+    await client.post(
+        "/api/auth/register",
+        json={"email": "cap@t.com", "password": "password123", "password_confirm": "password123"},
+    )
+    login = await client.post("/api/auth/login", json={"email": "cap@t.com", "password": "password123"})
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    response = await client.post(
+        f"/api/lessons/{lesson.id}/progress",
+        json={"watched_seconds": 999, "is_completed": False},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["watched_seconds"] == 60

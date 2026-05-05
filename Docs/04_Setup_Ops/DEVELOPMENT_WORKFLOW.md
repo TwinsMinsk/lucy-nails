@@ -180,6 +180,19 @@ Set-Location ..
 
 Для изменений только в БД всегда коммитьте файл миграции в [`backend/alembic/versions`](../../backend/alembic/versions) и прогоняйте Alembic на staging до production.
 
+## Production readiness (чеклист первого релиза)
+
+Подробный go/no-go чеклист MVP: [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
+
+- **`ENVIRONMENT=production`**, **`DEBUG=false`** (или не задавать DEBUG в пользу значения по умолчанию в коде).
+- **CORS:** задать `CORS_ORIGINS` (через запятую) или оставить пустым — тогда разрешён только `FRONTEND_URL`.
+- **Trusted Host:** при необходимости задать `TRUSTED_HOSTS` (через запятую) для middleware `TrustedHostMiddleware`.
+- **Prodamus:** боевые `PRODAMUS_URL`, `PRODAMUS_SECRET_KEY`, `PRODAMUS_SHOP_ID` при необходимости; webhook в личном кабинете Prodamus → `BACKEND_URL` + `/api/payments/webhook`.
+- **Kinescope:** в production обязателен `KINESCOPE_API_KEY` (mock/embed fallback отключён).
+- **Публичные URL:** `FRONTEND_URL`, `BACKEND_URL` — для редиректов оплаты и `urlNotification`.
+- **Seed с тестовыми паролями** выполняется только если `ENVIRONMENT != production`.
+- После деплоя с новыми моделями: **`alembic upgrade head`** на целевой БД.
+
 ## Безопасность секретов
 
 - Если production-ключ когда-то оказался в локальном `.env` или в истории коммита — **ротируйте** ключ у провайдера (Stripe/Prodamus/Telegram и т.д.).

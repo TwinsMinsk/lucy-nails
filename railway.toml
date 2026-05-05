@@ -1,9 +1,6 @@
 [build]
 builder = "NIXPACKS"
 
-[deploy]
-startCommand = "echo 'Specify service'"
-
 [common]
 restartPolicyType = "ON_FAILURE"
 

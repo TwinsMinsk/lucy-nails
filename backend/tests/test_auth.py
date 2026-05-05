@@ -1,6 +1,7 @@
 import pytest
 from httpx import AsyncClient
 
+
 @pytest.mark.asyncio
 async def test_register_user(client: AsyncClient):
     response = await client.post("/api/auth/register", json={
@@ -33,6 +34,55 @@ async def test_login_user(client: AsyncClient):
     data = response.json()
     assert "access_token" in data
     assert data["token_type"] == "bearer"
+    assert response.cookies.get("access_token")
+    assert response.cookies.get("refresh_token")
+
+
+@pytest.mark.asyncio
+async def test_get_me_accepts_cookie_token(client: AsyncClient):
+    await client.post("/api/auth/register", json={
+        "email": "cookie-me@example.com",
+        "password": "password123",
+        "password_confirm": "password123"
+    })
+
+    login_res = await client.post("/api/auth/login", json={
+        "email": "cookie-me@example.com",
+        "password": "password123"
+    })
+
+    response = await client.get(
+        "/api/auth/me",
+        cookies={"access_token": login_res.json()["access_token"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["email"] == "cookie-me@example.com"
+
+
+@pytest.mark.asyncio
+async def test_refresh_accepts_cookie_token(client: AsyncClient):
+    await client.post("/api/auth/register", json={
+        "email": "cookie-refresh@example.com",
+        "password": "password123",
+        "password_confirm": "password123"
+    })
+
+    login_res = await client.post("/api/auth/login", json={
+        "email": "cookie-refresh@example.com",
+        "password": "password123"
+    })
+
+    response = await client.post(
+        "/api/auth/refresh",
+        json={},
+        cookies={"refresh_token": login_res.json()["refresh_token"]},
+    )
+
+    assert response.status_code == 200
+    assert response.cookies.get("access_token")
+    assert response.cookies.get("csrf_token")
+
 
 @pytest.mark.asyncio
 async def test_get_me(client: AsyncClient):

@@ -5,7 +5,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Integer, Enum as SQLEnum, ForeignKey
+from sqlalchemy import String, Integer, DateTime, Enum as SQLEnum, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -30,6 +30,8 @@ class Purchase(Base):
         nullable=False,
         default="pending"
     )
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    customer_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     

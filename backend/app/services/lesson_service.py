@@ -62,7 +62,7 @@ class LessonService:
                 Purchase.payment_status == "success",  # Используем 'success' согласно ENUM
                 Purchase.expires_at > now
             )
-        )
+        ).order_by(Purchase.expires_at.desc(), Purchase.created_at.desc())
         result = await db.execute(query)
         purchase = result.scalars().first()
         
@@ -83,7 +83,16 @@ class LessonService:
         lesson = await LessonService.get_lesson_by_id(db, lesson_id)
         if not lesson:
             return None, False
-            
+
+        mod = lesson.module
+        if not mod or not mod.course:
+            return None, False
+
+        # Для не-админов не отдаём уроки неопубликованного курса/модуля
+        if user.role != "admin":
+            if not mod.is_published or not mod.course.is_published:
+                return None, False
+
         has_access = await LessonService.check_access(db, user, lesson)
         return lesson, has_access
 
@@ -97,6 +106,11 @@ class LessonService:
         """
         Обновить или создать запись о прогрессе.
         """
+        lesson_result = await db.execute(select(Lesson).where(Lesson.id == lesson_id))
+        lesson = lesson_result.scalars().first()
+        max_watched_seconds = lesson.duration_seconds if lesson else data.watched_seconds
+        watched_seconds = max(0, min(data.watched_seconds, max_watched_seconds))
+
         # Проверяем существование записи
         query = select(Progress).where(
             and_(
@@ -109,7 +123,7 @@ class LessonService:
         
         if progress:
             # Обновляем
-            progress.watched_seconds = data.watched_seconds
+            progress.watched_seconds = watched_seconds
             
             # Если статус поменялся на completed
             if data.is_completed and not progress.is_completed:
@@ -126,7 +140,7 @@ class LessonService:
             progress = Progress(
                 user_id=user_id,
                 lesson_id=lesson_id,
-                watched_seconds=data.watched_seconds,
+                watched_seconds=watched_seconds,
                 is_completed=data.is_completed,
                 completed_at=datetime.utcnow() if data.is_completed else None
             )

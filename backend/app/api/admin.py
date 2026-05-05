@@ -4,16 +4,17 @@ API эндпоинты для админ-панели.
 
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
-from typing import Optional
+from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.core.database import get_db
-from app.core.dependencies import get_current_user
+from app.core.dependencies import require_admin
 from app.models.user import User
 from app.models.course import Course
 from app.models.module import Module
@@ -25,23 +26,13 @@ from app.schemas.auth import UserResponse
 router = APIRouter()
 
 
-async def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    """Проверяет, что пользователь имеет роль admin."""
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
-        )
-    return current_user
-
-
 # === Pydantic Schemas ===
 
 class GrantAccessRequest(BaseModel):
     """Схема запроса на выдачу доступа."""
     user_id: UUID
     course_id: UUID
-    tariff: str = "self"
+    tariff: Literal["self", "support"] = "self"
 
 
 class GrantAccessResponse(BaseModel):
@@ -186,6 +177,21 @@ class AnalyticsResponse(BaseModel):
     total_revenue: int  # В рублях
     recent_purchases: int  # За последние 30 дней
     recent_registrations: int  # За последние 30 дней
+
+
+class AdminPurchaseResponse(BaseModel):
+    """Покупка для минимального admin CRM."""
+    id: UUID
+    payment_id: Optional[str] = None
+    user_email: str
+    course_title: str
+    tariff: str
+    amount_kopecks: int
+    payment_status: str
+    expires_at: datetime
+    paid_at: Optional[datetime] = None
+    created_at: datetime
+    customer_phone: Optional[str] = None
 
 
 # === User Endpoints ===
@@ -604,6 +610,42 @@ async def delete_lesson(
 
 # === Analytics ===
 
+@router.get("/purchases", response_model=list[AdminPurchaseResponse])
+async def get_all_purchases(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Получить последние покупки для админ-панели."""
+    query = (
+        select(Purchase)
+        .options(
+            selectinload(Purchase.user),
+            selectinload(Purchase.course),
+        )
+        .order_by(Purchase.created_at.desc())
+        .limit(200)
+    )
+    result = await db.execute(query)
+    purchases = result.scalars().all()
+
+    return [
+        AdminPurchaseResponse(
+            id=purchase.id,
+            payment_id=purchase.payment_id,
+            user_email=purchase.user.email if purchase.user else "",
+            course_title=purchase.course.title if purchase.course else "",
+            tariff=purchase.tariff,
+            amount_kopecks=purchase.amount_kopecks,
+            payment_status=purchase.payment_status,
+            expires_at=purchase.expires_at,
+            paid_at=purchase.paid_at,
+            created_at=purchase.created_at,
+            customer_phone=purchase.customer_phone,
+        )
+        for purchase in purchases
+    ]
+
+
 @router.get("/analytics", response_model=AnalyticsResponse)
 async def get_analytics(
     db: AsyncSession = Depends(get_db),
@@ -691,17 +733,19 @@ async def grant_course_access(
             Purchase.user_id == data.user_id,
             Purchase.course_id == data.course_id
         )
-    )
+    ).order_by(Purchase.expires_at.desc(), Purchase.created_at.desc())
     purchase_result = await db.execute(purchase_query)
-    existing_purchase = purchase_result.scalar_one_or_none()
+    existing_purchase = purchase_result.scalars().first()
     
-    expires_at = datetime.utcnow() + timedelta(days=365)
-    
+    paid_now = datetime.utcnow()
+    expires_at = paid_now + timedelta(days=settings.COURSE_ACCESS_DAYS)
+
     if existing_purchase:
         existing_purchase.expires_at = expires_at
         existing_purchase.payment_status = "success"
         existing_purchase.tariff = data.tariff
-        
+        existing_purchase.paid_at = paid_now
+
         await db.commit()
         await db.refresh(existing_purchase)
         
@@ -721,8 +765,9 @@ async def grant_course_access(
             amount_kopecks=price * 100,
             payment_id=f"admin_grant_{uuid4().hex[:12]}",
             payment_status="success",
+            paid_at=paid_now,
             expires_at=expires_at,
-            created_at=datetime.utcnow()
+            created_at=datetime.utcnow(),
         )
         
         db.add(new_purchase)

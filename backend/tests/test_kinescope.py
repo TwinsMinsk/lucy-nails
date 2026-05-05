@@ -40,7 +40,7 @@ async def test_kinescope_service_mock_mode():
         assert "youtube.com" in url
     else:
         assert "kinescope.io" in url
-        assert fake_user.email in url
+        assert "external_id" in url
 
 
 @pytest.mark.asyncio

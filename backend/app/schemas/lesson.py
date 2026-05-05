@@ -16,6 +16,22 @@ class LessonBase(BaseModel):
     order_index: int = Field(..., description="Порядковый номер")
 
 
+class LessonOutlineResponse(BaseModel):
+    """Публичное описание урока без ID видео (каталог / превью структуры)."""
+
+    id: UUID = Field(..., description="UUID урока")
+    module_id: UUID = Field(..., description="UUID модуля")
+    title: str = Field(..., description="Название урока")
+    description: str | None = Field(None, description="Описание урока")
+    duration_seconds: int = Field(..., description="Длительность (секунды)")
+    order_index: int = Field(..., description="Порядковый номер")
+    is_preview: bool = Field(..., description="Бесплатный превью урок")
+
+    class Config:
+        from_attributes = True
+        use_enum_values = True
+
+
 class LessonResponse(LessonBase):
     """Схема ответа с данными урока."""
     

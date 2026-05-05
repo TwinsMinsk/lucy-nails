@@ -60,10 +60,10 @@ class ModuleService:
         Returns:
             Module или None
         """
-        query = select(Module).where(Module.id == module_id)
-        
+        opts = [selectinload(Module.course)]
         if include_lessons:
-            query = query.options(selectinload(Module.lessons))
+            opts.append(selectinload(Module.lessons))
+        query = select(Module).where(Module.id == module_id).options(*opts)
         
         result = await db.execute(query)
         return result.scalar_one_or_none()

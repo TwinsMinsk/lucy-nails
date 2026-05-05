@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getMe, logout, UserResponse } from "@/lib/api";
+import { getMe, isAuthError, logout, UserResponse } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Loader2, LogOut, User } from "lucide-react";
@@ -21,9 +21,9 @@ export default function ProfilePage() {
                 const userData = await getMe();
                 setUser(userData);
             } catch (error) {
-                // If unauthorized, redirect might be handled by middleware or here
-                // toast.error("Ошибка загрузки профиля"); // Don't show error if it's just auth check failing? 
-                // Actually if I'm on /profile and it fails, I should redirect.
+                if (!isAuthError(error)) {
+                    toast.error("Ошибка загрузки профиля");
+                }
                 router.push("/auth/login");
             } finally {
                 setIsLoading(false);
@@ -38,7 +38,7 @@ export default function ProfilePage() {
             await logout();
             router.push("/");
             router.refresh();
-        } catch (error) {
+        } catch {
             toast.error("Ошибка при выходе");
         }
     };

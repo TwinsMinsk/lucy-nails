@@ -1,15 +1,10 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import {
-  ArrowRight,
   Sparkles,
   Star,
   Award,
   CheckCircle,
-  Clock,
-  Video,
-  ShieldCheck,
-  MousePointerClick,
-  Infinity,
   Play
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,22 +15,35 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { ModuleList, Module } from "@/components/course/ModuleList";
 import Image from "next/image";
 import { NailsGallery } from "@/components/landing/NailsGallery";
 import { PaymentButton } from "@/components/landing/PaymentButton";
+import { getPublishedCourses } from "@/lib/api";
+
+export const metadata: Metadata = {
+  title: "Онлайн-курс дизайна ногтей",
+  description: "Премиальный онлайн-курс по современным техникам дизайна ногтей: фольга, градиент, френч, текстуры, стемпинг и 3D-дизайн.",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: "Онлайн-курс дизайна ногтей",
+    description: "Премиальный онлайн-курс по современным техникам дизайна ногтей.",
+    url: "/",
+  },
+};
 
 // Full course data based on CONTENT.md & PRD.md
 const COURSE_DATA = {
   title: "Освойте искусство маникюра: Премиальный онлайн-курс",
   subtitle: "Раскройте свой творческий потенциал и станьте профессиональным мастером маникюра. От базовых техник до сложного 3D-дизайна.",
   description:
-    "Фундаментальный курс для мастеров маникюра. Освойте все современные техники дизайна: от фольги и стемпинга до сложной художественной росписи и 3D-лепки.",
-  duration: "~10-12 часов",
-  lessonsCount: 28,
+    "Практический курс для мастеров маникюра. Освойте современные техники дизайна: от аквариума и френча до стемпинга, текстур и объемных украшений.",
+  duration: "~4,5 часа",
+  lessonsCount: 11,
   level: "Для начинающих и опытных",
-  certificate: true,
+  certificate: false,
   prices: {
     self: 5900,
     support: 11900,
@@ -43,109 +51,107 @@ const COURSE_DATA = {
   modules: [
     {
       id: "1",
-      title: "Все возможности фольги",
+      title: "Фольга",
       lessons: [
-        { id: "1.1", title: "Как отпечатать фольгу", duration: "15 мин" },
-        { id: "1.2", title: "Сложные вариации дизайнов", duration: "25 мин" },
-        { id: "1.3", title: "Поталь", duration: "15 мин" },
-        { id: "1.4", title: "Битое стекло", duration: "20 мин" },
+        { id: "1.1", title: "Фольга", duration: "скоро" },
       ],
     },
     {
       id: "2",
-      title: "Втирки и Бархатный песок",
+      title: "Аквариум",
       lessons: [
-        { id: "2.1", title: "Работа с втиркой: лайфхаки", duration: "20 мин" },
-        { id: "2.2", title: "Градиент втирками", duration: "15 мин" },
-        { id: "2.3", title: "Бархатный дизайн", duration: "20 мин" },
+        { id: "2.1", title: "Аквариум", duration: "30 мин" },
       ],
     },
     {
       id: "3",
-      title: "Градиент",
+      title: "Втирка",
       lessons: [
-        { id: "3.1", title: "Виды легких и быстрых градиентов", duration: "25 мин" },
-        { id: "3.2", title: "Молочный градиент", duration: "20 мин" },
+        { id: "3.1", title: "Втирка", duration: "24 мин" },
       ],
     },
     {
       id: "4",
-      title: "Френч",
+      title: "Слайдеры и наклейки",
       lessons: [
-        { id: "4.1", title: "Разнообразие форм и Линейный френч", duration: "35 мин" },
-        { id: "4.2", title: "Креативный френч", duration: "30 мин" },
+        { id: "4.1", title: "Слайдеры и наклейки", duration: "21 мин" },
       ],
     },
     {
       id: "5",
-      title: "Текстуры",
+      title: "Френч",
       lessons: [
-        { id: "5.1", title: "Текстуры: эффект камня и моря", duration: "20 мин" },
-        { id: "5.2", title: "Мрамор", duration: "25 мин" },
-        { id: "5.3", title: "Акварельные капли и гель-лаки", duration: "15 мин" },
-        { id: "5.4", title: "Чеканка", duration: "20 мин" },
+        { id: "5.1", title: "Френч", duration: "42 мин" },
       ],
     },
     {
       id: "6",
-      title: "Аквариумный дизайн и Crystal",
+      title: "Пигменты",
       lessons: [
-        { id: "6.1", title: "Алгоритм работы с материалами", duration: "30 мин" },
-        { id: "6.2", title: "Хрустальный кончик", duration: "35 мин" },
-        { id: "6.3", title: "Ногти лабутены", duration: "25 мин" },
+        { id: "6.1", title: "Пигменты", duration: "13 мин" },
       ],
     },
     {
       id: "7",
-      title: "Мазки и Геометрия (Бонус)",
+      title: "Стемпинг",
       lessons: [
-        { id: "7.1", title: "Техника быстрых мазков", duration: "15 мин" },
-        { id: "7.2", title: "Геометрия без линеек", duration: "20 мин" },
+        { id: "7.1", title: "Стемпинг", duration: "18 мин" },
       ],
     },
     {
       id: "8",
-      title: "Все про стемпинг",
+      title: "Стразы/объемные украшения",
       lessons: [
-        { id: "8.1", title: "Алгоритм работы", duration: "25 мин" },
-        { id: "8.2", title: "Ошибки в работе", duration: "20 мин" },
-        { id: "8.3", title: "Сочетание с дизайнами", duration: "30 мин" },
+        { id: "8.1", title: "Стразы/объемные украшения", duration: "47 мин" },
       ],
     },
     {
       id: "9",
-      title: "Слайдеры и наклейки",
+      title: "Текстуры",
       lessons: [
-        { id: "9.1", title: "Алгоритм работы", duration: "15 мин" },
-        { id: "9.2", title: "Креативные слайдеры", duration: "20 мин" },
-        { id: "9.3", title: "Фольгированные ленты и наклейки", duration: "15 мин" },
+        { id: "9.1", title: "Текстуры", duration: "25 мин" },
       ],
     },
     {
       id: "10",
-      title: "Стразы, пикси, 3D, пирсинг",
+      title: "Градиент",
       lessons: [
-        { id: "10.1", title: "Стразы: крепление намертво", duration: "25 мин" },
-        { id: "10.2", title: "Кристал пикси", duration: "20 мин" },
-        { id: "10.3", title: "Металлические и 3D дизайны", duration: "20 мин" },
-        { id: "10.4", title: "3D дизайны (корейские) гелями", duration: "30 мин" },
+        { id: "10.1", title: "Градиент", duration: "25 мин" },
+      ],
+    },
+    {
+      id: "11",
+      title: "Аэрография",
+      lessons: [
+        { id: "11.1", title: "Аэрография", duration: "19 мин" },
       ],
     },
   ] as Module[],
 };
 
 const galleryImages = [
-  "/nails-gallery/SnapInsta.to_589232992_18383822116178346_9111438465896799220_n.jpg",
-  "/nails-gallery/SnapInsta.to_601489243_18385172866178346_8231406115655400571_n.jpg",
-  "/nails-gallery/SnapInsta.to_601495977_18385171969178346_2430986843763227934_n.jpg",
-  "/nails-gallery/SnapInsta.to_602832873_18385172164178346_3980106162644040807_n.jpg",
-  "/nails-gallery/SnapInsta.to_602885067_18385172479178346_5888132262665984941_n.jpg",
-  "/nails-gallery/SnapInsta.to_606761140_18385903765178346_3336544332820384645_n.jpg",
-  "/nails-gallery/SnapInsta.to_612545320_18387663748178346_9066532518953805186_n.jpg",
+  "/nails-gallery/design-1.svg",
+  "/nails-gallery/design-2.svg",
+  "/nails-gallery/design-3.svg",
+  "/nails-gallery/design-4.svg",
 ];
 
-export default function Home() {
-  const course = COURSE_DATA;
+export default async function Home() {
+  let primaryCourseId: string | null = null;
+  let prices = { self: COURSE_DATA.prices.self, support: COURSE_DATA.prices.support };
+
+  try {
+    const catalog = await getPublishedCourses();
+    if (catalog.total > 0 && catalog.courses[0]) {
+      const c = catalog.courses[0];
+      primaryCourseId = c.id;
+      prices = { self: c.price_self, support: c.price_support };
+    }
+  } catch {
+    // Оставляем цены из статического COURSE_DATA; кнопки оплаты будут заблокированы без курса из API.
+  }
+
+  const course = { ...COURSE_DATA, prices };
 
   return (
     <div className="flex flex-col min-h-screen bg-[#FDFBF9]">
@@ -186,7 +192,7 @@ export default function Home() {
               <div className="relative aspect-[4/5] md:aspect-square lg:aspect-[4/5] w-full max-w-md mx-auto lg:ml-auto rounded-[2.5rem] overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.25),0_30px_60px_rgba(0,0,0,0.6)] border-b-[12px] border-black/10 transition-transform duration-500 hover:-translate-y-3 hover:shadow-[0_0_50px_rgba(0,0,0,0.3),0_40px_80px_rgba(0,0,0,0.7)]">
                 <div className="w-full h-full bg-[#EBC8C8] relative">
                   <Image
-                    src="/Whisk_93d6872649ff6c68acd49660bbb3fa39eg.png"
+                    src="/instructor-placeholder.svg"
                     alt="Instructor"
                     fill
                     className="object-cover"
@@ -200,20 +206,20 @@ export default function Home() {
                 {/* Card 1 */}
                 <div className="flex flex-col items-center justify-center bg-white/80 backdrop-blur-md p-4 rounded-2xl shadow-lg w-28 h-28 text-center border border-white/50">
                   <Star className="w-6 h-6 text-text-primary mb-2 stroke-1" />
-                  <span className="font-serif text-lg font-bold">10</span>
+                  <span className="font-serif text-lg font-bold">{course.modules.length}</span>
                   <span className="text-[10px] uppercase tracking-wider text-text-secondary">Модулей</span>
                 </div>
                 {/* Card 2 */}
                 <div className="flex flex-col items-center justify-center bg-white/80 backdrop-blur-md p-4 rounded-2xl shadow-lg w-28 h-28 text-center border border-white/50">
                   <Play className="w-6 h-6 text-text-primary mb-2 stroke-1 fill-current" />
-                  <span className="font-serif text-lg font-bold">25+</span>
+                  <span className="font-serif text-lg font-bold">{course.lessonsCount}</span>
                   <span className="text-[10px] uppercase tracking-wider text-text-secondary">Уроков</span>
                 </div>
                 {/* Card 3 */}
                 <div className="flex flex-col items-center justify-center bg-white/80 backdrop-blur-md p-4 rounded-2xl shadow-lg w-28 h-28 text-center border border-white/50">
                   <Award className="w-6 h-6 text-text-primary mb-2 stroke-1" />
-                  <span className="text-[10px] uppercase tracking-wider text-text-secondary mt-1">Сертификат</span>
-                  <span className="text-[8px] text-text-secondary/70">по окончанию</span>
+                  <span className="text-[10px] uppercase tracking-wider text-text-secondary mt-1">30 дней</span>
+                  <span className="text-[8px] text-text-secondary/70">доступа</span>
                 </div>
               </div>
             </div>
@@ -264,6 +270,11 @@ export default function Home() {
             <h2 className="font-serif text-4xl md:text-5xl text-text-primary mb-4">
               Тарифы
             </h2>
+            {!primaryCourseId && (
+              <p className="text-sm text-text-secondary mt-3">
+                Оплата временно недоступна: опубликованный курс не загрузился. Попробуйте обновить страницу.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto items-start">
@@ -288,7 +299,7 @@ export default function Home() {
                 </ul>
               </CardContent>
               <CardFooter className="pb-8 px-8">
-                <PaymentButton courseId="default" tariff="self">
+                <PaymentButton courseId={primaryCourseId} tariff="self">
                   Начать обучение
                 </PaymentButton>
               </CardFooter>
@@ -327,7 +338,7 @@ export default function Home() {
                   </ul>
                 </CardContent>
                 <CardFooter className="pb-8 px-8">
-                  <PaymentButton courseId="default" tariff="support">
+                  <PaymentButton courseId={primaryCourseId} tariff="support">
                     Начать обучение
                   </PaymentButton>
                 </CardFooter>

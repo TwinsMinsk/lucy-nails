@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Lucy Nails Academy">
+  <rect width="64" height="64" rx="18" fill="#fff1f4"/>
+  <path d="M20 44c8-18 16-26 28-30-2 14-9 24-26 32z" fill="#db3f6e"/>
+  <path d="M25 39c5-10 10-15 17-18-2 8-6 14-16 20z" fill="#fff"/>
+  <circle cx="45" cy="17" r="3" fill="#d4af37"/>
+</svg>
