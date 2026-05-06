@@ -1,18 +1,29 @@
 const trimTrailingSlash = (value: string) => value.replace(/\/$/, "");
 
-function getRequiredPublicEnv(name: string, developmentFallback: string): string {
+const publicEnvDefaults: Record<string, { development: string; production: string }> = {
+  NEXT_PUBLIC_API_URL: {
+    development: "http://localhost:8000/api",
+    production: "https://api.lucysmirnova.ru/api",
+  },
+  NEXT_PUBLIC_SITE_URL: {
+    development: "http://localhost:3000",
+    production: "https://lucysmirnova.ru",
+  },
+};
+
+function getPublicEnv(name: keyof typeof publicEnvDefaults): string {
   const value = process.env[name];
   if (value) return trimTrailingSlash(value);
 
-  if (process.env.NODE_ENV === "development") {
-    return trimTrailingSlash(developmentFallback);
-  }
-
-  throw new Error(`${name} is required for production build/runtime`);
+  const fallback =
+    process.env.NODE_ENV === "development"
+      ? publicEnvDefaults[name].development
+      : publicEnvDefaults[name].production;
+  return trimTrailingSlash(fallback);
 }
 
 export function getPublicApiUrl(): string {
-  const url = getRequiredPublicEnv("NEXT_PUBLIC_API_URL", "http://localhost:8000/api");
+  const url = getPublicEnv("NEXT_PUBLIC_API_URL");
   if (!url.startsWith("http")) {
     return `https://${url}`;
   }
@@ -20,7 +31,7 @@ export function getPublicApiUrl(): string {
 }
 
 export function getPublicSiteUrl(): string {
-  const url = getRequiredPublicEnv("NEXT_PUBLIC_SITE_URL", "http://localhost:3000");
+  const url = getPublicEnv("NEXT_PUBLIC_SITE_URL");
   if (!url.startsWith("http")) {
     return `https://${url}`;
   }
