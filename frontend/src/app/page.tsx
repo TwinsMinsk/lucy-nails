@@ -96,9 +96,7 @@ export default async function Home() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-stretch">
 
             {/* Left Content */}
-            <div className="p-6 md:p-10 lg:p-0 relative w-full lg:col-span-7 lg:ml-0 mx-auto h-full flex flex-col justify-center">
-
-
+            <div className="p-6 md:p-10 lg:p-0 relative w-full lg:col-span-7 h-full flex flex-col justify-center">
               <div className="space-y-6 relative">
                 <div className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full bg-gradient-to-r from-[#D4AF37] via-[#FFF3AD] to-[#BFA15F] border border-[#D4AF37]/30 shadow-[0_4px_15px_rgba(191,161,95,0.3)] mb-4 group/badge transition-transform hover:scale-105 duration-300">
                   <Sparkles className="w-4 h-4 text-[#5A4B4B] animate-pulse" />

@@ -4,6 +4,15 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Tailwind v4 убрал автоматическое центрирование и паддинги у утилиты `container`.
+ * Возвращаем поведение v3, чтобы все обёртки `.container` центрировались на широких
+ * экранах (иначе на больших мониторах вёрстка прижимается к левому краю).
+ */
+@utility container {
+  margin-inline: auto;
+}
+
 :root {
   /* Premium Design Colors */
   --primary: oklch(0.85 0.05 15);
