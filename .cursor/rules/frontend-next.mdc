@@ -11,3 +11,4 @@ alwaysApply: false
 - **API:** общий клиент `frontend/src/lib/api.ts`; не дублируй базовый URL — используй `apiFetch` / существующие функции.
 - **UI:** переиспользуй `frontend/src/components/ui/*` (shadcn-паттерн). Настройки: `frontend/components.json`.
 - **Lint/build:** из `frontend/` — `npm run lint`, `npm run build` (см. `AGENTS.md` для переменных при сборке).
+- Крупный refactor backlog: `Docs/06_Tracking/REFACTORING_ROADMAP.md`; при разбиении `api.ts` сохраняй текущие exports до миграции потребителей.

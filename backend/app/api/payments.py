@@ -6,7 +6,7 @@ import logging
 import secrets
 from datetime import datetime, timedelta
 from email.utils import parseaddr
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -19,9 +19,11 @@ from app.core.config import settings
 from app.core.database import async_session_maker
 from app.core.dependencies import get_current_user
 from app.core.rate_limit import limiter
+from app.core.security import get_password_hash
 from app.models.course import Course
 from app.models.purchase import Purchase
 from app.models.user import User
+from app.services.email_service import EmailService
 from app.services.prodamus_service import ProdamusService
 
 logger = logging.getLogger(__name__)
@@ -80,20 +82,32 @@ def parse_checkout_order_id(order_id_raw: str) -> tuple[UUID, str] | None:
     return course_id, tariff
 
 
-async def _get_registered_user(
+async def _get_or_create_user(
     db: AsyncSession,
     email: str,
-) -> User:
-    """Returns an existing registered user for a paid checkout email."""
+    phone: str | None,
+) -> tuple[User, str | None]:
+    """
+    Находит пользователя по email или создаёт нового с случайным паролем (payment-first).
+
+    Returns:
+        (user, plain_password) — plain_password только для нового пользователя (для email).
+    """
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalars().first()
-    if not user:
-        logger.error("Prodamus webhook: customer_email has no registered account")
-        raise HTTPException(
-            status_code=422,
-            detail="Payment email must match a registered account",
-        )
-    return user
+    if user:
+        return user, None
+
+    plain = secrets.token_urlsafe(10)
+    user = User(
+        email=email,
+        password_hash=get_password_hash(plain),
+        phone=phone,
+        role="student",
+    )
+    db.add(user)
+    await db.flush()
+    return user, plain
 
 
 def _build_prodamus_order_id(course_id: UUID, tariff: str) -> str:
@@ -209,6 +223,7 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
     course_id_uuid, tariff = parsed
     payment_key = _resolve_payment_key(payload.get("order_num"), order_id_raw)
     customer_email = ""
+    plain_password_for_email: str | None = None
 
     try:
         async with async_session_maker() as db:
@@ -247,7 +262,7 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
                 logger.error("Prodamus webhook: unsupported currency=%s", currency)
                 raise HTTPException(status_code=422, detail="Unsupported currency")
 
-            user = await _get_registered_user(db, customer_email)
+            user, plain_password = await _get_or_create_user(db, customer_email, customer_phone)
 
             if customer_phone and not user.phone:
                 user.phone = customer_phone
@@ -269,10 +284,17 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
             db.add(purchase)
 
             await db.commit()
+            plain_password_for_email = plain_password
 
     except IntegrityError:
         logger.info("Prodamus webhook duplicate payment_key=%s", payment_key)
         return {"status": "ok"}
+
+    if plain_password_for_email:
+        try:
+            await EmailService.send_credentials(customer_email, plain_password_for_email)
+        except Exception:
+            logger.exception("Failed to send credentials email to %s", customer_email)
 
     logger.info(
         "Webhook processed: user=%s course=%s tariff=%s",
@@ -293,6 +315,37 @@ class PaymentLinkRequest(BaseModel):
     tariff: str  # "self" | "support"
     customer_email: str | None = None
     customer_phone: str | None = None
+
+
+class GuestPaymentLinkRequest(BaseModel):
+    course_id: str
+    tariff: Literal["self", "support"]
+    customer_email: EmailStr
+    customer_phone: str | None = None
+
+
+@router.post(
+    "/guest-link",
+    summary="Ссылка на оплату Prodamus без регистрации (email/телефон в форме)",
+)
+@limiter.limit("20/minute")
+async def get_guest_payment_link(
+    request: Request,
+    data: GuestPaymentLinkRequest,
+) -> dict[str, str]:
+    """Гостевая оплата: после webhook создаётся аккаунт и отправляется пароль на email."""
+    async with async_session_maker() as db:
+        course = await _resolve_course_for_checkout(db, data.course_id)
+
+    email_normalized = str(data.customer_email).strip().lower()
+    phone = _normalize_phone(data.customer_phone)
+    link = _checkout_link_for_course(
+        course,
+        data.tariff,
+        customer_email=email_normalized,
+        customer_phone=phone,
+    )
+    return {"url": link}
 
 
 @router.post(

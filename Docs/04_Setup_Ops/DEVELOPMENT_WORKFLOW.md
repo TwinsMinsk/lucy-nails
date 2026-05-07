@@ -117,6 +117,8 @@ npm run dev
 ruff check backend\app backend\tests
 ```
 
+Та же команда выполняется в CI. Конфигурация временно допускает часть legacy-правил; ужесточать её стоит только вместе с чисткой соответствующих файлов.
+
 ### Backend: тесты (нужна БД `test_nails_course`)
 
 ```powershell
@@ -125,6 +127,8 @@ $env:PYTHONPATH = "backend"
 ```
 
 При необходимости однократно создайте тестовую БД через [`backend/scripts/create_test_db.py`](../../backend/scripts/create_test_db.py) (если файл есть и актуален в вашей ветке).
+
+Важно: тестовые фикстуры создают схему через SQLAlchemy metadata, а CI отдельно выполняет `alembic upgrade head` на основной тестовой БД. При изменении моделей проверяйте и тесты, и миграции, чтобы не получить расхождение схем.
 
 ### Frontend: линт и production-сборка
 
@@ -193,15 +197,49 @@ Set-Location ..
 - **Seed с тестовыми паролями** выполняется только если `ENVIRONMENT != production`.
 - После деплоя с новыми моделями: **`alembic upgrade head`** на целевой БД.
 
+## Prodamus + email + тестовая оплата (Railway / staging)
+
+**Флоу:** гостевая оплата с лендинга (`POST /api/payments/guest-link`) или зарегистрированный пользователь (`POST /api/payments/link`). После успешной оплаты Prodamus вызывает **`POST {BACKEND_URL}/api/payments/webhook`** — там создаётся (если нужно) пользователь и в email уходит временный пароль ([`backend/app/services/email_service.py`](../../backend/app/services/email_service.py)).
+
+### Переменные на Railway (staging для тестовых платежей)
+
+1. **`BACKEND_URL`** — публичный URL API (например `https://xxx.up.railway.app`), без `/api` в конце.
+2. **`FRONTEND_URL`** — публичный URL сайта (редиректы `urlSuccess` / `urlReturn`).
+3. **`PRODAMUS_URL`**, **`PRODAMUS_SECRET_KEY`**, **`PRODAMUS_SHOP_ID`** — из личного кабинета Prodamus / Payform.
+4. **`ENVIRONMENT=staging`** или **`development`** — чтобы в ссылке оплаты оставался **`demo_mode=1`** (тестовые платежи). Боевой режим — только **`ENVIRONMENT=production`** без демо-режима в ссылке.
+5. **SMTP (Gmail):** `SMTP_HOST`, `SMTP_PORT=587`, `SMTP_USER`, `SMTP_PASSWORD` (App Password из [Google App Passwords](https://myaccount.google.com/apppasswords)), `SMTP_FROM_NAME`. При необходимости жёстко требовать письмо: `SMTP_REQUIRED_FOR_PAYMENT_EMAIL=true` вместе с production-валидатором.
+
+### ЛК Prodamus
+
+- Включить **тестовый / демо-режим** оплаты (как в документации Payform).
+- В настройках уведомлений можно дублировать URL: `{BACKEND_URL}/api/payments/webhook` — приложение уже передаёт **`urlNotification`** в каждой платёжной ссылке.
+
+### Ручная проверка после деплоя
+
+1. С лендинга: «Оплатить» без входа → модалка email/телефон → форма Prodamus с пометкой демо-режима → оплата тестовой картой.
+2. Логи backend: нет `Invalid signature`, есть `Webhook processed` и при новом пользователе — `Credentials email sent` (или `Failed to send credentials email` при ошибке SMTP — платёж уже записан).
+3. В БД: строка в `users` и `purchases` с `payment_status=success`.
+4. Вход по email/паролю из письма → курс в кабинете.
+5. Повтор того же webhook-тела с тем же `order_num` / ключом идемпотентности — второй `Purchase` не создаётся.
+
 ## Безопасность секретов
 
 - Если production-ключ когда-то оказался в локальном `.env` или в истории коммита — **ротируйте** ключ у провайдера (Stripe/Prodamus/Telegram и т.д.).
 - Не публикуйте `.env`; при сомнениях — `git check-ignore .env`.
+
+## Локальные артефакты и видео
+
+- `promo-clips/` — готовые локальные промо-ролики, создаются пайплайном из [`scripts/promo/`](../../scripts/promo/).
+- `video-lessons/` — локальные исходные уроки для нарезки; не хранить в Git.
+- `scripts/promo/output/` — транскрипты, временные сегменты и промежуточные mp4.
+
+Эти каталоги исключены из Git. Для долгого хранения используйте Kinescope, облачное хранилище или отдельное решение по Git LFS.
 
 ## Дополнительные материалы
 
 - [AGENTS.md](../../AGENTS.md) — ориентир для AI в Cursor
 - [CODEBASE.md](../../CODEBASE.md) — карта репозитория
 - [README.md](../../README.md) — быстрый старт
+- [Docs/README.md](../README.md) — индекс документации
 - [dev_scripts.md](dev_scripts.md) — скрипты `dev.ps1`
 - [ARCHITECTURE.md](../ARCHITECTURE.md) — устройство системы

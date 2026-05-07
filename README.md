@@ -9,6 +9,7 @@
 - **Интеграции:** Kinescope, Prodamus, Telegram Bot
 
 **Профессиональный процесс разработки (окружения, PR, Railway, проверки):** [Docs/04_Setup_Ops/DEVELOPMENT_WORKFLOW.md](./Docs/04_Setup_Ops/DEVELOPMENT_WORKFLOW.md)
+**Документация по разделам:** [Docs/README.md](./Docs/README.md)
 
 ## Быстрый старт
 
@@ -84,3 +85,7 @@ npm run dev
 ├── Docs/           # Документация
 └── scripts/        # Утилиты
 ```
+
+## Локальные артефакты
+
+`promo-clips/`, `video-lessons/` и `scripts/promo/output/` не хранятся в Git. Это тяжёлые локальные mp4 и промежуточные файлы промо-пайплайна; код пайплайна и метаданные лежат в [`scripts/promo/`](./scripts/promo/).

@@ -1,0 +1,307 @@
+{
+  "version": 1,
+  "modules": [
+    {
+      "slug": "folga",
+      "title": "Фольга",
+      "order": 1,
+      "source_file": "фольга-720p.mp4",
+      "duration_seconds": 1365,
+      "promo": {
+        "kinescope_id": null,
+        "poster": null,
+        "description": "Ключевые моменты из урока — техника, материалы и практические советы.",
+        "bullets": [
+          "Разбор пошаговых действий",
+          "Типичные ошибки и как их избежать",
+          "Финишный результат и закрепление"
+        ],
+        "highlight_segments": [
+          {
+            "start_sec": 0.66,
+            "end_sec": 10.1,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 219.07,
+            "end_sec": 227.43,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 431.51,
+            "end_sec": 441.07,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 641.78,
+            "end_sec": 650.14,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 881.26,
+            "end_sec": 889.42,
+            "reason": "auto"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "akvarium",
+      "title": "Аквариум",
+      "order": 2,
+      "source_file": "аквариум-720p.mp4",
+      "duration_seconds": 1780,
+      "promo": {
+        "kinescope_id": null,
+        "poster": null,
+        "description": "Ключевые моменты из урока — техника, материалы и практические советы.",
+        "bullets": [
+          "Разбор пошаговых действий",
+          "Типичные ошибки и как их избежать",
+          "Финишный результат и закрепление"
+        ],
+        "highlight_segments": [
+          {
+            "start_sec": 0.88,
+            "end_sec": 10.48,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 322.95,
+            "end_sec": 331.88,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 582.65,
+            "end_sec": 590.4499999999999,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 803.68,
+            "end_sec": 811.4799999999999,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 1070.52,
+            "end_sec": 1079.32,
+            "reason": "auto"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "vtirka",
+      "title": "Втирка",
+      "order": 3,
+      "source_file": "втирка-004-720p.mp4",
+      "duration_seconds": 1415,
+      "promo": {
+        "kinescope_id": null,
+        "poster": null,
+        "description": "Ключевые моменты из урока — техника, материалы и практические советы.",
+        "bullets": [
+          "Разбор пошаговых действий",
+          "Типичные ошибки и как их избежать",
+          "Финишный результат и закрепление"
+        ],
+        "highlight_segments": [
+          {
+            "start_sec": 0.88,
+            "end_sec": 10.0,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 168.6,
+            "end_sec": 178.2,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 405.41,
+            "end_sec": 415.01,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 659.12,
+            "end_sec": 666.7199999999999,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 935.66,
+            "end_sec": 945.26,
+            "reason": "auto"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "slaidery",
+      "title": "Слайдеры и наклейки",
+      "order": 4,
+      "source_file": "слайдеры-720p.mp4",
+      "duration_seconds": 0,
+      "promo": {
+        "kinescope_id": null,
+        "poster": null,
+        "description": "Слайдеры и наклейки: быстрая графика и аккуратная фиксация.",
+        "bullets": [
+          "Подбор размера",
+          "Перенос без складок",
+          "Запечатывание и блик"
+        ],
+        "highlight_segments": []
+      }
+    },
+    {
+      "slug": "french",
+      "title": "Френч",
+      "order": 5,
+      "source_file": "френч-001-720p.mp4",
+      "duration_seconds": 0,
+      "promo": {
+        "kinescope_id": null,
+        "poster": null,
+        "description": "Френч: линии, формы и современные вариации классики.",
+        "bullets": [
+          "Линия улыбки",
+          "Ровные боковые линии",
+          "Креативные модификации"
+        ],
+        "highlight_segments": []
+      }
+    },
+    {
+      "slug": "pigmenty",
+      "title": "Пигменты",
+      "order": 6,
+      "source_file": "пигменты-720p.mp4",
+      "duration_seconds": 779,
+      "promo": {
+        "kinescope_id": null,
+        "poster": null,
+        "description": "Ключевые моменты из урока — техника, материалы и практические советы.",
+        "bullets": [
+          "Разбор пошаговых действий",
+          "Типичные ошибки и как их избежать",
+          "Финишный результат и закрепление"
+        ],
+        "highlight_segments": [
+          {
+            "start_sec": 0.53,
+            "end_sec": 9.85,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 148.74,
+            "end_sec": 157.4,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 262.25,
+            "end_sec": 271.85,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 389.87,
+            "end_sec": 395.99,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 500.22,
+            "end_sec": 507.02000000000004,
+            "reason": "auto"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "stemping",
+      "title": "Стемпинг",
+      "order": 7,
+      "source_file": "стемпинг-720p.mp4",
+      "duration_seconds": 0,
+      "promo": {
+        "kinescope_id": null,
+        "poster": null,
+        "description": "Стемпинг: чёткий отпечаток, контраст и быстрые узоры.",
+        "bullets": [
+          "Подбор лака и штампа",
+          "Техника переноса",
+          "Исправление огрехов"
+        ],
+        "highlight_segments": []
+      }
+    },
+    {
+      "slug": "strazy",
+      "title": "Стразы/объемные украшения",
+      "order": 8,
+      "source_file": "стразы_наклейки_фигурки-720p.mp4",
+      "duration_seconds": 0,
+      "promo": {
+        "kinescope_id": null,
+        "poster": null,
+        "description": "Стразы и объёмный декор: посадка, баланс и устойчивое крепление.",
+        "bullets": [
+          "Компоновка",
+          "Клей и фиксация",
+          "Финиш без цепляния"
+        ],
+        "highlight_segments": []
+      }
+    },
+    {
+      "slug": "tekstury",
+      "title": "Текстуры",
+      "order": 9,
+      "source_file": "текстуры-720p.mp4",
+      "duration_seconds": 0,
+      "promo": {
+        "kinescope_id": null,
+        "poster": null,
+        "description": "Текстуры: матовые и рельефные акценты для премиального вида.",
+        "bullets": [
+          "Подбор материала",
+          "Рельеф без лишней толщины",
+          "Топ и износ"
+        ],
+        "highlight_segments": []
+      }
+    },
+    {
+      "slug": "gradient",
+      "title": "Градиент",
+      "order": 10,
+      "source_file": "градиент-002-720p.mp4",
+      "duration_seconds": 0,
+      "promo": {
+        "kinescope_id": null,
+        "poster": null,
+        "description": "Градиент: плавные переходы цвета без полос и «ступенек».",
+        "bullets": [
+          "Блендинг",
+          "Молочные и пастельные градиенты",
+          "Чистый торец"
+        ],
+        "highlight_segments": []
+      }
+    },
+    {
+      "slug": "aerografiya",
+      "title": "Аэрография",
+      "order": 11,
+      "source_file": "аэрография-720p.mp4",
+      "duration_seconds": 0,
+      "promo": {
+        "kinescope_id": null,
+        "poster": null,
+        "description": "Аэрография: мягкие контуры, воздушность и контроль распыления.",
+        "bullets": [
+          "Настройка потока",
+          "Трафареты и свободная роспись",
+          "Фиксация слоя"
+        ],
+        "highlight_segments": []
+      }
+    }
+  ]
+}

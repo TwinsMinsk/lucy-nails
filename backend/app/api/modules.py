@@ -68,4 +68,4 @@ async def get_module_lessons(
 
     lessons = sorted(module.lessons, key=lambda x: x.order_index)
 
-    return [LessonOutlineResponse.model_validate(lesson) for lesson in lessons]
+    return [LessonOutlineResponse.from_lesson(lesson) for lesson in lessons]

@@ -6,6 +6,6 @@ alwaysApply: false
 
 # Docs
 
-- Крупный контекст: `Docs/ARCHITECTURE.md`, `Docs/PRD.md`, `Docs/TASKS.md`.
-- При изменении поведения продукта — обнови релевантный раздел в `Docs/` (и при необходимости трекер `Docs/TASKS.md`).
+- Крупный контекст: `Docs/README.md`, `Docs/ARCHITECTURE.md`, `Docs/PRD.md`, `Docs/06_Tracking/TASKS.md`.
+- При изменении поведения продукта — обнови релевантный раздел в `Docs/` (и при необходимости трекер `Docs/06_Tracking/TASKS.md`).
 - Не дублируй огромными кусками — лучше ссылка из README/AGENTS на источник правды.

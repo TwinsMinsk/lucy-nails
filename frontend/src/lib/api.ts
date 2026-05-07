@@ -482,6 +482,10 @@ export interface LessonBriefResponse {
     duration_seconds: number;
     kinescope_video_id?: string;
     is_preview: boolean;
+    promo_kinescope_video_id?: string | null;
+    promo_poster_url?: string | null;
+    promo_description?: string | null;
+    promo_bullets?: string[];
 }
 
 export interface AdminLessonResponse {
@@ -689,6 +693,23 @@ export interface PaymentLinkResponse {
  */
 export const getPaymentLink = async (data: PaymentLinkRequest): Promise<PaymentLinkResponse> => {
     return apiFetch<PaymentLinkResponse>("/payments/link", {
+        method: "POST",
+        body: JSON.stringify(data),
+    });
+};
+
+export interface GuestPaymentLinkRequest {
+    course_id: string;
+    tariff: "self" | "support";
+    customer_email: string;
+    customer_phone?: string;
+}
+
+/**
+ * Ссылка на оплату без регистрации (email в форме; после оплаты придёт пароль на почту).
+ */
+export const getGuestPaymentLink = async (data: GuestPaymentLinkRequest): Promise<PaymentLinkResponse> => {
+    return apiFetch<PaymentLinkResponse>("/payments/guest-link", {
         method: "POST",
         body: JSON.stringify(data),
     });

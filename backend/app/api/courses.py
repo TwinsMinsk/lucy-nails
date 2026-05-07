@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.schemas.course import CourseResponse, CourseListResponse
+from app.schemas.lesson import LessonOutlineResponse
 from app.schemas.module import ModuleWithLessonsResponse
 from app.services.course_service import CourseService
 from app.services.module_service import ModuleService
@@ -102,16 +103,23 @@ async def get_course_modules(
         )
     
     modules = await ModuleService.get_course_modules(db, course_id, include_lessons=True)
-    
-    # Обогатить модули статистикой
+
+    # Обогатить модули статистикой и промо-полями уроков (bullets из JSON)
     modules_with_stats = []
     for module in modules:
         stats = await ModuleService.get_module_stats(db, module.id)
-        module_data = ModuleWithLessonsResponse.from_orm(module)
-        module_data.lessons_count = stats["lessons_count"]
-        module_data.total_duration = stats["total_duration"]
+        lessons_sorted = sorted(module.lessons, key=lambda x: x.order_index)
+        lessons_out = [LessonOutlineResponse.from_lesson(l) for l in lessons_sorted]
+        module_data = ModuleWithLessonsResponse.model_validate(module)
+        module_data = module_data.model_copy(
+            update={
+                "lessons": lessons_out,
+                "lessons_count": stats["lessons_count"],
+                "total_duration": stats["total_duration"],
+            }
+        )
         modules_with_stats.append(module_data)
-    
+
     return modules_with_stats
 
 

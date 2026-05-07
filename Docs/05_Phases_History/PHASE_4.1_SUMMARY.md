@@ -129,7 +129,7 @@ KINESCOPE_PROJECT_ID=
 ### Обновленные файлы
 - ✅ `backend/app/api/lessons.py` - Новый эндпоинт
 - ✅ `backend/app/schemas/lesson.py` - Новая схема
-- ✅ `Docs/TASKS.md` - Отмечено выполнение 4.1
+- ✅ `Docs/06_Tracking/TASKS.md` - Отмечено выполнение 4.1
 
 ---
 

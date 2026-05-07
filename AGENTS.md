@@ -14,6 +14,14 @@
 1. [`CODEBASE.md`](CODEBASE.md) — где что лежит.
 2. [`Docs/04_Setup_Ops/DEVELOPMENT_WORKFLOW.md`](Docs/04_Setup_Ops/DEVELOPMENT_WORKFLOW.md) — окружения, `.env`, команды, Git, Railway, проверки.
 3. [`Docs/ARCHITECTURE.md`](Docs/ARCHITECTURE.md) — архитектура и схема данных.
+4. [`Docs/06_Tracking/TASKS.md`](Docs/06_Tracking/TASKS.md) — текущие задачи и отложенный backlog.
+
+## Наведение порядка и крупный рефакторинг
+
+- Делить работу на маленькие PR/коммиты: сначала документы и правила, затем `.gitignore`/артефакты, потом backend/frontend по доменам.
+- Перед изменением runtime-кода сначала понять текущий контракт через тесты, API-схемы и страницы-потребители.
+- Не смешивать рефакторинг с изменением поведения, если это не зафиксировано в задаче и не покрыто проверкой.
+- Если файл уже большой, рефакторить вокруг понятной границы ответственности: роутер, сервис, схема, компонент, hook, API client.
 
 ## Секреты и `.env`
 
@@ -54,10 +62,17 @@ npm run build
 
 См. [`README.md`](README.md) и [`scripts/dev.ps1`](scripts/dev.ps1).
 
+## Локальные артефакты и медиа
+
+- `promo-clips/`, `video-lessons/` и `scripts/promo/output/` — локальные тяжёлые файлы, не коммитить.
+- Промо-пайплайн: [`scripts/promo/README.md`](scripts/promo/README.md), метаданные программы: [`scripts/promo/program.json`](scripts/promo/program.json).
+- Если видео нужно сохранить надолго, хранить его вне Git (Kinescope/облако/LFS по отдельному решению), а в репозитории держать только код, метаданные и документацию.
+
 ## Правила кода (кратко)
 
 - **Auth:** через FastAPI dependencies (`get_current_user`, admin-guards). **Не** опираться на RLS в БД для авторизации приложения.
 - **ORM:** только async-сессии; при необходимости eager-loading (`selectinload`).
+- **Транзакции:** не менять политику `commit`/`rollback` точечно; сначала сверить [`backend/app/core/database.py`](backend/app/core/database.py) и места явных `commit`.
 - **Next.js:** Server Components по умолчанию; `'use client'` только где нужна интерактивность.
 - **Изменение схемы БД:** всегда с миграцией Alembic в [`backend/alembic/versions/`](backend/alembic/versions/).
 - **Деплой:** Railway — [`railway.toml`](railway.toml), гайды в [`Docs/04_Setup_Ops/`](Docs/04_Setup_Ops/).

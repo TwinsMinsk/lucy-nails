@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.payments import _build_prodamus_order_id, parse_checkout_order_id
-from app.core.security import get_password_hash
+from app.core.security import get_password_hash, verify_password
 from app.models.course import Course
 from app.models.purchase import Purchase
 from app.models.user import User
@@ -246,9 +246,20 @@ async def test_prodamus_webhook_rejects_non_rub_currency(client: AsyncClient, db
 
 
 @pytest.mark.asyncio
-async def test_prodamus_webhook_rejects_unknown_customer_email(client: AsyncClient, db: AsyncSession):
+async def test_webhook_creates_user_and_sends_credentials(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    sent: list[tuple[str, str]] = []
+
+    async def capture_send(email: str, password: str) -> None:
+        sent.append((email, password))
+
+    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", capture_send)
+
     course = Course(
-        title="Webhook Unknown User Course",
+        title="Webhook Creates User Course",
         price_self=5000,
         price_support=10000,
         is_published=True,
@@ -257,20 +268,143 @@ async def test_prodamus_webhook_rejects_unknown_customer_email(client: AsyncClie
     await db.commit()
     await db.refresh(course)
 
-    payload, headers = _signed_payload(
+    order_id = _build_prodamus_order_id(course.id, "self")
+    payload, wh_headers = _signed_payload(
         {
-            "order_id": _build_prodamus_order_id(course.id, "self"),
-            "customer_email": "unknown-webhook@example.com",
+            "order_id": order_id,
+            "customer_email": "brand-new@example.com",
+            "customer_phone": "+79991112233",
             "sum": "5000",
             "currency": "rub",
             "payment_status": "success",
         }
     )
 
-    response = await client.post("/api/payments/webhook", json=payload, headers=headers)
+    response = await client.post("/api/payments/webhook", json=payload, headers=wh_headers)
+    assert response.status_code == 200
 
-    assert response.status_code == 422
-    assert "registered account" in response.json()["detail"]
+    user_result = await db.execute(select(User).where(User.email == "brand-new@example.com"))
+    user = user_result.scalar_one()
+    assert user.phone == "+79991112233"
+    assert len(sent) == 1
+    assert sent[0][0] == "brand-new@example.com"
+    assert len(sent[0][1]) >= 8
+    assert verify_password(sent[0][1], user.password_hash)
+
+    purchase_result = await db.execute(select(Purchase).where(Purchase.payment_id == f"order_id:{order_id}"))
+    purchase = purchase_result.scalar_one()
+    assert purchase.user_id == user.id
+    assert purchase.payment_status == "success"
+
+
+@pytest.mark.asyncio
+async def test_webhook_existing_user_does_not_resend_credentials(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def must_not_send(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("send_credentials must not be called for existing user")
+
+    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", must_not_send)
+
+    course = Course(
+        title="Webhook Existing User Course",
+        price_self=5000,
+        price_support=10000,
+        is_published=True,
+    )
+    db.add(course)
+    await _create_user(db, "existing-webhook@example.com")
+    await db.commit()
+    await db.refresh(course)
+
+    order_id = _build_prodamus_order_id(course.id, "self")
+    payload, wh_headers = _signed_payload(
+        {
+            "order_id": order_id,
+            "customer_email": "existing-webhook@example.com",
+            "sum": "5000",
+            "currency": "rub",
+            "payment_status": "success",
+        }
+    )
+
+    response = await client.post("/api/payments/webhook", json=payload, headers=wh_headers)
+    assert response.status_code == 200
+
+    purchase_result = await db.execute(select(Purchase).where(Purchase.payment_id == f"order_id:{order_id}"))
+    assert purchase_result.scalar_one_or_none() is not None
+
+
+@pytest.mark.asyncio
+async def test_webhook_email_failure_does_not_break_idempotency(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def boom_send(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("smtp down")
+
+    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", boom_send)
+
+    course = Course(
+        title="Webhook Email Fail Course",
+        price_self=5000,
+        price_support=10000,
+        is_published=True,
+    )
+    db.add(course)
+    await db.commit()
+    await db.refresh(course)
+
+    order_id = _build_prodamus_order_id(course.id, "self")
+    payload, wh_headers = _signed_payload(
+        {
+            "order_id": order_id,
+            "customer_email": "email-fail@example.com",
+            "sum": "5000",
+            "currency": "rub",
+            "payment_status": "success",
+        }
+    )
+
+    first = await client.post("/api/payments/webhook", json=payload, headers=wh_headers)
+    second = await client.post("/api/payments/webhook", json=payload, headers=wh_headers)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+
+    count_result = await db.execute(select(func.count(Purchase.id)))
+    assert count_result.scalar_one() == 1
+
+
+@pytest.mark.asyncio
+async def test_guest_payment_link_returns_url(client: AsyncClient, db: AsyncSession):
+    course = Course(
+        title="Guest Link Course",
+        price_self=5000,
+        price_support=10000,
+        is_published=True,
+    )
+    db.add(course)
+    await db.commit()
+    await db.refresh(course)
+
+    response = await client.post(
+        "/api/payments/guest-link",
+        json={
+            "course_id": str(course.id),
+            "tariff": "self",
+            "customer_email": "guest@example.com",
+            "customer_phone": "+79990001122",
+        },
+    )
+
+    assert response.status_code == 200
+    url = response.json()["url"]
+    assert "signature=" in url
+    assert ("guest%40example.com" in url) or ("guest@example.com" in url)
 
 
 @pytest.mark.asyncio

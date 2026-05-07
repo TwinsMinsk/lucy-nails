@@ -1,35 +1,63 @@
 """
 Seed данные для разработки (упрощённая версия с psycopg2).
+
+Читает промо-метаданные из scripts/promo/program.json (если файл есть).
+Пароли и параметры БД — через переменные окружения (без хардкода).
 """
 
-import sys
-sys.path.append('d:\\Course nails design\\backend')
+from __future__ import annotations
 
+import json
+import os
+import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 from uuid import uuid4
 
 import psycopg2
-from psycopg2.extras import execute_values
+from psycopg2.extras import Json, execute_values
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT / "backend"))
 
 from app.core.security import get_password_hash
 
+PROGRAM_JSON = _REPO_ROOT / "scripts" / "promo" / "program.json"
+
 
 def get_connection():
-    """Создаёт подключение к БД."""
+    """Создаёт подключение к БД из окружения."""
     return psycopg2.connect(
-        host="localhost",
-        port=5432,
-        user="postgres",
-        password="Punkrock77",
-        database="nails_course"
+        host=os.getenv("POSTGRES_HOST", "localhost"),
+        port=int(os.getenv("POSTGRES_PORT", "5432")),
+        user=os.getenv("POSTGRES_USER", "postgres"),
+        password=os.getenv("POSTGRES_PASSWORD", "postgres"),
+        database=os.getenv("POSTGRES_DB", "nails_course"),
     )
+
+
+# (module_title, lesson_title, duration_seconds, kinescope_video_id, is_preview)
+LANDING_MODULES: list[tuple[str, str, int, str | None, bool]] = [
+    ("Фольга", "Фольга", 900, "askD5i8gAV6gvqpq5aSg8W", True),
+    ("Аквариум", "Аквариум", 1800, "dummy-video-akvarium", False),
+    ("Втирка", "Втирка", 1440, "dummy-video-vtirka", False),
+    ("Слайдеры и наклейки", "Слайдеры и наклейки", 1260, "dummy-video-slaidery", False),
+    ("Френч", "Френч", 2520, "dummy-video-french", False),
+    ("Пигменты", "Пигменты", 780, "dummy-video-pigmenty", False),
+    ("Стемпинг", "Стемпинг", 1080, "dummy-video-stemping", False),
+    ("Стразы/объемные украшения", "Стразы/объемные украшения", 2820, "dummy-video-strazy", False),
+    ("Текстуры", "Текстуры", 1500, "dummy-video-tekstury", False),
+    ("Градиент", "Градиент", 1500, "dummy-video-gradient", False),
+    ("Аэрография", "Аэрография", 1140, "dummy-video-aero", False),
+]
 
 
 def seed_users(cur):
     """Создаёт тестовых пользователей."""
     admin_id = str(uuid4())
     student_id = str(uuid4())
-    
+
     users = [
         (
             admin_id,
@@ -38,7 +66,7 @@ def seed_users(cur):
             None,
             "admin",
             datetime.utcnow(),
-            datetime.utcnow()
+            datetime.utcnow(),
         ),
         (
             student_id,
@@ -47,33 +75,73 @@ def seed_users(cur):
             None,
             "student",
             datetime.utcnow(),
-            datetime.utcnow()
+            datetime.utcnow(),
         ),
     ]
-    
+
     execute_values(
         cur,
         """
         INSERT INTO users (id, email, password_hash, telegram_id, role, created_at, updated_at)
         VALUES %s
         """,
-        users
+        users,
     )
-    
+
     print("✓ Создан админ: admin@nails-course.ru (пароль: admin123)")
     print("✓ Создан студент: student@test.ru (пароль: student123)")
-    
+
     return admin_id, student_id
 
 
+def apply_program_promos(cur) -> None:
+    """Подтягивает промо из program.json (после генерации пайплайном)."""
+    if not PROGRAM_JSON.is_file():
+        print("ℹ scripts/promo/program.json не найден — промо-поля не заполнены из файла")
+        return
+
+    data = json.loads(PROGRAM_JSON.read_text(encoding="utf-8"))
+    count = 0
+    for mod in data.get("modules", []):
+        title = mod.get("title")
+        promo = mod.get("promo") or {}
+        if not title:
+            continue
+        hid = promo.get("kinescope_id")
+        poster = promo.get("poster")
+        desc = promo.get("description")
+        bullets = promo.get("bullets") or []
+        segments = promo.get("highlight_segments") or []
+        highlights_obj = {"bullets": bullets, "segments": segments}
+        cur.execute(
+            """
+            UPDATE lessons AS l SET
+              promo_kinescope_video_id = COALESCE(%s, l.promo_kinescope_video_id),
+              promo_poster_url = COALESCE(%s, l.promo_poster_url),
+              promo_description = COALESCE(%s, l.promo_description),
+              promo_highlights = COALESCE(%s, l.promo_highlights)
+            FROM modules m
+            WHERE l.module_id = m.id AND m.title = %s AND l.order_index = 1
+            """,
+            (
+                hid,
+                poster,
+                desc,
+                Json(highlights_obj),
+                title,
+            ),
+        )
+        count += cur.rowcount
+    print(f"✓ Обновлено промо из program.json (строк затронуто): {count}")
+
+
 def seed_course(cur):
-    """Создаёт курс с модулями и уроками."""
+    """Создаёт курс с модулями и по одному уроку на модуль (программа как на лендинге)."""
     course_id = str(uuid4())
-    
-    # Курс
+
     cur.execute(
         """
-        INSERT INTO courses (id, title, description, preview_video_url, cover_image_url, 
+        INSERT INTO courses (id, title, description, preview_video_url, cover_image_url,
                             price_self, price_support, is_published, created_at)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
@@ -86,87 +154,81 @@ def seed_course(cur):
             5000,
             20000,
             True,
-            datetime.utcnow()
-        )
+            datetime.utcnow(),
+        ),
     )
     print("✓ Создан курс: Дизайн ногтей: От А до Я")
-    
-    # Модули
-    modules = [
-        (str(uuid4()), course_id, "Все возможности фольги", 
-         "Научитесь работать с фольгой.", 1, True, datetime.utcnow()),
-        (str(uuid4()), course_id, "Градиент", 
-         "Различные виды градиентов.", 2, True, datetime.utcnow()),
-        (str(uuid4()), course_id, "Френч", 
-         "Разнообразие форм френча.", 3, True, datetime.utcnow()),
-    ]
-    
+
+    modules_rows = []
+    module_ids: list[str] = []
+    for i, (m_title, _, _, _, _) in enumerate(LANDING_MODULES, start=1):
+        mid = str(uuid4())
+        module_ids.append(mid)
+        modules_rows.append(
+            (
+                mid,
+                course_id,
+                m_title,
+                f"Модуль «{m_title}».",
+                i,
+                True,
+                datetime.utcnow(),
+            )
+        )
+
     execute_values(
         cur,
         """
         INSERT INTO modules (id, course_id, title, description, order_index, is_published, created_at)
         VALUES %s
         """,
-        modules
+        modules_rows,
     )
-    
-    # Уроки для модуля 1 (с kinescope_video_id)
-    module1_id = modules[0][0]
-    lessons_m1 = [
-        (str(uuid4()), module1_id, "Как отпечатать фольгу", 
-         "Базовая техника работы с фольгой.", "dummy-video-id-1", 900, 1, True, datetime.utcnow()),
-        (str(uuid4()), module1_id, "Сложные вариации дизайнов", 
-         "Комбинирование с хлопьями.", "dummy-video-id-2", 1200, 2, False, datetime.utcnow()),
-        (str(uuid4()), module1_id, "Поталь", 
-         "Работа с поталью.", "dummy-video-id-3", 600, 3, False, datetime.utcnow()),
-        (str(uuid4()), module1_id, "Битое стекло", 
-         "Дизайн Аврора.", "dummy-video-id-4", 1800, 4, False, datetime.utcnow()),
-    ]
-    
-    # Уроки для модуля 2 (с kinescope_video_id)
-    module2_id = modules[1][0]
-    lessons_m2 = [
-        (str(uuid4()), module2_id, "Виды легких градиентов", 
-         "Пастельное омбре.", "dummy-video-id-5", 900, 1, False, datetime.utcnow()),
-        (str(uuid4()), module2_id, "Молочный градиент", 
-         "На блёстки и на цвет.", "dummy-video-id-6", 1200, 2, False, datetime.utcnow()),
-    ]
-    
-    # Уроки для модуля 3 (с kinescope_video_id)
-    module3_id = modules[2][0]
-    lessons_m3 = [
-        (str(uuid4()), module3_id, "Разнообразие форм и линейный френч", 
-         "Классический френч.", "dummy-video-id-7", 1500, 1, False, datetime.utcnow()),
-        (str(uuid4()), module3_id, "Креативный френч", 
-         "С линиями, втиркой.", "dummy-video-id-8", 1200, 2, False, datetime.utcnow()),
-    ]
-    
-    all_lessons = lessons_m1 + lessons_m2 + lessons_m3
-    
+
+    lesson_rows = []
+    first_lesson_id: str | None = None
+    for mid, (m_title, lesson_title, duration, kid, is_preview) in zip(module_ids, LANDING_MODULES, strict=True):
+        lid = str(uuid4())
+        if first_lesson_id is None:
+            first_lesson_id = lid
+        lesson_rows.append(
+            (
+                lid,
+                mid,
+                lesson_title,
+                f"Урок «{lesson_title}».",
+                kid,
+                duration,
+                1,
+                is_preview,
+                datetime.utcnow(),
+            )
+        )
+
     execute_values(
         cur,
         """
-        INSERT INTO lessons (id, module_id, title, description, kinescope_video_id, 
+        INSERT INTO lessons (id, module_id, title, description, kinescope_video_id,
                             duration_seconds, order_index, is_preview, created_at)
         VALUES %s
         """,
-        all_lessons
+        lesson_rows,
     )
-    
-    print(f"✓ Создан модуль 1: Все возможности фольги ({len(lessons_m1)} уроков)")
-    print(f"✓ Создан модуль 2: Градиент ({len(lessons_m2)} уроков)")
-    print(f"✓ Создан модуль 3: Френч ({len(lessons_m3)} уроков)")
-    
-    return course_id, all_lessons[0][0]  # course_id и first_lesson_id
+
+    apply_program_promos(cur)
+
+    print(f"✓ Создано модулей: {len(LANDING_MODULES)}, по одному уроку в каждом")
+
+    return course_id, first_lesson_id
 
 
 def seed_purchase(cur, user_id, course_id, user_email):
     """Создаёт тестовую покупку."""
     purchase_id = str(uuid4())
-    
+
     cur.execute(
         """
-        INSERT INTO purchases (id, user_id, course_id, tariff, amount_kopecks, 
+        INSERT INTO purchases (id, user_id, course_id, tariff, amount_kopecks,
                               payment_id, payment_status, expires_at, created_at)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
@@ -175,24 +237,24 @@ def seed_purchase(cur, user_id, course_id, user_email):
             user_id,
             course_id,
             "self",
-            500000,  # 5000 руб
+            500000,
             f"test_payment_{user_id[:8]}",
-            "success",  # Используем 'success' согласно ENUM в модели
-            datetime.utcnow() + timedelta(days=365),  # 1 год доступа
-            datetime.utcnow()
-        )
+            "success",
+            datetime.utcnow() + timedelta(days=365),
+            datetime.utcnow(),
+        ),
     )
-    
+
     print(f"✓ Создана покупка для {user_email} (тариф: self, доступ: 365 дней)")
 
 
 def seed_progress(cur, student_id, first_lesson_id):
     """Создаёт тестовый прогресс."""
     progress_id = str(uuid4())
-    
+
     cur.execute(
         """
-        INSERT INTO progress (id, user_id, lesson_id, watched_seconds, 
+        INSERT INTO progress (id, user_id, lesson_id, watched_seconds,
                              is_completed, completed_at, updated_at)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
         """,
@@ -200,77 +262,72 @@ def seed_progress(cur, student_id, first_lesson_id):
             progress_id,
             student_id,
             first_lesson_id,
-            450,  # 7.5 минут из 15
+            450,
             False,
             None,
-            datetime.utcnow()
-        )
+            datetime.utcnow(),
+        ),
     )
-    
+
     print("✓ Создан прогресс для первого урока")
 
 
 def clear_database(cur):
     """Очищает все таблицы перед вставкой новых данных."""
     print("🗑️  Очистка существующих данных...")
-    
-    # TRUNCATE удаляет все данные и сбрасывает AUTO_INCREMENT
-    # CASCADE автоматически удалит данные из зависимых таблиц
-    cur.execute("""
-        TRUNCATE TABLE 
-            progress, 
-            purchases, 
-            certificates, 
-            lessons, 
-            modules, 
-            courses, 
-            users 
+
+    cur.execute(
+        """
+        TRUNCATE TABLE
+            progress,
+            purchases,
+            certificates,
+            lessons,
+            modules,
+            courses,
+            users
         RESTART IDENTITY CASCADE
-    """)
-    
+        """
+    )
+
     print("✓ База данных очищена")
 
 
 def main():
     """Основная функция."""
     print("\n=== Заполнение БД тестовыми данными ===\n")
-    
+
     conn = get_connection()
     cur = conn.cursor()
-    
+
     try:
-        # 0. Очистка существующих данных
         clear_database(cur)
-        
-        # 1. Пользователи
+
         admin_id, student_id = seed_users(cur)
-        
-        # 2. Курс с модулями и уроками
+
         course_id, first_lesson_id = seed_course(cur)
-        
-        # 3. Покупки (для обоих пользователей)
+
         seed_purchase(cur, admin_id, course_id, "admin@nails-course.ru")
         seed_purchase(cur, student_id, course_id, "student@test.ru")
-        
-        # 4. Прогресс
+
         seed_progress(cur, student_id, first_lesson_id)
-        
+
         conn.commit()
-        
+
         print("\n✅ База данных успешно заполнена!")
         print("\n📊 Статистика:")
         print("   - Пользователей: 2 (1 админ + 1 студент)")
         print("   - Курсов: 1")
-        print("   - Модулей: 3")
-        print("   - Уроков: 8 (все с kinescope_video_id)")
+        print(f"   - Модулей: {len(LANDING_MODULES)}")
+        print(f"   - Уроков: {len(LANDING_MODULES)}")
         print("   - Покупок: 2 (обе с доступом на 365 дней)")
         print("   - Прогресс: 1")
-        
+
         print("\n🔑 Учётные данные:")
         print("   Админ: admin@nails-course.ru / admin123")
         print("   Студент: student@test.ru / student123")
         print("\n💡 Оба пользователя имеют доступ к курсу!")
-        
+
     except Exception as e:
         conn.rollback()
         print(f"\n❌ Ошибка: {e}")

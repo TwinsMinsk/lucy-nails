@@ -5,23 +5,39 @@ venv/
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
+*.pyo
+
+# === Packaging / build artifacts (Python) ===
 .Python
+*.so
+*.egg
+*.manifest
+*.spec
 build/
 dist/
 *.egg-info/
+.eggs/
+wheels/
 
-# === Environment ===
+# === Environment & secrets ===
 .env
 .env.local
 .env.*.local
 
-# === IDE ===
+# Заметки окружений (локальное; без примеров)
+.env.backup
+*.env.backup
+
+# === IDE / editors ===
 .idea/
+.worktrees/
+worktrees/
+
 # Делимся рекомендуемыми настройками Cursor/VS Code для команды
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
+
 *.swp
 *.swo
 *~
@@ -29,19 +45,35 @@ dist/
 # === OS ===
 .DS_Store
 Thumbs.db
+ehthumbs.db
 Desktop.ini
+$RECYCLE.BIN/
 
 # === Next.js ===
+# Сборка и кэши (см. также frontend/.gitignore — там env, next-env.d.ts)
 .next/
 out/
-.vercel
+.vercel/
+.turbo/
 
-# === Testing ===
+# === Node / tooling cache ===
+.eslintcache
+*.tsbuildinfo
+.npm-cache/
+.pnpm-store/
+
+# === Testing & coverage ===
 coverage/
 .pytest_cache/
+.pytest_tmp/
 .ruff_cache/
-.coverage
+.mypy_cache/
+
+.coverage*
 htmlcov/
+
+# === Jupyter / notebooks (если используете офлайн) ===
+.ipynb_checkpoints/
 
 # === Logs ===
 *.log
@@ -49,11 +81,28 @@ logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# === Build ===
-*.tsbuildinfo
-
-# === Misc ===
+# === Local downloads / merges ===
+*.orig
+*.rej
 *.bak
 *.tmp
+
+# Redis / локальные дампы для dev
+dump.rdb
+*.sqlite
+*.sqlite3
+
+# === Общие кэши приложений ===
 .cache/
+.parcel-cache/
+
+# === Heavy local media & generated promo artifacts ===
+# Исходники уроков, нарезки промо, выход промо-пайплайна — не в Git
+promo-clips/
+video-lessons/
+scripts/promo/output/
+
+# Иногда остаются «хвосты» от загрузки/рендера
+*.part

@@ -10,6 +10,7 @@
 - [/] Полный чеклист деплоя и hardening — текущий MVP scope: безопасная покупка Prodamus, доступ к урокам, кабинет, базовая админка, Railway deploy
 - [ ] Backend hardening: CORS/Trusted Hosts/JWT/seed/rate limit/Kinescope без mock в prod
 - [ ] Payment hardening: идемпотентный webhook, повторы, гонки, проверки подписи и суммы
+- [ ] После payment-first: письмо «доступ открыт» для уже существующих пользователей; страница «Сменить пароль» в ЛК (одноразовый пароль из письма)
 - [ ] Frontend hardening: auth/session UX, protected/admin guards, безопасный payment CTA
 - [ ] Staging smoke-test перед production
 
@@ -139,6 +140,11 @@
 ---
 
 ## Отложено (Post-MVP)
+- [/] Refactor program: синхронизировать `AGENTS.md`, `CODEBASE.md`, `README.md`, `Docs/README.md`, `.cursor/rules/` как источники правды
+- [/] Refactor program: держать `promo-clips/`, `video-lessons/`, `scripts/promo/output/` вне Git и описывать медиа как локальные/внешние артефакты
+- [ ] Refactor program: разбить backend admin API, выровнять auth dependencies и политику транзакций — см. `Docs/06_Tracking/REFACTORING_ROADMAP.md`
+- [ ] Refactor program: разбить frontend API client, лендинг и крупные страницы админки — см. `Docs/06_Tracking/REFACTORING_ROADMAP.md`
+- [/] Refactor program: сверить локальные проверки с CI и добавить миграционный smoke-test или явную документацию drift-риска
 - [ ] Payment audit log + outbox/retry для писем и админского восстановления доступа
 - [ ] Redis-backed rate limits для нескольких backend-инстансов
 - [ ] Refresh-token rotation/revocation и полноценная session model

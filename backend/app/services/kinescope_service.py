@@ -103,6 +103,90 @@ class KinescopeService:
         )
         return f"{base_embed_url}?{q}"
 
+    async def upload_video_file(
+        self,
+        file_path: str,
+        title: str,
+        description: str = "",
+        parent_id: str | None = None,
+    ) -> dict:
+        """
+        Загрузка MP4 в Kinescope (uploader v2, один POST).
+        Требуются KINESCOPE_API_KEY и KINESCOPE_PROJECT_ID.
+        """
+        self._require_key_for_production()
+        if self.is_mock_mode:
+            return {
+                "id": "mock-promo-id",
+                "poster": self.MOCK_VIDEO_THUMBNAIL,
+                "title": title,
+            }
+
+        import pathlib
+
+        path = pathlib.Path(file_path)
+        if not path.is_file():
+            raise FileNotFoundError(file_path)
+
+        pid = (parent_id or settings.KINESCOPE_PROJECT_ID or "").strip()
+        if not pid:
+            raise RuntimeError("KINESCOPE_PROJECT_ID is required for upload")
+
+        body = path.read_bytes()
+        url = "https://uploader.kinescope.io/v2/video"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "X-Parent-ID": pid,
+            "X-Video-Title": title[:500],
+            "Content-Type": "video/mp4",
+        }
+        if description:
+            headers["X-Video-Description"] = description[:2000]
+
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            response = await client.post(url, headers=headers, content=body)
+            response.raise_for_status()
+
+        try:
+            data = response.json()
+        except Exception:
+            data = {}
+
+        vid = (
+            data.get("id")
+            or (data.get("data") or {}).get("id")
+            or (data.get("data") or {}).get("video_id")
+        )
+        if not vid:
+            loc = response.headers.get("Location") or ""
+            if "/videos/" in loc:
+                vid = loc.rstrip("/").split("/")[-1]
+
+        if not vid:
+            raise RuntimeError("Upload response missing video id")
+
+        poster_url = None
+        if isinstance(data.get("poster"), dict):
+            poster_url = data["poster"].get("url")
+
+        if not poster_url:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                info_r = await client.get(
+                    f"{self.BASE_URL}/videos/{vid}",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                    },
+                )
+                if info_r.is_success:
+                    info = info_r.json()
+                    poster_url = (info.get("poster") or {}).get("url")
+
+        if not poster_url:
+            poster_url = f"https://kinescope.io/{vid}/poster.jpg"
+
+        return {"id": vid, "poster": poster_url, "title": title}
+
     def _get_mock_video_info(self, video_id: str) -> Dict:
         """
         Возвращает моковые данные для разработки.

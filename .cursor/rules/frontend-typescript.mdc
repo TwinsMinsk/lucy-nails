@@ -9,3 +9,4 @@ alwaysApply: false
 - Разделяй: `frontend/src/lib/*` — утилиты и API; `frontend/src/app/*` — маршруты.
 - Избегай `any`; если наследие — улучшай типами по возможности без большого рефакторинга.
 - ESLint конфиг: `frontend/eslint.config.mjs`.
+- При декомпозиции `frontend/src/lib/api.ts` сначала сохраняй совместимые exports, затем мигрируй потребителей домен за доменом.

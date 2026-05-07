@@ -138,6 +138,10 @@ class LessonCreateRequest(BaseModel):
     duration_seconds: int = Field(default=0, ge=0)
     order_index: int = Field(default=0, ge=0)
     is_preview: bool = False
+    promo_kinescope_video_id: Optional[str] = None
+    promo_poster_url: Optional[str] = None
+    promo_description: Optional[str] = None
+    promo_highlights: Optional[dict] = None
 
 
 class LessonUpdateRequest(BaseModel):
@@ -149,6 +153,10 @@ class LessonUpdateRequest(BaseModel):
     duration_seconds: Optional[int] = Field(None, ge=0)
     order_index: Optional[int] = Field(None, ge=0)
     is_preview: Optional[bool] = None
+    promo_kinescope_video_id: Optional[str] = None
+    promo_poster_url: Optional[str] = None
+    promo_description: Optional[str] = None
+    promo_highlights: Optional[dict] = None
 
 
 class LessonResponse(BaseModel):
@@ -162,6 +170,10 @@ class LessonResponse(BaseModel):
     duration_seconds: int
     order_index: int
     is_preview: bool
+    promo_kinescope_video_id: Optional[str] = None
+    promo_poster_url: Optional[str] = None
+    promo_description: Optional[str] = None
+    promo_highlights: Optional[dict] = None
     created_at: datetime
     
     class Config:
@@ -536,6 +548,10 @@ async def create_lesson(
         duration_seconds=data.duration_seconds,
         order_index=data.order_index,
         is_preview=data.is_preview,
+        promo_kinescope_video_id=data.promo_kinescope_video_id,
+        promo_poster_url=data.promo_poster_url,
+        promo_description=data.promo_description,
+        promo_highlights=data.promo_highlights,
         created_at=datetime.utcnow()
     )
     

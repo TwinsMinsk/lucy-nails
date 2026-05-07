@@ -5,7 +5,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Text, Integer, Boolean, ForeignKey
+from sqlalchemy import String, Text, Integer, Boolean, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -26,6 +26,12 @@ class Lesson(Base):
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)
     is_preview: Mapped[bool] = mapped_column(Boolean, default=False)  # Бесплатный превью урок
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+    # Промо для лендинга (короткий ролик Kinescope + текст)
+    promo_kinescope_video_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    promo_poster_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    promo_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    promo_highlights: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     
     # Relationships
     module: Mapped["Module"] = relationship(back_populates="lessons")

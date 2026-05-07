@@ -8,9 +8,10 @@ alwaysApply: false
 
 - Точка входа: `backend/app/main.py`. Роутеры: `backend/app/api/*.py`.
 - Конфиг: `backend/app/core/config.py` (Pydantic Settings, `.env`). БД: `backend/app/core/database.py`.
-- **Сессии БД:** только async; зависимость `get_db` — стандартный путь доступа к данным.
+- **Сессии БД:** только async; зависимость `get_db` — стандартный путь доступа к данным. Не меняй `commit`/`rollback` политику точечно без сверки `Docs/06_Tracking/REFACTORING_ROADMAP.md`.
 - **Авторизация:** зависимости из `backend/app/core/dependencies.py`; не смешивай бизнес-логику проверки прав в «сырых» endpoint без Depends.
 - **Сервисы:** по возможности держать бизнес-логику в `backend/app/services/`, thin controllers в `api/`.
 - **Схемы:** Pydantic v2 в `backend/app/schemas/`.
 - **Тесты:** `backend/tests/`; нужна БД из `DATABASE_URL`/test DB — см. `conftest.py` и `DEVELOPMENT_WORKFLOW`.
 - Линтер: `ruff check backend/app backend/tests` — правила в корневом `pyproject.toml`.
+- Крупный refactor backlog: `Docs/06_Tracking/REFACTORING_ROADMAP.md`; не разбивай `admin.py` без тестов текущего контракта.

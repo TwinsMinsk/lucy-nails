@@ -15,11 +15,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ModuleList, Module } from "@/components/course/ModuleList";
 import Image from "next/image";
 import { NailsGallery } from "@/components/landing/NailsGallery";
 import { PaymentButton } from "@/components/landing/PaymentButton";
-import { getPublishedCourses } from "@/lib/api";
+import { ProgramSection } from "@/components/landing/ProgramSection";
+import type { Module } from "@/components/course/ModuleList";
+import { getPublishedCourses, getPublicCourseModules, type ModuleResponse } from "@/lib/api";
 
 export const metadata: Metadata = {
   title: "Онлайн-курс дизайна ногтей",
@@ -151,6 +152,15 @@ export default async function Home() {
     // Оставляем цены из статического COURSE_DATA; кнопки оплаты будут заблокированы без курса из API.
   }
 
+  let programModules: ModuleResponse[] | null = null;
+  if (primaryCourseId) {
+    try {
+      programModules = await getPublicCourseModules(primaryCourseId);
+    } catch {
+      programModules = null;
+    }
+  }
+
   const course = { ...COURSE_DATA, prices };
 
   return (
@@ -239,11 +249,8 @@ export default async function Home() {
             <div className="w-16 h-1 bg-primary mx-auto rounded-full opacity-50" />
           </div>
 
-          <div className="max-w-4xl mx-auto">
-            {/* Using ModuleList but wrapping nicely */}
-            <div className="bg-transparent space-y-4">
-              <ModuleList modules={course.modules} />
-            </div>
+          <div className="max-w-6xl mx-auto">
+            <ProgramSection apiModules={programModules} staticModules={course.modules} />
           </div>
         </div>
       </section>
