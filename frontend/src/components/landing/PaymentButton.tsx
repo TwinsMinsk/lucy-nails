@@ -8,30 +8,31 @@ import { toast } from "sonner";
 import { GuestCheckoutDialog } from "@/components/landing/GuestCheckoutDialog";
 
 interface PaymentButtonProps {
+  /** UUID курса с API или `"default"` — первый опубликованный курс на бэкенде */
   courseId: string | null;
   tariff: "self" | "support";
   children?: React.ReactNode;
   className?: string;
 }
 
+function resolveCourseIdForCheckout(raw: string | null): string {
+  const s = raw?.trim();
+  if (!s) return "default";
+  return s;
+}
+
 export function PaymentButton({ courseId, tariff, children, className }: PaymentButtonProps) {
   const [loading, setLoading] = useState(false);
   const [guestOpen, setGuestOpen] = useState(false);
+  const effectiveCourseId = resolveCourseIdForCheckout(courseId);
 
   const handlePayment = async () => {
     try {
       setLoading(true);
 
-      if (!courseId || courseId === "default") {
-        toast.error("Курс временно недоступен", {
-          description: "Мы не смогли загрузить опубликованный курс. Попробуйте обновить страницу.",
-        });
-        return;
-      }
-
       const user = await getMe();
       const data = await getPaymentLink({
-        course_id: courseId,
+        course_id: effectiveCourseId,
         tariff,
         customer_email: user.email,
       });
@@ -59,17 +60,15 @@ export function PaymentButton({ courseId, tariff, children, className }: Payment
 
   return (
     <>
-      {courseId && courseId !== "default" ? (
-        <GuestCheckoutDialog
-          open={guestOpen}
-          onOpenChange={setGuestOpen}
-          courseId={courseId}
-          tariff={tariff}
-        />
-      ) : null}
+      <GuestCheckoutDialog
+        open={guestOpen}
+        onOpenChange={setGuestOpen}
+        courseId={effectiveCourseId}
+        tariff={tariff}
+      />
       <Button
         onClick={handlePayment}
-        disabled={loading || !courseId || courseId === "default"}
+        disabled={loading}
         className={
           className ??
           "relative overflow-hidden group w-full h-14 rounded-full text-sm uppercase tracking-[0.2em] font-bold bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white hover:to-[#db3f6e] transition-all duration-500 shadow-[0_10px_25px_rgba(219,63,110,0.3)] hover:shadow-[0_15px_35px_rgba(219,63,110,0.45)] hover:-translate-y-1 border-none ring-1 ring-white/10"
