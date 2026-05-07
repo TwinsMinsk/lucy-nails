@@ -1,16 +1,19 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
 import useEmblaCarousel from "embla-carousel-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import type { GalleryItem } from "@/lib/landing/course-content";
 
 interface NailsGalleryProps {
-    images: string[];
+    items: GalleryItem[];
 }
 
-export function NailsGallery({ images }: NailsGalleryProps) {
+export function NailsGallery({ items }: NailsGalleryProps) {
     const [emblaRef, emblaApi] = useEmblaCarousel({
         loop: true,
         align: "center",
@@ -39,7 +42,7 @@ export function NailsGallery({ images }: NailsGalleryProps) {
             {/* Container for Embla */}
             <div className="overflow-hidden" ref={emblaRef}>
                 <div className="flex">
-                    {images.map((src, index) => {
+                    {items.map((item, index) => {
                         const isActive = selectedIndex === index;
 
                         return (
@@ -61,11 +64,21 @@ export function NailsGallery({ images }: NailsGalleryProps) {
                                     }}
                                     className="relative aspect-[3/4] rounded-3xl overflow-hidden shadow-2xl bg-[#EBC8C8]"
                                 >
-                                    <img
-                                        src={src}
-                                        alt={`Nail work ${index + 1}`}
-                                        className="w-full h-full object-cover select-none"
+                                    <Image
+                                        src={item.src}
+                                        alt={item.alt}
+                                        fill
+                                        sizes="(max-width: 640px) 70vw, (max-width: 1024px) 40vw, 33vw"
+                                        className="object-cover select-none"
                                     />
+                                    <div className="absolute inset-x-4 bottom-4 rounded-2xl bg-white/85 backdrop-blur-md p-4 border border-white/70">
+                                        <Badge variant="secondary" className="mb-2 bg-[#fff1f4] text-text-primary border border-primary/20">
+                                            {item.technique}
+                                        </Badge>
+                                        <p className="text-sm leading-relaxed text-text-secondary">
+                                            {item.caption}
+                                        </p>
+                                    </div>
                                     {/* Subtle overlay for inactive ones */}
                                     {!isActive && (
                                         <div className="absolute inset-0 bg-black/5 backdrop-blur-[1px]" />
@@ -99,7 +112,7 @@ export function NailsGallery({ images }: NailsGalleryProps) {
 
             {/* Dots / Indicators */}
             <div className="flex justify-center gap-3 mt-12">
-                {images.map((_, index) => (
+                {items.map((_, index) => (
                     <button
                         key={index}
                         onClick={() => emblaApi?.scrollTo(index)}

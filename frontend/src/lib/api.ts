@@ -371,11 +371,21 @@ export const getCourseProgress = async (courseId: string): Promise<{ completed_l
     return apiFetch<{ completed_lesson_ids: string[]; progress_percent: number }>(`/courses/${courseId}/my-progress`);
 };
 
+export interface ProgressResponse {
+    id: string;
+    user_id: string;
+    lesson_id: string;
+    watched_seconds: number;
+    is_completed: boolean;
+    completed_at: string | null;
+    updated_at: string;
+}
+
 /**
  * Обновить прогресс урока (например, пометить как завершенный)
  */
-export const updateLessonProgress = async (lessonId: string, data: { is_completed: boolean; watched_seconds?: number }): Promise<any> => {
-    return apiFetch(`/lessons/${lessonId}/progress`, {
+export const updateLessonProgress = async (lessonId: string, data: { is_completed: boolean; watched_seconds?: number }): Promise<ProgressResponse> => {
+    return apiFetch<ProgressResponse>(`/lessons/${lessonId}/progress`, {
         method: "POST",
         body: JSON.stringify(data),
     });
@@ -498,6 +508,10 @@ export interface AdminLessonResponse {
     duration_seconds: number;
     order_index: number;
     is_preview: boolean;
+    promo_kinescope_video_id?: string | null;
+    promo_poster_url?: string | null;
+    promo_description?: string | null;
+    promo_highlights?: { bullets?: string[] } | null;
     created_at: string;
 }
 
@@ -620,6 +634,10 @@ export interface LessonCreateRequest {
     duration_seconds?: number;
     order_index?: number;
     is_preview?: boolean;
+    promo_kinescope_video_id?: string;
+    promo_poster_url?: string;
+    promo_description?: string;
+    promo_highlights?: { bullets?: string[] };
 }
 
 export interface LessonUpdateRequest {
@@ -630,6 +648,10 @@ export interface LessonUpdateRequest {
     duration_seconds?: number;
     order_index?: number;
     is_preview?: boolean;
+    promo_kinescope_video_id?: string;
+    promo_poster_url?: string;
+    promo_description?: string;
+    promo_highlights?: { bullets?: string[] };
 }
 
 export const adminGetLesson = async (lessonId: string): Promise<AdminLessonResponse> => {

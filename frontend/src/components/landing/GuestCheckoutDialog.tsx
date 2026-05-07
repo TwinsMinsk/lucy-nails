@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getGuestPaymentLink } from "@/lib/api";
-import { Loader2 } from "lucide-react";
+import { CheckCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface GuestCheckoutDialogProps {
@@ -72,10 +72,20 @@ export function GuestCheckoutDialog({
         <DialogHeader>
           <DialogTitle>Оплата без регистрации</DialogTitle>
           <DialogDescription>
-            Укажите email — после успешной оплаты отправим пароль для входа в личный кабинет. Телефон
-            необязателен.
+            Укажите email — после успешной оплаты отправим пароль для входа в личный кабинет.
+            Телефон необязателен, но поможет быстрее найти платёж при обращении.
           </DialogDescription>
         </DialogHeader>
+        <div className="rounded-2xl bg-[#fff1f4] border border-primary/20 p-4 text-sm text-text-secondary space-y-2">
+          <div className="flex items-start gap-2">
+            <CheckCircle className="h-4 w-4 text-[#D4AF37] shrink-0 mt-0.5" />
+            <span>Вы перейдёте на платёжную форму Prodamus.</span>
+          </div>
+          <div className="flex items-start gap-2">
+            <CheckCircle className="h-4 w-4 text-[#D4AF37] shrink-0 mt-0.5" />
+            <span>После подтверждения платежа доступ появится в кабинете в течение пары минут.</span>
+          </div>
+        </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="guest-checkout-email">Email</Label>

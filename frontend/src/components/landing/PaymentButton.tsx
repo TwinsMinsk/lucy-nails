@@ -27,6 +27,16 @@ export function PaymentButton({ courseId, tariff, children, className }: Payment
   const effectiveCourseId = resolveCourseIdForCheckout(courseId);
 
   const handlePayment = async () => {
+    const hasSession = typeof document !== "undefined" && document.cookie.includes("auth_session=1");
+
+    if (!hasSession) {
+      toast.info("Можно оплатить без регистрации", {
+        description: "Укажите email, и после оплаты мы отправим данные для входа.",
+      });
+      setGuestOpen(true);
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -47,6 +57,9 @@ export function PaymentButton({ courseId, tariff, children, className }: Payment
     } catch (e) {
       console.error("Payment link error:", e);
       if (isAuthError(e)) {
+        toast.info("Можно оплатить без регистрации", {
+          description: "Укажите email, и после оплаты мы отправим данные для входа.",
+        });
         setGuestOpen(true);
         return;
       }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Loader2, BookOpen, Plus, Pencil, Trash2, ArrowLeft, GripVertical, Video, Clock } from "lucide-react";
@@ -81,9 +81,13 @@ export default function AdminCourseDetailPage() {
         duration_seconds: 0,
         order_index: 0,
         is_preview: false,
+        promo_kinescope_video_id: "",
+        promo_poster_url: "",
+        promo_description: "",
+        promo_bullets_text: "",
     });
 
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         try {
             const [courseData, modulesData] = await Promise.all([
                 adminGetCourse(courseId),
@@ -97,11 +101,11 @@ export default function AdminCourseDetailPage() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [courseId]);
 
     useEffect(() => {
         if (courseId) fetchData();
-    }, [courseId]);
+    }, [courseId, fetchData]);
 
     // === Module handlers ===
     const openModuleDialog = (module?: ModuleResponse) => {
@@ -173,6 +177,10 @@ export default function AdminCourseDetailPage() {
                     duration_seconds: fullLesson.duration_seconds,
                     order_index: fullLesson.order_index,
                     is_preview: fullLesson.is_preview,
+                    promo_kinescope_video_id: fullLesson.promo_kinescope_video_id || "",
+                    promo_poster_url: fullLesson.promo_poster_url || "",
+                    promo_description: fullLesson.promo_description || "",
+                    promo_bullets_text: (fullLesson.promo_highlights?.bullets || []).join("\n"),
                 });
                 setLessonDialogOpen(true);
             } catch (error) {
@@ -191,6 +199,10 @@ export default function AdminCourseDetailPage() {
                 duration_seconds: 0,
                 order_index: courseModule?.lessons?.length || 0,
                 is_preview: false,
+                promo_kinescope_video_id: "",
+                promo_poster_url: "",
+                promo_description: "",
+                promo_bullets_text: "",
             });
             setLessonDialogOpen(true);
         }
@@ -204,15 +216,33 @@ export default function AdminCourseDetailPage() {
         setIsSaving(true);
 
         try {
+            const promoBullets = lessonForm.promo_bullets_text
+                .split("\n")
+                .map((item) => item.trim())
+                .filter(Boolean);
+            const lessonPayload = {
+                title: lessonForm.title,
+                description: lessonForm.description,
+                content: lessonForm.content,
+                kinescope_video_id: lessonForm.kinescope_video_id,
+                duration_seconds: lessonForm.duration_seconds,
+                order_index: lessonForm.order_index,
+                is_preview: lessonForm.is_preview,
+                promo_kinescope_video_id: lessonForm.promo_kinescope_video_id,
+                promo_poster_url: lessonForm.promo_poster_url,
+                promo_description: lessonForm.promo_description,
+                promo_highlights: { bullets: promoBullets },
+            };
+
             // Проверка режима: Редактирование или Создание
             if (editingLesson && editingLesson.id) {
                 // Edit Mode (PUT)
-                await adminUpdateLesson(editingLesson.id, lessonForm);
+                await adminUpdateLesson(editingLesson.id, lessonPayload);
                 toast.success("Урок успешно обновлён");
             } else {
                 // Create Mode (POST)
                 await adminCreateLesson({
-                    ...lessonForm,
+                    ...lessonPayload,
                     module_id: lessonModuleId
                 } as LessonCreateRequest);
                 toast.success("Урок успешно создан");
@@ -354,6 +384,11 @@ export default function AdminCourseDetailPage() {
                                                                     <div className="font-medium text-sm flex items-center gap-2">
                                                                         {lesson.title}
                                                                         {lesson.is_preview && <Badge variant="secondary" className="text-xs">Превью</Badge>}
+                                                                        {(lesson.promo_kinescope_video_id || lesson.promo_description) && (
+                                                                            <Badge variant="outline" className="text-xs border-[#D4AF37]/40 text-text-secondary">
+                                                                                Промо заполнено
+                                                                            </Badge>
+                                                                        )}
                                                                     </div>
                                                                     <div className="text-xs text-text-secondary flex items-center gap-2">
                                                                         <Clock className="w-3 h-3" />
@@ -496,6 +531,50 @@ export default function AdminCourseDetailPage() {
                                 <p className="text-xs text-text-secondary">Урок будет доступен без покупки</p>
                             </div>
                             <Switch checked={lessonForm.is_preview} onCheckedChange={(checked) => setLessonForm({ ...lessonForm, is_preview: checked })} />
+                        </div>
+                        <div className="rounded-2xl border border-primary/20 bg-[#fff1f4]/60 p-4 space-y-4">
+                            <div>
+                                <h3 className="font-semibold text-text-primary">Промо для лендинга</h3>
+                                <p className="text-xs text-text-secondary">
+                                    Эти поля показываются в блоке «Программа курса» на главной странице.
+                                </p>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Kinescope ID промо</Label>
+                                    <Input
+                                        value={lessonForm.promo_kinescope_video_id}
+                                        onChange={(e) => setLessonForm({ ...lessonForm, promo_kinescope_video_id: e.target.value })}
+                                        placeholder="id короткого промо"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>URL постера промо</Label>
+                                    <Input
+                                        value={lessonForm.promo_poster_url}
+                                        onChange={(e) => setLessonForm({ ...lessonForm, promo_poster_url: e.target.value })}
+                                        placeholder="https://.../poster.jpg"
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Краткое описание для карточки</Label>
+                                <Textarea
+                                    value={lessonForm.promo_description}
+                                    onChange={(e) => setLessonForm({ ...lessonForm, promo_description: e.target.value })}
+                                    rows={3}
+                                    placeholder="Что мастер освоит в этом уроке и почему это полезно клиентам"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Буллеты «что узнаете»</Label>
+                                <Textarea
+                                    value={lessonForm.promo_bullets_text}
+                                    onChange={(e) => setLessonForm({ ...lessonForm, promo_bullets_text: e.target.value })}
+                                    rows={4}
+                                    placeholder={"Один тезис на строку\nНапример: Подбор материалов\nЗакрепление без сколов"}
+                                />
+                            </div>
                         </div>
                     </div>
                     <DialogFooter>

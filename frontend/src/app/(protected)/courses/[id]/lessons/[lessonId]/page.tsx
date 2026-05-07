@@ -3,7 +3,7 @@
 import { use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, CheckCircle, Loader2, Check } from "lucide-react";
+import { ChevronLeft, ChevronRight, CheckCircle, Loader2, Check, ListVideo } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { getLesson, LessonResponse, getPublicCourseModules, ModuleResponse, getCourseProgress, updateLessonProgress, isAuthError } from "@/lib/api";
 import { toast } from "sonner";
@@ -15,6 +15,14 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { VideoPlayer } from "@/components/course/VideoPlayer";
+import {
+    Sheet,
+    SheetContent,
+    SheetDescription,
+    SheetHeader,
+    SheetTitle,
+    SheetTrigger,
+} from "@/components/ui/sheet";
 
 export default function LessonPage({ params }: { params: Promise<{ id: string, lessonId: string }> }) {
     const { id, lessonId } = use(params);
@@ -141,6 +149,53 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
     }
 
     const isLessonCompleted = completedLessonIds.includes(lesson.id);
+    const courseOutline = (
+        <div className="p-4 space-y-6">
+            {modules.map((module) => (
+                <div key={module.id} className="space-y-2">
+                    <h3 className="text-sm font-medium text-text-secondary uppercase tracking-wider pl-2">
+                        Модуль {module.order_index}: {module.title}
+                    </h3>
+                    <div className="space-y-1">
+                        {module.lessons?.sort((a, b) => a.order_index - b.order_index).map((l) => {
+                            const isCurrent = l.id === lessonId;
+                            const isCompleted = completedLessonIds.includes(l.id);
+
+                            return (
+                                <Link
+                                    key={l.id}
+                                    href={`/courses/${id}/lessons/${l.id}`}
+                                    className={cn(
+                                        "flex items-center gap-3 p-3 rounded-lg text-sm transition-colors",
+                                        isCurrent
+                                            ? "bg-primary/10 text-primary font-medium"
+                                            : "hover:bg-slate-50 text-text-primary",
+                                        !isCurrent && !isCompleted && "opacity-70 hover:opacity-100"
+                                    )}
+                                >
+                                    <div className="shrink-0 pt-0.5">
+                                        {isCurrent ? (
+                                            <div className="w-4 h-4 rounded-full border-2 border-primary flex items-center justify-center">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                                            </div>
+                                        ) : isCompleted ? (
+                                            <CheckCircle className="w-4 h-4 text-[#D4AF37]" />
+                                        ) : (
+                                            <div className="w-4 h-4 rounded-full border-2 border-text-secondary/30" />
+                                        )}
+                                    </div>
+                                    <span className="line-clamp-2">{l.order_index}. {l.title}</span>
+                                    <span className="ml-auto text-xs text-text-secondary shrink-0">
+                                        {formatDuration(l.duration_seconds)}
+                                    </span>
+                                </Link>
+                            );
+                        })}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
 
     return (
         <div className="flex flex-col lg:flex-row h-[calc(100vh-64px)] overflow-hidden">
@@ -152,6 +207,25 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
                     <Link href="/dashboard" className="text-sm text-text-secondary hover:text-primary flex items-center gap-1">
                         <ChevronLeft className="w-4 h-4" /> Назад в кабинет
                     </Link>
+                    <Sheet>
+                        <SheetTrigger asChild>
+                            <Button variant="outline" size="sm" className="lg:hidden gap-2 rounded-full">
+                                <ListVideo className="w-4 h-4" />
+                                Содержание
+                            </Button>
+                        </SheetTrigger>
+                        <SheetContent side="right" className="w-[92vw] sm:max-w-md p-0">
+                            <SheetHeader>
+                                <SheetTitle>Содержание курса</SheetTitle>
+                                <SheetDescription>
+                                    Прогресс: {progressPercent}% завершено
+                                </SheetDescription>
+                            </SheetHeader>
+                            <ScrollArea className="flex-1 min-h-0">
+                                {courseOutline}
+                            </ScrollArea>
+                        </SheetContent>
+                    </Sheet>
                 </div>
 
                 {/* Video Player Section */}
@@ -212,7 +286,7 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
                                     <Button
                                         size="lg"
                                         onClick={handleToggleComplete}
-                                        className="rounded-full px-8 bg-green-600 hover:bg-green-700 text-white shadow-md transition-all hover:scale-105"
+                                        className="rounded-full px-8 bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white shadow-md transition-all hover:scale-105"
                                     >
                                         <CheckCircle className="w-5 h-5 mr-2" />
                                         Отметить просмотренным
@@ -259,51 +333,7 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
                     </Badge>
                 </div>
                 <ScrollArea className="flex-1 min-h-0">
-                    <div className="p-4 space-y-6">
-                        {modules.map((module) => (
-                            <div key={module.id} className="space-y-2">
-                                <h3 className="text-sm font-medium text-text-secondary uppercase tracking-wider pl-2">
-                                    Модуль {module.order_index}: {module.title}
-                                </h3>
-                                <div className="space-y-1">
-                                    {module.lessons?.sort((a, b) => a.order_index - b.order_index).map((l) => {
-                                        const isCurrent = l.id === lessonId;
-                                        const isCompleted = completedLessonIds.includes(l.id);
-
-                                        return (
-                                            <Link
-                                                key={l.id}
-                                                href={`/courses/${id}/lessons/${l.id}`}
-                                                className={cn(
-                                                    "flex items-center gap-3 p-3 rounded-lg text-sm transition-colors",
-                                                    isCurrent
-                                                        ? "bg-primary/10 text-primary font-medium"
-                                                        : "hover:bg-slate-50 text-text-primary",
-                                                    !isCurrent && !isCompleted && "opacity-60 hover:opacity-100" // Dim unchecked lessons
-                                                )}
-                                            >
-                                                <div className="shrink-0 pt-0.5">
-                                                    {isCurrent ? (
-                                                        <div className="w-4 h-4 rounded-full border-2 border-primary flex items-center justify-center">
-                                                            <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                                                        </div>
-                                                    ) : isCompleted ? (
-                                                        <CheckCircle className="w-4 h-4 text-green-500" />
-                                                    ) : (
-                                                        <div className="w-4 h-4 rounded-full border-2 border-text-secondary/30" />
-                                                    )}
-                                                </div>
-                                                <span className="line-clamp-2">{l.order_index}. {l.title}</span>
-                                                <span className="ml-auto text-xs text-text-secondary shrink-0">
-                                                    {formatDuration(l.duration_seconds)}
-                                                </span>
-                                            </Link>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                    {courseOutline}
                 </ScrollArea>
             </div>
         </div>

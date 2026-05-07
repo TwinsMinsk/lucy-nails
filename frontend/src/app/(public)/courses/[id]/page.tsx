@@ -9,6 +9,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { getPublicCourse, getPublicCourseModules, CourseResponse, ModuleResponse } from "@/lib/api";
 import { notFound } from "next/navigation";
 import { CoursePaymentCTA } from "@/components/course/CoursePaymentCTA";
+import { landingCourse } from "@/lib/landing/course-content";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
     const { id } = await params;
@@ -161,7 +162,7 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                                             </li>
                                             <li className="flex gap-3 text-sm">
                                                 <CheckCircle className="w-5 h-5 text-success shrink-0" />
-                                                <span>Самостоятельная отработка</span>
+                                                <span>Самостоятельная отработка по конспектам</span>
                                             </li>
                                             <li className="flex gap-3 text-sm opacity-50">
                                                 <ShieldCheck className="w-5 h-5 shrink-0" />
@@ -179,12 +180,12 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                                 {/* Rate 2 */}
                                 <Card className="flex flex-col h-full border-2 border-primary/20 bg-primary/5 relative overflow-hidden">
                                     <div className="absolute top-0 right-0 bg-primary text-white text-xs font-bold px-3 py-1 rounded-bl-lg">
-                                        POPULAR
+                                        Популярный
                                     </div>
                                     <CardHeader>
                                         <CardTitle className="text-xl">С поддержкой</CardTitle>
                                         <div className="text-3xl font-bold text-primary py-2">
-                                            {course.prices.support.toLocaleString('ru-RU')} ₽
+                                        {course.prices.support.toLocaleString('ru-RU')} ₽
                                         </div>
                                     </CardHeader>
                                     <CardContent className="flex-1 space-y-4">
@@ -203,7 +204,7 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                                             </li>
                                             <li className="flex gap-3 text-sm">
                                                 <CheckCircle className="w-5 h-5 text-success shrink-0" />
-                                                <span>Именной сертификат</span>
+                                                <span>Подсказки по материалам и ошибкам</span>
                                             </li>
                                         </ul>
                                     </CardContent>
@@ -249,7 +250,7 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                                     </Button>
 
                                     <p className="text-xs text-center text-text-secondary">
-                                        Гарантия безопасной сделки
+                                        {landingCourse.supportNote}
                                     </p>
                                 </CardContent>
                             </Card>

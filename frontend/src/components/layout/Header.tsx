@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Menu, User, LogIn, LogOut, BookOpen } from "lucide-react"; // Import LogOut and BookOpen correct
+import { Menu, User, LogOut, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
     Sheet,
@@ -19,7 +19,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { usePathname, useRouter } from "next/navigation";
 import { getMe, logout, UserResponse } from "@/lib/api";
 
@@ -35,9 +35,9 @@ export function Header() {
     // Define links based on context
     const landingLinks = [
         { href: "#about", label: "О курсе" },
-        { href: "#modules", label: "Программа" },
+        { href: "#program", label: "Программа" },
+        { href: "#gallery", label: "Галерея" },
         { href: "#pricing", label: "Тарифы" },
-        { href: "#reviews", label: "Отзывы" },
     ];
 
     const dashboardLinks = [
@@ -53,7 +53,7 @@ export function Header() {
             try {
                 const userData = await getMe();
                 setUser(userData);
-            } catch (e) {
+            } catch {
                 // Token invalid or expired
                 setUser(null);
             }

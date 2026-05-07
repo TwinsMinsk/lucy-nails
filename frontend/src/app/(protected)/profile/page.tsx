@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { getMe, isAuthError, logout, UserResponse } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Loader2, LogOut, User } from "lucide-react";
+import { BookOpen, Loader2, LogOut, User } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -96,7 +97,17 @@ export default function ProfilePage() {
                         />
                     </div>
                 </CardContent>
-                <CardFooter className="pt-2">
+                <CardFooter className="pt-2 flex flex-col gap-3">
+                    <Button asChild className="w-full gap-2 h-12 text-base rounded-full bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white">
+                        <Link href="/dashboard">
+                            <BookOpen className="w-5 h-5" />
+                            Перейти к моим курсам
+                        </Link>
+                    </Button>
+                    <div className="rounded-2xl bg-[#fff1f4] p-4 text-sm text-text-secondary leading-relaxed">
+                        Если вы оплатили курс без регистрации, используйте email и пароль из письма.
+                        Доступ обычно появляется в кабинете в течение пары минут после оплаты.
+                    </div>
                     <Button
                         variant="destructive"
                         className="w-full gap-2 h-12 text-base"
