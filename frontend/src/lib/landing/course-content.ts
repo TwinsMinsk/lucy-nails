@@ -6,6 +6,8 @@ export type ProgramModuleContent = {
   outcome: string;
   bullets: string[];
   mistakes: string[];
+  promoVideoId?: string;
+  promoPosterUrl?: string;
 };
 
 export type GalleryItem = {
@@ -68,6 +70,8 @@ export const programModules: ProgramModuleContent[] = [
     slug: "folga",
     title: "Фольга",
     duration: "23 мин",
+    promoVideoId: "eQN4BMVcovNtp65zbZfkjy",
+    promoPosterUrl: "https://kinescope.io/eQN4BMVcovNtp65zbZfkjy/poster.jpg",
     description:
       "Разберёте, как получать чистый отпечаток фольги на липком слое, базе, праймере и клее, а не надеяться на случай.",
     outcome: "Быстрый блеск, рамки, акценты и сочетания со слайдерами или витражом.",
@@ -78,6 +82,8 @@ export const programModules: ProgramModuleContent[] = [
     slug: "akvarium",
     title: "Аквариум",
     duration: "30 мин",
+    promoVideoId: "tWFN2TneS5TJyxafakwcrZ",
+    promoPosterUrl: "https://kinescope.io/tWFN2TneS5TJyxafakwcrZ/poster.jpg",
     description:
       "Создадите эффект глубины под гелем: блёстки, хлопья и декор остаются как будто под стеклом.",
     outcome: "Премиальные дизайны с прозрачным кончиком, плавным переходом и аккуратной архитектурой.",
@@ -88,6 +94,8 @@ export const programModules: ProgramModuleContent[] = [
     slug: "vtirka",
     title: "Втирка",
     duration: "24 мин",
+    promoVideoId: "sMyFHRikRvGUtGo3FCTN4w",
+    promoPosterUrl: "https://kinescope.io/sMyFHRikRvGUtGo3FCTN4w/poster.jpg",
     description:
       "Поймёте, как заставить капризную втирку лечь ровно и носиться без сколов.",
     outcome: "Жемчуг, хром, розовое золото, Prisma и градиенты втиркой на разных подложках.",
@@ -98,6 +106,8 @@ export const programModules: ProgramModuleContent[] = [
     slug: "slaidery",
     title: "Слайдеры и наклейки",
     duration: "21 мин",
+    promoVideoId: "p6fvWYVDyrULKUXP4R8Nmw",
+    promoPosterUrl: "https://kinescope.io/p6fvWYVDyrULKUXP4R8Nmw/poster.jpg",
     description:
       "Научитесь ставить маленькие и полноразмерные слайдеры без пузырей, заломов и отслоек.",
     outcome: "Быстрая графика для клиентов, которую можно красиво сочетать с блёстками и фольгой.",
@@ -108,6 +118,8 @@ export const programModules: ProgramModuleContent[] = [
     slug: "french",
     title: "Френч",
     duration: "42 мин",
+    promoVideoId: "tRKrVSfSTmHDTgTaNXF6Qx",
+    promoPosterUrl: "https://kinescope.io/tRKrVSfSTmHDTgTaNXF6Qx/poster.jpg",
     description:
       "Разложите френч на понятную схему точек и линий, чтобы улыбка была симметричной на квадрате, миндале и овальных формах.",
     outcome: "Классический, острый, частичный и декоративный френч как востребованная услуга в прайсе.",
@@ -118,6 +130,8 @@ export const programModules: ProgramModuleContent[] = [
     slug: "pigmenty",
     title: "Пигменты",
     duration: "13 мин",
+    promoVideoId: "kKJxREoNGqLCSf6xK1zdw1",
+    promoPosterUrl: "https://kinescope.io/kKJxREoNGqLCSf6xK1zdw1/poster.jpg",
     description:
       "Освоите яркие пигменты на липком слое: от мягкого градиента до акцентных линий и френча.",
     outcome: "Цветовые переходы и узоры, которые легко адаптировать под запрос клиента.",
@@ -128,6 +142,8 @@ export const programModules: ProgramModuleContent[] = [
     slug: "stemping",
     title: "Стемпинг",
     duration: "18 мин",
+    promoVideoId: "kw9eDYoH8DDrsw4E63pH35",
+    promoPosterUrl: "https://kinescope.io/kw9eDYoH8DDrsw4E63pH35/poster.jpg",
     description:
       "Разберёте инструменты и тайминг переноса, чтобы стемпинг получался чётким и не зависел от удачи.",
     outcome: "Быстрые принты, градиентный стемпинг и сочетания со слайдерами или втиркой.",
@@ -138,6 +154,8 @@ export const programModules: ProgramModuleContent[] = [
     slug: "strazy",
     title: "Стразы и объёмный декор",
     duration: "47 мин",
+    promoVideoId: "2reSLsuWmeG6dpom4W8J2W",
+    promoPosterUrl: "https://kinescope.io/2reSLsuWmeG6dpom4W8J2W/poster.jpg",
     description:
       "Пошагово соберёте царь-ноготь и объёмные украшения так, чтобы стразы блестели и не отваливались.",
     outcome: "Премиальные акценты, линии из страз, бульонки и фигурки с надёжным закреплением.",
@@ -148,6 +166,8 @@ export const programModules: ProgramModuleContent[] = [
     slug: "tekstury",
     title: "Текстуры",
     duration: "25 мин",
+    promoVideoId: "eMFDunaoWFcWby8WpXrGS1",
+    promoPosterUrl: "https://kinescope.io/eMFDunaoWFcWby8WpXrGS1/poster.jpg",
     description:
       "Научитесь создавать камень, воду, космические и абстрактные фактуры через смешение оттенков на палитре.",
     outcome: "Каждый дизайн выглядит уникально, но техника остаётся понятной и повторяемой.",
@@ -158,6 +178,8 @@ export const programModules: ProgramModuleContent[] = [
     slug: "gradient",
     title: "Градиент",
     duration: "25 мин",
+    promoVideoId: "p5rijET5GtXxnvTSFTNVqw",
+    promoPosterUrl: "https://kinescope.io/p5rijET5GtXxnvTSFTNVqw/poster.jpg",
     description:
       "Разберёте градиенты широкой кистью по мокрому и по сухому, включая подбор оттенков без грязи.",
     outcome: "Плавные переходы от нюда до яркого неона, которые красиво смотрятся в салоне и в соцсетях.",
@@ -168,6 +190,8 @@ export const programModules: ProgramModuleContent[] = [
     slug: "aerografiya",
     title: "Аэрография",
     duration: "19 мин",
+    promoVideoId: "pnqRjFhCqjcNiUqgDsAnSA",
+    promoPosterUrl: "https://kinescope.io/pnqRjFhCqjcNiUqgDsAnSA/poster.jpg",
     description:
       "Разберёте эффектные дизайны аэрографом: мягкий градиент, Baby Boomer, 3D-иллюзии и правильное закрепление.",
     outcome: "Воздушные дизайны, которые выглядят сложно и дорого, но собираются по понятным этапам.",

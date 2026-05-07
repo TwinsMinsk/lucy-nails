@@ -31,9 +31,9 @@ export function ProgramSection({ apiModules, staticModules }: ProgramSectionProp
       {useApi
         ? apiModules!.map((mod, idx) => {
             const lesson = mod.lessons?.[0];
-            const promoId = lesson?.promo_kinescope_video_id ?? null;
-            const poster = lesson?.promo_poster_url ?? null;
             const fallback = getFallbackCopy(mod.title, idx + 1);
+            const promoId = lesson?.promo_kinescope_video_id || fallback?.promoVideoId || null;
+            const poster = lesson?.promo_poster_url || fallback?.promoPosterUrl || null;
             const description =
               lesson?.promo_description?.trim() ||
               fallback?.description ||
@@ -75,8 +75,8 @@ export function ProgramSection({ apiModules, staticModules }: ProgramSectionProp
                 outcome={copy?.outcome}
                 bullets={bullets}
                 mistakes={copy?.mistakes}
-                promoVideoId={null}
-                posterUrl={null}
+                promoVideoId={copy?.promoVideoId ?? null}
+                posterUrl={copy?.promoPosterUrl ?? null}
                 durationLabel={copy?.duration ?? lesson?.duration}
               />
             );
