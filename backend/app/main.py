@@ -46,9 +46,20 @@ class CsrfProtectionMiddleware(BaseHTTPMiddleware):
     """Double-submit CSRF protection for cookie-authenticated unsafe requests."""
 
     SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
+    # Auth endpoints establish/rotate the cookie+CSRF pair themselves, so they must
+    # work even when stale auth cookies remain from a previous session.
+    EXEMPT_PATHS = {
+        "/api/auth/login",
+        "/api/auth/register",
+        "/api/auth/refresh",
+        "/api/auth/logout",
+    }
 
     async def dispatch(self, request: Request, call_next):
         if request.method.upper() in self.SAFE_METHODS:
+            return await call_next(request)
+
+        if request.url.path in self.EXEMPT_PATHS:
             return await call_next(request)
 
         uses_auth_cookie = bool(request.cookies.get("access_token") or request.cookies.get("refresh_token"))
