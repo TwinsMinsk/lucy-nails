@@ -1,7 +1,7 @@
 import { ProgramModuleCard } from "@/components/landing/ProgramModuleCard";
 import type { Module } from "@/components/course/ModuleList";
 import type { ModuleResponse } from "@/lib/api";
-import { programModules, type ProgramModuleContent } from "@/lib/landing/course-content";
+import { programModules } from "@/lib/landing/course-content";
 
 export interface ProgramSectionProps {
   apiModules: ModuleResponse[] | null;
@@ -16,71 +16,43 @@ function formatDuration(seconds: number): string {
   return `${m} мин`;
 }
 
-const copyByTitle = new Map(programModules.map((module) => [module.title, module]));
-const copyByOrder = new Map(programModules.map((module, index) => [index + 1, module]));
-
-function getFallbackCopy(title: string, orderIndex: number): ProgramModuleContent | undefined {
-  return copyByTitle.get(title) ?? copyByOrder.get(orderIndex);
-}
-
-export function ProgramSection({ apiModules, staticModules }: ProgramSectionProps) {
-  const useApi = Boolean(apiModules && apiModules.length > 0);
+export function ProgramSection({ apiModules }: ProgramSectionProps) {
+  const apiByTitle = new Map((apiModules ?? []).map((m) => [m.title, m] as const));
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
-      {useApi
-        ? apiModules!.map((mod, idx) => {
-            const lesson = mod.lessons?.[0];
-            const fallback = getFallbackCopy(mod.title, idx + 1);
-            const promoId = lesson?.promo_kinescope_video_id || fallback?.promoVideoId || null;
-            const poster = lesson?.promo_poster_url || fallback?.promoPosterUrl || null;
-            const description =
-              lesson?.promo_description?.trim() ||
-              fallback?.description ||
-              mod.description ||
-              "";
-            const bullets =
-              lesson?.promo_bullets?.length ? lesson.promo_bullets : fallback?.bullets || [];
-            const durationLabel = lesson
-              ? formatDuration(lesson.duration_seconds)
-              : fallback?.duration;
+      {programModules.map((copy, idx) => {
+        const apiMod = apiByTitle.get(copy.title);
+        const apiLesson = apiMod?.lessons?.[0];
 
-            return (
-              <ProgramModuleCard
-                key={mod.id}
-                orderIndex={idx + 1}
-                title={mod.title}
-                description={description}
-                outcome={fallback?.outcome}
-                bullets={bullets}
-                mistakes={fallback?.mistakes}
-                promoVideoId={promoId}
-                posterUrl={poster}
-                durationLabel={durationLabel}
-              />
-            );
-          })
-        : staticModules.map((mod, idx) => {
-            const lesson = mod.lessons[0];
-            const copy = getFallbackCopy(mod.title, idx + 1);
-            const description = copy?.description ?? "";
-            const bullets = copy?.bullets ?? [];
+        const promoId = apiLesson?.promo_kinescope_video_id || copy.promoVideoId || null;
+        const poster = apiLesson?.promo_poster_url || copy.promoPosterUrl || null;
+        const description =
+          apiLesson?.promo_description?.trim() ||
+          copy.description ||
+          apiMod?.description ||
+          "";
+        const bullets =
+          apiLesson?.promo_bullets?.length ? apiLesson.promo_bullets : copy.bullets;
+        const durationLabel = apiLesson?.duration_seconds
+          ? formatDuration(apiLesson.duration_seconds)
+          : copy.duration;
 
-            return (
-              <ProgramModuleCard
-                key={mod.id}
-                orderIndex={idx + 1}
-                title={mod.title}
-                description={description}
-                outcome={copy?.outcome}
-                bullets={bullets}
-                mistakes={copy?.mistakes}
-                promoVideoId={copy?.promoVideoId ?? null}
-                posterUrl={copy?.promoPosterUrl ?? null}
-                durationLabel={copy?.duration ?? lesson?.duration}
-              />
-            );
-          })}
+        return (
+          <ProgramModuleCard
+            key={apiMod?.id || copy.slug}
+            orderIndex={idx + 1}
+            title={copy.title}
+            description={description}
+            outcome={copy.outcome}
+            bullets={bullets}
+            mistakes={copy.mistakes}
+            promoVideoId={promoId}
+            posterUrl={poster}
+            durationLabel={durationLabel}
+          />
+        );
+      })}
     </div>
   );
 }
