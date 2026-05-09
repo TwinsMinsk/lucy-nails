@@ -35,7 +35,7 @@ export function ProgramModuleCard({
 }: ProgramModuleCardProps) {
   const hasVideo = Boolean(promoVideoId);
   const embedSrc = promoVideoId
-    ? `https://kinescope.io/embed/${promoVideoId}?preload=false`
+    ? `https://kinescope.io/embed/${promoVideoId}?preload=false&autopause=1&muted=0`
     : null;
 
   const posterArea = hasVideo && embedSrc ? (
@@ -72,7 +72,7 @@ export function ProgramModuleCard({
             src={embedSrc}
             title={title}
             className="absolute inset-0 h-full w-full"
-            allow="autoplay; fullscreen; picture-in-picture"
+            allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
             allowFullScreen
             loading="lazy"
           />
