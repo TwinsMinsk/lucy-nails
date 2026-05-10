@@ -149,6 +149,22 @@ async def health_check():
     return {"status": "ok"}
 
 
+# Serve uploaded admin files (course banners, lesson posters, etc.) when
+# persistent storage is configured. UPLOAD_STORAGE_DIR must point to a
+# directory backed by a Railway Volume (or local disk in dev).
+if settings.UPLOAD_STORAGE_DIR:
+    import os
+
+    from fastapi.staticfiles import StaticFiles
+
+    os.makedirs(settings.UPLOAD_STORAGE_DIR, exist_ok=True)
+    app.mount(
+        "/uploads",
+        StaticFiles(directory=settings.UPLOAD_STORAGE_DIR),
+        name="uploads",
+    )
+
+
 # Подключение роутеров
 from app.api import auth, courses, modules, lessons, purchases, admin, upload, payments  # noqa: E402
 
