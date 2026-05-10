@@ -2,10 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import {
   Sparkles,
-  Star,
-  Award,
   CheckCircle,
-  Play,
   ArrowRight,
   ShieldCheck,
   Video,
@@ -118,9 +115,6 @@ export default async function Home() {
                 <p className="text-lg md:text-xl text-text-secondary leading-relaxed">
                   {course.subtitle}
                 </p>
-                <p className="text-base text-text-secondary/90 leading-relaxed max-w-2xl">
-                  {course.description}
-                </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl">
                   {hero.heroStats.map((stat) => (
@@ -156,9 +150,6 @@ export default async function Home() {
                     </div>
                   ))}
                 </div>
-                <p className="text-sm text-text-secondary">
-                  {hero.audience}
-                </p>
               </div>
             </div>
 
@@ -176,27 +167,6 @@ export default async function Home() {
                 </div>
               </div>
 
-              {/* Floating Cards */}
-              <div className="absolute bottom-8 left-4 right-4 flex justify-center gap-4 flex-wrap md:flex-nowrap">
-                {/* Card 1 */}
-                <div className="flex flex-col items-center justify-center bg-white/80 backdrop-blur-md p-4 rounded-2xl shadow-lg w-28 h-28 text-center border border-white/50">
-                  <Star className="w-6 h-6 text-text-primary mb-2 stroke-1" />
-                  <span className="font-serif text-lg font-bold">{course.modules.length}</span>
-                  <span className="text-[10px] uppercase tracking-wider text-text-secondary">Модулей</span>
-                </div>
-                {/* Card 2 */}
-                <div className="flex flex-col items-center justify-center bg-white/80 backdrop-blur-md p-4 rounded-2xl shadow-lg w-28 h-28 text-center border border-white/50">
-                  <Play className="w-6 h-6 text-text-primary mb-2 stroke-1 fill-current" />
-                  <span className="font-serif text-lg font-bold">{course.lessonsCount}</span>
-                  <span className="text-[10px] uppercase tracking-wider text-text-secondary">Уроков</span>
-                </div>
-                {/* Card 3 */}
-                <div className="flex flex-col items-center justify-center bg-white/80 backdrop-blur-md p-4 rounded-2xl shadow-lg w-28 h-28 text-center border border-white/50">
-                  <Award className="w-6 h-6 text-text-primary mb-2 stroke-1" />
-                  <span className="text-[10px] uppercase tracking-wider text-text-secondary mt-1">30 дней</span>
-                  <span className="text-[8px] text-text-secondary/70">доступа</span>
-                </div>
-              </div>
             </div>
 
           </div>

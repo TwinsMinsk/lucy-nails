@@ -298,24 +298,6 @@ function HeroSection({ courseId }: { courseId: string }) {
                     />
                 </div>
                 <div>
-                    <Label htmlFor="hero-desc">Описание</Label>
-                    <Textarea
-                        id="hero-desc"
-                        rows={4}
-                        value={hero.landing_description ?? ""}
-                        onChange={(e) => setHero({ ...hero, landing_description: e.target.value })}
-                    />
-                </div>
-                <div>
-                    <Label htmlFor="hero-audience">Целевая аудитория</Label>
-                    <Textarea
-                        id="hero-audience"
-                        rows={2}
-                        value={hero.landing_audience ?? ""}
-                        onChange={(e) => setHero({ ...hero, landing_audience: e.target.value })}
-                    />
-                </div>
-                <div>
                     <Label htmlFor="hero-support">Note о поддержке (мелкая строка под кнопкой)</Label>
                     <Input
                         id="hero-support"
