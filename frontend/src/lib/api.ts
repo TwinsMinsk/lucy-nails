@@ -695,6 +695,158 @@ export const adminUploadFile = uploadFile;
 
 /**
  * ============================================
+ * LANDING (hero / program / gallery) METHODS
+ * ============================================
+ */
+
+export interface HeroStat {
+    label: string;
+    value: string;
+}
+
+export interface LandingHeroPayload {
+    landing_title?: string | null;
+    landing_subtitle?: string | null;
+    landing_description?: string | null;
+    landing_audience?: string | null;
+    landing_support_note?: string | null;
+    landing_hero_stats?: HeroStat[] | null;
+    landing_benefits?: string[] | null;
+    landing_instructor_image_url?: string | null;
+}
+
+export interface LandingModulePayload {
+    id: string;
+    title: string;
+    order_index: number;
+    landing_description?: string | null;
+    landing_outcome?: string | null;
+    landing_bullets?: string[] | null;
+    landing_mistakes?: string[] | null;
+    landing_duration_label?: string | null;
+}
+
+export interface LandingModuleUpdate {
+    landing_description?: string | null;
+    landing_outcome?: string | null;
+    landing_bullets?: string[] | null;
+    landing_mistakes?: string[] | null;
+    landing_duration_label?: string | null;
+}
+
+export interface GalleryItem {
+    id: string;
+    order_index: number;
+    image_url: string;
+    title: string;
+    caption?: string | null;
+    alt?: string | null;
+    is_published: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface GalleryItemCreate {
+    image_url: string;
+    title: string;
+    caption?: string | null;
+    alt?: string | null;
+    is_published?: boolean;
+    order_index?: number;
+}
+
+export interface GalleryItemUpdate {
+    image_url?: string;
+    title?: string;
+    caption?: string | null;
+    alt?: string | null;
+    is_published?: boolean;
+    order_index?: number;
+}
+
+export interface LandingPayload {
+    course_id: string | null;
+    hero: LandingHeroPayload;
+    modules: LandingModulePayload[];
+    gallery: GalleryItem[];
+}
+
+export const getLandingPayload = async (): Promise<LandingPayload> => {
+    const base = getBaseUrl();
+    const res = await fetch(`${base}/landing`, { next: { revalidate: 120 } });
+    if (!res.ok) {
+        throw new Error(`Failed to load landing payload: ${res.status}`);
+    }
+    return res.json();
+};
+
+export const adminGetCourseLandingHero = async (courseId: string): Promise<LandingHeroPayload> => {
+    return apiFetch<LandingHeroPayload>(`/admin/courses/${courseId}/landing-hero`);
+};
+
+export const adminUpdateCourseLandingHero = async (
+    courseId: string,
+    data: LandingHeroPayload,
+): Promise<LandingHeroPayload> => {
+    return apiFetch<LandingHeroPayload>(`/admin/courses/${courseId}/landing-hero`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+    });
+};
+
+export const adminGetCourseLandingModules = async (
+    courseId: string,
+): Promise<LandingModulePayload[]> => {
+    return apiFetch<LandingModulePayload[]>(`/admin/courses/${courseId}/landing-modules`);
+};
+
+export const adminUpdateModuleLanding = async (
+    moduleId: string,
+    data: LandingModuleUpdate,
+): Promise<LandingModulePayload> => {
+    return apiFetch<LandingModulePayload>(`/admin/modules/${moduleId}/landing`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+    });
+};
+
+export const adminGetGallery = async (): Promise<GalleryItem[]> => {
+    return apiFetch<GalleryItem[]>("/admin/gallery");
+};
+
+export const adminCreateGalleryItem = async (data: GalleryItemCreate): Promise<GalleryItem> => {
+    return apiFetch<GalleryItem>("/admin/gallery", {
+        method: "POST",
+        body: JSON.stringify(data),
+    });
+};
+
+export const adminUpdateGalleryItem = async (
+    itemId: string,
+    data: GalleryItemUpdate,
+): Promise<GalleryItem> => {
+    return apiFetch<GalleryItem>(`/admin/gallery/${itemId}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+    });
+};
+
+export const adminDeleteGalleryItem = async (itemId: string): Promise<void> => {
+    await apiFetch(`/admin/gallery/${itemId}`, { method: "DELETE" });
+};
+
+export const adminReorderGallery = async (
+    items: { id: string; order_index: number }[],
+): Promise<GalleryItem[]> => {
+    return apiFetch<GalleryItem[]>("/admin/gallery/reorder", {
+        method: "PUT",
+        body: JSON.stringify(items),
+    });
+};
+
+
+/**
+ * ============================================
  * PAYMENTS METHODS
  * ============================================
  */

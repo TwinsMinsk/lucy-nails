@@ -24,7 +24,8 @@ import { PaymentButton } from "@/components/landing/PaymentButton";
 import { ProgramSection } from "@/components/landing/ProgramSection";
 import type { Module } from "@/components/course/ModuleList";
 import { getPublishedCourses, getPublicCourseModules, type ModuleResponse } from "@/lib/api";
-import { galleryItems, landingCourse, programModules } from "@/lib/landing/course-content";
+import { landingCourse } from "@/lib/landing/course-content";
+import { getLandingContent } from "@/lib/landing/loader";
 
 export const metadata: Metadata = {
   title: landingCourse.title,
@@ -40,28 +41,24 @@ export const metadata: Metadata = {
   },
 };
 
-const staticModules = programModules.map((module, index) => ({
-  id: String(index + 1),
-  title: module.title,
-  lessons: [{ id: `${index + 1}.1`, title: module.title, duration: module.duration }],
-})) satisfies Module[];
-
 const COURSE_DATA = {
-  title: landingCourse.title,
-  subtitle: landingCourse.subtitle,
-  description: landingCourse.description,
-  duration: landingCourse.duration,
-  lessonsCount: landingCourse.lessonsCount,
   level: "Для практикующих мастеров",
   certificate: false,
   prices: {
     self: 5900,
     support: 11900,
   },
-  modules: staticModules,
 };
 
 export default async function Home() {
+  const { hero, modules: landingModules, gallery } = await getLandingContent();
+
+  const staticModules = landingModules.map((module, index) => ({
+    id: String(index + 1),
+    title: module.title,
+    lessons: [{ id: `${index + 1}.1`, title: module.title, duration: module.duration }],
+  })) satisfies Module[];
+
   let primaryCourseId: string | null = null;
   let prices = { self: COURSE_DATA.prices.self, support: COURSE_DATA.prices.support };
 
@@ -85,7 +82,18 @@ export default async function Home() {
     }
   }
 
-  const course = { ...COURSE_DATA, prices };
+  const instructorImageSrc = hero.instructorImageUrl ?? "/landing/instructor-master.webp";
+  const course = {
+    title: hero.title,
+    subtitle: hero.subtitle,
+    description: hero.description,
+    duration: hero.duration,
+    lessonsCount: hero.lessonsCount,
+    level: COURSE_DATA.level,
+    certificate: COURSE_DATA.certificate,
+    prices,
+    modules: staticModules,
+  };
 
   return (
     <div className="flex flex-col min-h-screen bg-[#FDFBF9]">
@@ -115,7 +123,7 @@ export default async function Home() {
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl">
-                  {landingCourse.heroStats.map((stat) => (
+                  {hero.heroStats.map((stat) => (
                     <div key={stat.label} className="rounded-2xl bg-white/70 border border-white px-4 py-3 shadow-sm">
                       <div className="font-serif text-2xl text-text-primary">{stat.value}</div>
                       <div className="text-[10px] uppercase tracking-[0.18em] text-text-secondary">{stat.label}</div>
@@ -141,7 +149,7 @@ export default async function Home() {
                 </div>
 
                 <div className="flex flex-col gap-2 pt-2">
-                  {landingCourse.benefits.map((benefit) => (
+                  {hero.benefits.map((benefit) => (
                     <div key={benefit} className="flex items-start gap-3 text-sm text-text-secondary">
                       <CheckCircle className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5 fill-[#D4AF37]/10" />
                       <span>{benefit}</span>
@@ -149,7 +157,7 @@ export default async function Home() {
                   ))}
                 </div>
                 <p className="text-sm text-text-secondary">
-                  {landingCourse.audience}
+                  {hero.audience}
                 </p>
               </div>
             </div>
@@ -159,7 +167,7 @@ export default async function Home() {
               <div className="relative aspect-[4/5] md:aspect-square lg:aspect-[4/5] w-full max-w-md mx-auto lg:ml-auto rounded-[2.5rem] overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.25),0_30px_60px_rgba(0,0,0,0.6)] border-b-[12px] border-black/10 transition-transform duration-500 hover:-translate-y-3 hover:shadow-[0_0_50px_rgba(0,0,0,0.3),0_40px_80px_rgba(0,0,0,0.7)]">
                 <div className="w-full h-full bg-[#EBC8C8] relative">
                   <Image
-                    src="/landing/instructor-master.webp"
+                    src={instructorImageSrc}
                     alt="Мастер маникюра в студии Lucy Nails Academy"
                     fill
                     className="object-cover"
@@ -216,7 +224,7 @@ export default async function Home() {
           </div>
 
           <div className="max-w-6xl mx-auto">
-            <ProgramSection apiModules={programModules} staticModules={course.modules} />
+            <ProgramSection apiModules={programModules} modules={landingModules} />
           </div>
         </div>
       </section>
@@ -236,7 +244,7 @@ export default async function Home() {
           </p>
         </div>
 
-        <NailsGallery items={galleryItems} />
+        <NailsGallery items={gallery} />
       </section>
 
       {/* Pricing Section */}

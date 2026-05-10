@@ -1,12 +1,15 @@
 import { ProgramModuleCard } from "@/components/landing/ProgramModuleCard";
-import type { Module } from "@/components/course/ModuleList";
 import type { ModuleResponse } from "@/lib/api";
-import { programModules } from "@/lib/landing/course-content";
+import {
+  programModules as staticProgramModules,
+  type ProgramModuleContent,
+} from "@/lib/landing/course-content";
 
 export interface ProgramSectionProps {
+  /** Lesson-level promo overrides (poster/videoId/etc) coming from /api/courses/:id/modules */
   apiModules: ModuleResponse[] | null;
-  /** Fallback с главной (если API недоступен или без промо) */
-  staticModules: Module[];
+  /** Pre-merged copy for each module (DB landing-fields applied on top of static fallback) */
+  modules?: ProgramModuleContent[];
 }
 
 function formatDuration(seconds: number): string {
@@ -16,7 +19,8 @@ function formatDuration(seconds: number): string {
   return `${m} мин`;
 }
 
-export function ProgramSection({ apiModules }: ProgramSectionProps) {
+export function ProgramSection({ apiModules, modules }: ProgramSectionProps) {
+  const programModules = modules ?? staticProgramModules;
   const apiByTitle = new Map((apiModules ?? []).map((m) => [m.title, m] as const));
 
   return (
@@ -28,15 +32,19 @@ export function ProgramSection({ apiModules }: ProgramSectionProps) {
         const promoId = apiLesson?.promo_kinescope_video_id || copy.promoVideoId || null;
         const poster = apiLesson?.promo_poster_url || copy.promoPosterUrl || null;
         const description =
-          apiLesson?.promo_description?.trim() ||
           copy.description ||
+          apiLesson?.promo_description?.trim() ||
           apiMod?.description ||
           "";
         const bullets =
-          apiLesson?.promo_bullets?.length ? apiLesson.promo_bullets : copy.bullets;
-        const durationLabel = apiLesson?.duration_seconds
-          ? formatDuration(apiLesson.duration_seconds)
-          : copy.duration;
+          copy.bullets?.length
+            ? copy.bullets
+            : apiLesson?.promo_bullets?.length
+              ? apiLesson.promo_bullets
+              : copy.bullets;
+        const durationLabel =
+          copy.duration ||
+          (apiLesson?.duration_seconds ? formatDuration(apiLesson.duration_seconds) : "");
 
         return (
           <ProgramModuleCard

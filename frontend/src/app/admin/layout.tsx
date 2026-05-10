@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Users, BookOpen, ShoppingCart, LayoutDashboard, LogOut, BarChart3 } from "lucide-react";
+import { Users, BookOpen, ShoppingCart, LayoutDashboard, LogOut, BarChart3, Image as ImageIcon } from "lucide-react";
 import { getMe, isAuthError, UserResponse, logout } from "@/lib/api";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { Separator } from "@/components/ui/separator";
 const adminNavItems = [
     { href: "/admin/users", icon: Users, label: "Пользователи" },
     { href: "/admin/courses", icon: BookOpen, label: "Курсы" },
+    { href: "/admin/landing", icon: ImageIcon, label: "Лендинг" },
     { href: "/admin/purchases", icon: ShoppingCart, label: "Покупки" },
     { href: "/admin/analytics", icon: BarChart3, label: "Аналитика" },
 ];

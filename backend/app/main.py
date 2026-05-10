@@ -166,7 +166,7 @@ if settings.UPLOAD_STORAGE_DIR:
 
 
 # Подключение роутеров
-from app.api import auth, courses, modules, lessons, purchases, admin, upload, payments  # noqa: E402
+from app.api import auth, courses, modules, lessons, purchases, admin, upload, payments, landing, admin_landing  # noqa: E402
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(courses.router, prefix="/api/courses", tags=["Courses"])
@@ -176,3 +176,5 @@ app.include_router(purchases.router, prefix="/api/purchases", tags=["Purchases"]
 app.include_router(payments.router, prefix="/api/payments", tags=["Payments"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(upload.router, prefix="/api/admin", tags=["Upload"])
+app.include_router(landing.router, prefix="/api/landing", tags=["Landing"])
+app.include_router(admin_landing.router, prefix="/api/admin", tags=["Admin: Landing"])
