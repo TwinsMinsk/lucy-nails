@@ -334,7 +334,7 @@ export default function AdminCourseDetailPage() {
                                                     <GripVertical className="w-4 h-4 text-text-secondary shrink-0" />
                                                     <div className="flex-1 text-left">
                                                         <div className="font-medium flex items-center gap-2">
-                                                            <span className="text-primary text-sm">#{module.order_index + 1}</span>
+                                                            <span className="text-primary text-sm">#{module.order_index}</span>
                                                             {module.title}
                                                             {!module.is_published && (
                                                                 <Badge variant="outline" className="text-xs">Черновик</Badge>

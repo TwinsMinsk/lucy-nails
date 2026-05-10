@@ -184,7 +184,7 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
                                             <div className="w-4 h-4 rounded-full border-2 border-text-secondary/30" />
                                         )}
                                     </div>
-                                    <span className="line-clamp-2">{l.order_index}. {l.title}</span>
+                                    <span className="line-clamp-2">{l.title}</span>
                                     <span className="ml-auto text-xs text-text-secondary shrink-0">
                                         {formatDuration(l.duration_seconds)}
                                     </span>
@@ -244,7 +244,7 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
                         <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
                             <div className="space-y-2">
                                 <h1 className="text-2xl md:text-3xl font-serif font-bold text-text-primary">
-                                    {modules.find(m => m.id === lesson.module_id)?.order_index}.{lesson.order_index}. {lesson.title}
+                                    Модуль {modules.find(m => m.id === lesson.module_id)?.order_index}: {lesson.title}
                                 </h1>
                                 <p className="text-text-secondary text-base leading-relaxed max-w-2xl">
                                     {lesson.description}
