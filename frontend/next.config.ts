@@ -25,7 +25,7 @@ const nextConfig: NextConfig = {
               [
                 "default-src 'self'",
                 "base-uri 'self'",
-                `connect-src 'self' ${apiOrigin} https://kinescope.io https://*.kinescope.io`,
+                `connect-src 'self' ${apiOrigin} https://kinescope.io https://*.kinescope.io https://cloudflareinsights.com https://static.cloudflareinsights.com`,
                 "font-src 'self' data:",
                 "form-action 'self'",
                 "frame-ancestors 'none'",
@@ -33,7 +33,7 @@ const nextConfig: NextConfig = {
                 "img-src 'self' data: blob: https:",
                 "media-src 'self' blob: https://kinescope.io https://*.kinescope.io",
                 "object-src 'none'",
-                "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com",
                 "style-src 'self' 'unsafe-inline'",
               ].join("; "),
           },
@@ -74,6 +74,11 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: 'www.lucysmirnova.ru',
+      },
+      {
+        protocol: 'https',
+        hostname: 'api.lucysmirnova.ru',
+        pathname: '/uploads/**',
       },
     ],
   },
