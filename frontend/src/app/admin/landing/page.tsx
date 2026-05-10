@@ -25,6 +25,11 @@ import {
     adminUpdateModuleLanding,
     adminUploadFile,
 } from "@/lib/api";
+import {
+    galleryItems as staticGalleryItems,
+    landingCourse as staticLandingCourse,
+    programModules as staticProgramModules,
+} from "@/lib/landing/course-content";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -187,19 +192,19 @@ function HeroSection({ courseId }: { courseId: string }) {
             try {
                 const data = await adminGetCourseLandingHero(courseId);
                 setHero({
-                    landing_title: data.landing_title ?? "",
-                    landing_subtitle: data.landing_subtitle ?? "",
-                    landing_description: data.landing_description ?? "",
-                    landing_audience: data.landing_audience ?? "",
-                    landing_support_note: data.landing_support_note ?? "",
+                    landing_title: data.landing_title ?? staticLandingCourse.title,
+                    landing_subtitle: data.landing_subtitle ?? staticLandingCourse.subtitle,
+                    landing_description: data.landing_description ?? staticLandingCourse.description,
+                    landing_audience: data.landing_audience ?? staticLandingCourse.audience,
+                    landing_support_note: data.landing_support_note ?? staticLandingCourse.supportNote,
                     landing_hero_stats:
                         data.landing_hero_stats && data.landing_hero_stats.length > 0
                             ? padHeroStats(data.landing_hero_stats)
-                            : Array.from({ length: HERO_STAT_SLOTS }, () => ({ label: "", value: "" })),
+                            : padHeroStats(staticLandingCourse.heroStats),
                     landing_benefits:
                         data.landing_benefits && data.landing_benefits.length > 0
                             ? padBenefits(data.landing_benefits)
-                            : Array.from({ length: BENEFIT_SLOTS }, () => ""),
+                            : padBenefits(staticLandingCourse.benefits),
                     landing_instructor_image_url: data.landing_instructor_image_url ?? "",
                 });
             } catch (err) {
@@ -444,7 +449,26 @@ function ProgramSection({ courseId }: { courseId: string }) {
             setIsLoading(true);
             try {
                 const data = await adminGetCourseLandingModules(courseId);
-                setModules(data);
+                const staticByTitle = new Map(staticProgramModules.map((m) => [m.title, m] as const));
+                const merged = data.map((mod) => {
+                    const fb = staticByTitle.get(mod.title);
+                    if (!fb) return mod;
+                    return {
+                        ...mod,
+                        landing_description: mod.landing_description ?? fb.description,
+                        landing_outcome: mod.landing_outcome ?? fb.outcome,
+                        landing_bullets:
+                            mod.landing_bullets && mod.landing_bullets.length > 0
+                                ? mod.landing_bullets
+                                : fb.bullets,
+                        landing_mistakes:
+                            mod.landing_mistakes && mod.landing_mistakes.length > 0
+                                ? mod.landing_mistakes
+                                : fb.mistakes,
+                        landing_duration_label: mod.landing_duration_label ?? fb.duration,
+                    };
+                });
+                setModules(merged);
             } catch (err) {
                 const message = err instanceof Error ? err.message : "Не удалось загрузить модули";
                 toast.error("Ошибка", { description: message });
@@ -614,6 +638,7 @@ function GallerySection() {
     const [formData, setFormData] = useState<GalleryFormState>(emptyGalleryForm());
     const [isSaving, setIsSaving] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
+    const [isImporting, setIsImporting] = useState(false);
     const [deleteCandidate, setDeleteCandidate] = useState<GalleryItem | null>(null);
 
     const load = async () => {
@@ -631,6 +656,32 @@ function GallerySection() {
     useEffect(() => {
         load();
     }, []);
+
+    const handleImportStatic = async () => {
+        setIsImporting(true);
+        try {
+            const created: GalleryItem[] = [];
+            for (let idx = 0; idx < staticGalleryItems.length; idx += 1) {
+                const it = staticGalleryItems[idx];
+                const item = await adminCreateGalleryItem({
+                    image_url: it.src,
+                    title: it.technique,
+                    caption: it.caption,
+                    alt: it.alt,
+                    is_published: true,
+                    order_index: idx,
+                });
+                created.push(item);
+            }
+            setItems((prev) => [...prev, ...created]);
+            toast.success(`Импортировано фото: ${created.length}`);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : "Не удалось импортировать";
+            toast.error("Ошибка", { description: message });
+        } finally {
+            setIsImporting(false);
+        }
+    };
 
     const openCreate = () => {
         setEditingId(null);
@@ -759,7 +810,20 @@ function GallerySection() {
                         <Loader2 className="w-6 h-6 animate-spin text-primary" />
                     </div>
                 ) : sortedItems.length === 0 ? (
-                    <p className="text-text-secondary">Пока ни одной фотографии в галерее.</p>
+                    <div className="space-y-3">
+                        <p className="text-text-secondary">Пока ни одной фотографии в галерее.</p>
+                        <p className="text-sm text-text-secondary">
+                            На лендинге сейчас рендерится статическая подборка ({staticGalleryItems.length} фото) — её можно импортировать в БД одной кнопкой и потом редактировать как обычные элементы.
+                        </p>
+                        <Button variant="outline" onClick={handleImportStatic} disabled={isImporting}>
+                            {isImporting ? (
+                                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            ) : (
+                                <Upload className="w-4 h-4 mr-2" />
+                            )}
+                            Импортировать статическую подборку ({staticGalleryItems.length})
+                        </Button>
+                    </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {sortedItems.map((item, idx) => (
