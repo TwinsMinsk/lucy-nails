@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    # Parent domain for auth/CSRF cookies. Empty = host-only cookies (single-host dev).
+    # Set to e.g. "lucysmirnova.ru" so cookies are readable by frontend on a sibling
+    # subdomain (lucysmirnova.ru reading cookies set by api.lucysmirnova.ru).
+    COOKIE_DOMAIN: str = ""
     
     # === Kinescope ===
     KINESCOPE_API_KEY: str = ""

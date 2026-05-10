@@ -33,13 +33,19 @@ def _is_production() -> bool:
     return settings.ENVIRONMENT.lower() == "production"
 
 
+def _cookie_domain() -> str | None:
+    return settings.COOKIE_DOMAIN or None
+
+
 def _set_auth_cookies(response: Response, tokens: Token) -> None:
     csrf_token = secrets.token_urlsafe(32)
+    domain = _cookie_domain()
     cookie_options = {
         "httponly": True,
         "secure": _is_production(),
         "samesite": "lax",
         "path": "/",
+        "domain": domain,
     }
     response.set_cookie(
         "access_token",
@@ -61,12 +67,20 @@ def _set_auth_cookies(response: Response, tokens: Token) -> None:
         secure=_is_production(),
         samesite="lax",
         path="/",
+        domain=domain,
     )
 
 
 def _clear_auth_cookies(response: Response) -> None:
+    domain = _cookie_domain()
     for cookie_name in ("access_token", "refresh_token", "csrf_token"):
-        response.delete_cookie(cookie_name, path="/", secure=_is_production(), samesite="lax")
+        response.delete_cookie(
+            cookie_name,
+            path="/",
+            secure=_is_production(),
+            samesite="lax",
+            domain=domain,
+        )
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
