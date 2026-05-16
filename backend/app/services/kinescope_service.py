@@ -5,9 +5,14 @@
 import httpx
 import urllib.parse
 from typing import Dict
+from uuid import UUID
 
 from app.core.config import settings
 from app.models.user import User
+from app.services.kinescope_jwt_service import (
+    KinescopeJwtNotConfiguredError,
+    kinescope_jwt_service,
+)
 
 
 class KinescopeNotConfiguredError(RuntimeError):
@@ -78,13 +83,28 @@ class KinescopeService:
             print(f"Kinescope API error: {e}. Falling back to mock mode.")
             return self._get_mock_video_info(video_id)
 
-    def get_embed_url(self, video_id: str, user: User) -> str:
+    def get_embed_url(
+        self,
+        video_id: str,
+        user: User,
+        *,
+        lesson_id: UUID | str | None = None,
+    ) -> str:
         """
         Генерировать URL для iframe плеера с защитой.
 
+        Если настроен KinescopeJwtService (приватный ключ + kid), вкладывает
+        короткоживущий JWT в `drmauthtoken` — Kinescope при воспроизведении
+        дёрнет наш webhook /api/integrations/kinescope/drm/authorize.
+
+        Параметр `watermark` всегда содержит email/ID пользователя — это видно
+        на видео и помогает идентифицировать источник утечки (если в шаблоне
+        плеера включены динамические водяные знаки).
+
         Args:
             video_id: ID видео в Kinescope
-            user: Пользователь для watermark
+            user: Авторизованный пользователь
+            lesson_id: UUID урока, для дополнительной привязки в JWT
 
         Returns:
             URL для embed с параметрами защиты
@@ -95,13 +115,28 @@ class KinescopeService:
             return self.MOCK_EMBED_URL
 
         base_embed_url = f"https://kinescope.io/embed/{video_id}"
-        q = urllib.parse.urlencode(
-            {
-                "email": user.email or "",
-                "external_id": str(user.id),
-            }
-        )
-        return f"{base_embed_url}?{q}"
+        params: dict[str, str] = {
+            # Динамический ватермарк: текст видно поверх видео,
+            # если в шаблоне плеера включена опция «Водяной знак».
+            "watermark": user.email or str(user.id),
+        }
+
+        # Если auth backend настроен — подписываем короткоживущий JWT и кладём
+        # в drmauthtoken. Kinescope передаст его в webhook авторизации.
+        if kinescope_jwt_service.is_configured:
+            try:
+                token = kinescope_jwt_service.create_drm_token(
+                    user_id=str(user.id),
+                    email=user.email,
+                    lesson_id=str(lesson_id) if lesson_id else None,
+                )
+                params["drmauthtoken"] = token
+            except KinescopeJwtNotConfiguredError:
+                # На случай ошибки конфигурации не ломаем embed —
+                # видео откроется, но без серверной авторизации DRM.
+                pass
+
+        return f"{base_embed_url}?{urllib.parse.urlencode(params)}"
 
     async def upload_video_file(
         self,

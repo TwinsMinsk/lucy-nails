@@ -59,7 +59,9 @@ async def get_lesson(
         if lesson.kinescope_video_id:
             try:
                 response.video_url = kinescope_service.get_embed_url(
-                    lesson.kinescope_video_id, current_user
+                    lesson.kinescope_video_id,
+                    current_user,
+                    lesson_id=lesson.id,
                 )
             except KinescopeNotConfiguredError:
                 response.video_url = None
@@ -162,6 +164,7 @@ async def get_lesson_play_url(
         video_url = kinescope_service.get_embed_url(
             video_id=lesson.kinescope_video_id,
             user=current_user,
+            lesson_id=lesson.id,
         )
     except KinescopeNotConfiguredError:
         raise HTTPException(

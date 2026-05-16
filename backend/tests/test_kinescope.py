@@ -24,23 +24,22 @@ async def test_get_lesson_play_url_unauthorized(client: AsyncClient):
 async def test_kinescope_service_mock_mode():
     """Тест Mock-режима KinescopeService."""
     from app.models.user import User
-    
-    # Создаем фейкового пользователя
+
     fake_user = User(
         id=uuid.uuid4(),
         email="test@example.com",
         password_hash="hashed",
         role="student"
     )
-    
-    # В Mock-режиме должна возвращаться YouTube ссылка
+
     url = kinescope_service.get_embed_url("fake_video_id", fake_user)
-    
+
     if kinescope_service.is_mock_mode:
         assert "youtube.com" in url
     else:
         assert "kinescope.io" in url
-        assert "external_id" in url
+        # В реальном режиме всегда есть watermark; drmauthtoken — только когда настроен JWT.
+        assert "watermark" in url
 
 
 @pytest.mark.asyncio

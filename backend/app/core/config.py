@@ -69,6 +69,19 @@ class Settings(BaseSettings):
     # === Kinescope ===
     KINESCOPE_API_KEY: str = ""
     KINESCOPE_PROJECT_ID: str = ""
+
+    # === Kinescope DRM Authorization Backend ===
+    # Приватный ключ RSA (PEM). Можно задать одним из двух способов:
+    #   - KINESCOPE_JWT_PRIVATE_KEY_PATH = absolute path to PEM file
+    #   - KINESCOPE_JWT_PRIVATE_KEY_PEM  = inline PEM (удобно для Railway secrets)
+    # Публичная часть как JWK заливается в Kinescope скриптом scripts/kinescope/setup_drm.py
+    KINESCOPE_JWT_PRIVATE_KEY_PATH: str = ""
+    KINESCOPE_JWT_PRIVATE_KEY_PEM: str = ""
+    KINESCOPE_JWK_KID: str = ""
+    KINESCOPE_DRM_TOKEN_TTL_SECONDS: int = 300
+    # HTTP Basic Auth, ожидаемый от Kinescope при вызове нашего webhook
+    KINESCOPE_DRM_BASIC_USER: str = ""
+    KINESCOPE_DRM_BASIC_PASS: str = ""
     
     # === Prodamus ===
     PRODAMUS_URL: str = ""              # e.g. https://yourshop.payform.ru/
