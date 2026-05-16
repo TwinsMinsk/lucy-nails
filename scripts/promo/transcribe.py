@@ -74,4 +74,13 @@ def transcribe_video(
         "segments": segments,
     }
     cache.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Плоский текст для копипаста / внешнего использования
+    plain = "\n\n".join(
+        f"[{s['start']:.1f} – {s['end']:.1f}] {s['text']}" for s in segments
+    )
+    (out_dir / "transcript_plain.txt").write_text(plain, encoding="utf-8")
+    (out_dir / "transcript_full_text.txt").write_text(
+        " ".join(s["text"].strip() for s in segments if s.get("text")),
+        encoding="utf-8",
+    )
     return payload

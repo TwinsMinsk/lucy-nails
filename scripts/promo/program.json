@@ -137,18 +137,44 @@
       "slug": "slaidery",
       "title": "Слайдеры и наклейки",
       "order": 4,
-      "source_file": "слайдеры-720p.mp4",
-      "duration_seconds": 0,
+      "source_file": "слайдеры-720p.mp4",
+      "duration_seconds": 1245,
       "promo": {
         "kinescope_id": null,
         "poster": null,
-        "description": "Слайдеры и наклейки: быстрая графика и аккуратная фиксация.",
+        "description": "Ключевые моменты из урока — техника, материалы и практические советы.",
         "bullets": [
-          "Подбор размера",
-          "Перенос без складок",
-          "Запечатывание и блик"
+          "Разбор пошаговых действий",
+          "Типичные ошибки и как их избежать",
+          "Финишный результат и закрепление"
         ],
-        "highlight_segments": []
+        "highlight_segments": [
+          {
+            "start_sec": 0.72,
+            "end_sec": 10.32,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 291.68,
+            "end_sec": 301.28000000000003,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 545.62,
+            "end_sec": 552.42,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 713.42,
+            "end_sec": 721.2199999999999,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 859.58,
+            "end_sec": 866.38,
+            "reason": "auto"
+          }
+        ]
       }
     },
     {
@@ -156,17 +182,43 @@
       "title": "Френч",
       "order": 5,
       "source_file": "френч-001-720p.mp4",
-      "duration_seconds": 0,
+      "duration_seconds": 2519,
       "promo": {
         "kinescope_id": null,
         "poster": null,
-        "description": "Френч: линии, формы и современные вариации классики.",
+        "description": "Ключевые моменты из урока — техника, материалы и практические советы.",
         "bullets": [
-          "Линия улыбки",
-          "Ровные боковые линии",
-          "Креативные модификации"
+          "Разбор пошаговых действий",
+          "Типичные ошибки и как их избежать",
+          "Финишный результат и закрепление"
         ],
-        "highlight_segments": []
+        "highlight_segments": [
+          {
+            "start_sec": 0.59,
+            "end_sec": 9.969999999999999,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 392.8,
+            "end_sec": 400.56,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 776.68,
+            "end_sec": 786.28,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 1351.85,
+            "end_sec": 1361.4499999999998,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 1793.61,
+            "end_sec": 1803.2099999999998,
+            "reason": "auto"
+          }
+        ]
       }
     },
     {
@@ -218,35 +270,87 @@
       "title": "Стемпинг",
       "order": 7,
       "source_file": "стемпинг-720p.mp4",
-      "duration_seconds": 0,
+      "duration_seconds": 1092,
       "promo": {
         "kinescope_id": null,
         "poster": null,
-        "description": "Стемпинг: чёткий отпечаток, контраст и быстрые узоры.",
+        "description": "Ключевые моменты из урока — техника, материалы и практические советы.",
         "bullets": [
-          "Подбор лака и штампа",
-          "Техника переноса",
-          "Исправление огрехов"
+          "Разбор пошаговых действий",
+          "Типичные ошибки и как их избежать",
+          "Финишный результат и закрепление"
         ],
-        "highlight_segments": []
+        "highlight_segments": [
+          {
+            "start_sec": 0.76,
+            "end_sec": 10.36,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 351.98,
+            "end_sec": 358.78000000000003,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 523.91,
+            "end_sec": 531.7099999999999,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 666.39,
+            "end_sec": 673.1899999999999,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 805.39,
+            "end_sec": 812.1899999999999,
+            "reason": "auto"
+          }
+        ]
       }
     },
     {
       "slug": "strazy",
       "title": "Стразы/объемные украшения",
       "order": 8,
-      "source_file": "стразы_наклейки_фигурки-720p.mp4",
-      "duration_seconds": 0,
+      "source_file": "стразы_наклейки_фигурки-720p.mp4",
+      "duration_seconds": 2794,
       "promo": {
         "kinescope_id": null,
         "poster": null,
-        "description": "Стразы и объёмный декор: посадка, баланс и устойчивое крепление.",
+        "description": "Ключевые моменты из урока — техника, материалы и практические советы.",
         "bullets": [
-          "Компоновка",
-          "Клей и фиксация",
-          "Финиш без цепляния"
+          "Разбор пошаговых действий",
+          "Типичные ошибки и как их избежать",
+          "Финишный результат и закрепление"
         ],
-        "highlight_segments": []
+        "highlight_segments": [
+          {
+            "start_sec": 0.92,
+            "end_sec": 10.52,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 625.48,
+            "end_sec": 635.08,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 1169.59,
+            "end_sec": 1179.1899999999998,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 1683.92,
+            "end_sec": 1693.52,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 2103.92,
+            "end_sec": 2110.7200000000003,
+            "reason": "auto"
+          }
+        ]
       }
     },
     {
@@ -254,17 +358,43 @@
       "title": "Текстуры",
       "order": 9,
       "source_file": "текстуры-720p.mp4",
-      "duration_seconds": 0,
+      "duration_seconds": 1489,
       "promo": {
         "kinescope_id": null,
         "poster": null,
-        "description": "Текстуры: матовые и рельефные акценты для премиального вида.",
+        "description": "Ключевые моменты из урока — техника, материалы и практические советы.",
         "bullets": [
-          "Подбор материала",
-          "Рельеф без лишней толщины",
-          "Топ и износ"
+          "Разбор пошаговых действий",
+          "Типичные ошибки и как их избежать",
+          "Финишный результат и закрепление"
         ],
-        "highlight_segments": []
+        "highlight_segments": [
+          {
+            "start_sec": 0.68,
+            "end_sec": 10.28,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 244.74,
+            "end_sec": 254.34,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 519.28,
+            "end_sec": 528.88,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 787.39,
+            "end_sec": 794.65,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 1018.76,
+            "end_sec": 1028.36,
+            "reason": "auto"
+          }
+        ]
       }
     },
     {
@@ -272,17 +402,43 @@
       "title": "Градиент",
       "order": 10,
       "source_file": "градиент-002-720p.mp4",
-      "duration_seconds": 0,
+      "duration_seconds": 1523,
       "promo": {
         "kinescope_id": null,
         "poster": null,
-        "description": "Градиент: плавные переходы цвета без полос и «ступенек».",
+        "description": "Ключевые моменты из урока — техника, материалы и практические советы.",
         "bullets": [
-          "Блендинг",
-          "Молочные и пастельные градиенты",
-          "Чистый торец"
+          "Разбор пошаговых действий",
+          "Типичные ошибки и как их избежать",
+          "Финишный результат и закрепление"
         ],
-        "highlight_segments": []
+        "highlight_segments": [
+          {
+            "start_sec": 0.34,
+            "end_sec": 9.94,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 295.28,
+            "end_sec": 304.88,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 552.41,
+            "end_sec": 562.01,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 813.1,
+            "end_sec": 820.9,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 1032.0,
+            "end_sec": 1040.8,
+            "reason": "auto"
+          }
+        ]
       }
     },
     {
@@ -290,17 +446,43 @@
       "title": "Аэрография",
       "order": 11,
       "source_file": "аэрография-720p.mp4",
-      "duration_seconds": 0,
+      "duration_seconds": 1134,
       "promo": {
         "kinescope_id": null,
         "poster": null,
-        "description": "Аэрография: мягкие контуры, воздушность и контроль распыления.",
+        "description": "Ключевые моменты из урока — техника, материалы и практические советы.",
         "bullets": [
-          "Настройка потока",
-          "Трафареты и свободная роспись",
-          "Фиксация слоя"
+          "Разбор пошаговых действий",
+          "Типичные ошибки и как их избежать",
+          "Финишный результат и закрепление"
         ],
-        "highlight_segments": []
+        "highlight_segments": [
+          {
+            "start_sec": 0.46,
+            "end_sec": 10.06,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 250.92,
+            "end_sec": 260.52,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 447.22,
+            "end_sec": 454.44,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 604.14,
+            "end_sec": 612.04,
+            "reason": "auto"
+          },
+          {
+            "start_sec": 778.81,
+            "end_sec": 785.15,
+            "reason": "auto"
+          }
+        ]
       }
     }
   ]
