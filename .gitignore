@@ -28,6 +28,11 @@ wheels/
 .env.backup
 *.env.backup
 
+# Приватные ключи (Kinescope DRM JWT и пр.)
+backend/secrets/
+*.pem
+!**/example*.pem
+
 # === IDE / editors ===
 .idea/
 .worktrees/
@@ -106,3 +111,16 @@ scripts/promo/output/
 
 # Иногда остаются «хвосты» от загрузки/рендера
 *.part
+
+# === Claude Code local state (per-user; .claude/settings.json and skills/ are shared) ===
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# === skill-seekers scratch output (raw scrape data + pre-enhancement skills) ===
+output/
+
+# === Setup script artefacts (may contain secrets) ===
+scripts/*/.last-setup-output.txt
+
+# === Browser DRM debug logs accidentally saved to repo root ===
+kinescope_player_log_*.json
