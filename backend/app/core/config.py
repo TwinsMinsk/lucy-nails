@@ -87,6 +87,9 @@ class Settings(BaseSettings):
     PRODAMUS_URL: str = ""              # e.g. https://yourshop.payform.ru/
     PRODAMUS_SECRET_KEY: str = ""
     PRODAMUS_SHOP_ID: str = ""
+    # Force demo mode (demo_mode=1) on payment links regardless of ENVIRONMENT.
+    # Lets you run test payments on a production deployment; disable for go-live.
+    PRODAMUS_DEMO_MODE: bool = False
     
     # === SMTP (Email) ===
     SMTP_HOST: str = "smtp.gmail.com"

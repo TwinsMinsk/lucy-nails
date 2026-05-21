@@ -96,8 +96,9 @@ class ProdamusService:
         if customer_phone:
             params["customer_phone"] = str(customer_phone).strip()
 
-        # demo_mode=1 for test payments (when not in production)
-        if settings.ENVIRONMENT != "production":
+        # demo_mode=1 for test payments: always outside production, and on demand
+        # in production via PRODAMUS_DEMO_MODE (for test payments on a live deploy).
+        if settings.PRODAMUS_DEMO_MODE or settings.ENVIRONMENT != "production":
             params["demo_mode"] = "1"
 
         # Подпись считается по «плоскому» dict (без вложенности product[0][name])
