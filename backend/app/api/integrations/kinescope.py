@@ -13,8 +13,6 @@ KINESCOPE_DRM_BASIC_USER / KINESCOPE_DRM_BASIC_PASS, которая задана
 настройках проекта Kinescope (PUT /v1/drm/auth/{project_id}).
 """
 
-from __future__ import annotations
-
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status

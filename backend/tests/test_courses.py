@@ -181,6 +181,9 @@ async def test_course_progress_counts_only_published_modules(client: AsyncClient
     login = await client.post("/api/auth/login", json={"email": "progress@t.com", "password": "password123"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
+    # Bearer-only auth: drop login cookies so CSRF middleware does not block the
+    # unsafe progress POST below.
+    client.cookies.clear()
 
     from app.models.user import User
     from sqlalchemy import select
@@ -230,6 +233,9 @@ async def test_lesson_progress_caps_watched_seconds_to_lesson_duration(client: A
     )
     login = await client.post("/api/auth/login", json={"email": "cap@t.com", "password": "password123"})
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    # Bearer-only auth: drop login cookies so CSRF middleware does not block the
+    # unsafe progress POST below.
+    client.cookies.clear()
 
     response = await client.post(
         f"/api/lessons/{lesson.id}/progress",

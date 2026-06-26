@@ -32,6 +32,14 @@ else:
 engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
 TestingSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
 
+# Prodamus webhook and guest/authenticated checkout open a session via
+# async_session_maker() directly (they bypass the get_db dependency), so the
+# dependency override in the `client` fixture cannot redirect them. Point their
+# session factory at the test database as well.
+import app.api.payments as _payments_module  # noqa: E402
+
+_payments_module.async_session_maker = TestingSessionLocal
+
 
 @pytest.fixture(scope="session")
 def event_loop() -> Generator:
