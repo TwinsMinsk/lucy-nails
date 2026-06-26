@@ -1,6 +1,0 @@
-Админ: 
-admin@nails-course.ru
- / admin123
-Студент: 
-student@test.ru
- / student123
