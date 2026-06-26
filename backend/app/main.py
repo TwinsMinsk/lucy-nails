@@ -2,6 +2,8 @@
 Точка входа FastAPI приложения.
 """
 
+import logging
+import secrets
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -21,6 +23,8 @@ from app.core.rate_limit import limiter
 from app.core.security import get_password_hash
 from app.models.user import User
 
+logger = logging.getLogger(__name__)
+
 
 def _is_production() -> bool:
     return settings.ENVIRONMENT.lower() == "production"
@@ -31,6 +35,20 @@ def _cors_allow_origins() -> list[str]:
     if raw:
         return [x.strip() for x in raw.split(",") if x.strip()]
     return [settings.FRONTEND_URL.rstrip("/")]
+
+
+def _resolve_seed_password(configured: str, env_var: str) -> str:
+    """Return the configured seed password, or generate one and log it once (WARNING)."""
+    if configured:
+        return configured
+    generated = secrets.token_urlsafe(16)
+    logger.warning(
+        "%s не задан — сгенерирован dev-seed пароль: %s (зафиксируй через env %s)",
+        env_var,
+        generated,
+        env_var,
+    )
+    return generated
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -76,29 +94,38 @@ class CsrfProtectionMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if not _is_production():
+    if settings.ENVIRONMENT.lower() == "development":
         async with async_session_maker() as session:
             try:
-                for email, password, role in [
-                    ("admin@nails-course.ru", "admin123", "admin"),
-                    ("student@test.ru", "student123", "student"),
-                ]:
+                seed_accounts = [
+                    (
+                        "admin@nails-course.ru",
+                        _resolve_seed_password(settings.SEED_ADMIN_PASSWORD, "SEED_ADMIN_PASSWORD"),
+                        "admin",
+                    ),
+                    (
+                        "student@test.ru",
+                        _resolve_seed_password(settings.SEED_STUDENT_PASSWORD, "SEED_STUDENT_PASSWORD"),
+                        "student",
+                    ),
+                ]
+                for email, password, role in seed_accounts:
                     result = await session.execute(select(User).where(User.email == email))
                     user = result.scalars().first()
 
                     h = get_password_hash(password)
                     if not user:
-                        print(f"[STARTUP] Creating {role}: {email}")
+                        logger.info("[STARTUP] Creating %s: %s", role, email)
                         user = User(email=email, password_hash=h, role=role)
                         session.add(user)
                     else:
-                        print(f"[STARTUP] Updating password for {role}: {email}")
+                        logger.info("[STARTUP] Updating password for %s: %s", role, email)
                         user.password_hash = h
 
                 await session.commit()
-                print("[STARTUP] Initial users synced!")
+                logger.info("[STARTUP] Initial users synced!")
             except Exception as e:
-                print(f"[WARN] Initial seeding/update failed: {e}")
+                logger.warning("[STARTUP] Initial seeding/update failed: %s", e)
 
     yield
 

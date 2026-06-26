@@ -113,6 +113,12 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
 
+    # === Dev seed (development only) ===
+    # Passwords for the startup seed (admin@/student@). Empty -> generated and
+    # logged once at WARNING; set via env to pin stable dev credentials.
+    SEED_ADMIN_PASSWORD: str = ""
+    SEED_STUDENT_PASSWORD: str = ""
+
     # Сколько дней доступа к курсу после успешной оплаты (production v1)
     COURSE_ACCESS_DAYS: int = 30
 
