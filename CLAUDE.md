@@ -116,6 +116,14 @@ Docs/      PRD, архитектура, ops-гайды, трекеры
 
 [`railway.toml`](railway.toml) — два сервиса в одном репо: backend (`alembic upgrade head && uvicorn`), frontend (`npm run build && npm start`). Подробности — [`Docs/04_Setup_Ops/DEPLOY_GUIDE.md`](Docs/04_Setup_Ops/DEPLOY_GUIDE.md).
 
+## GitHub / репозиторий и аккаунт
+
+- Репозиторий: **`TwinsMinsk/lucy-nails`** (публичный), владелец — аккаунт **TwinsMinsk**, default-ветка **`master`**.
+- В этом проекте работаем **только** под аккаунтом **TwinsMinsk**: `git push`, открытие PR и merge — под ним. Другие аккаунты не использовать.
+- SSH-ключ на рабочей машине уже принадлежит TwinsMinsk (`ssh -T git@github.com` → «Hi TwinsMinsk!»), поэтому `git push` работает «из коробки».
+- `gh` CLI (и GitHub MCP) должны быть залогинены в **TwinsMinsk**: `gh auth login --hostname github.com --web`. Проверка прав: `gh api repos/TwinsMinsk/lucy-nails --jq .permissions` → должно быть `"push": true`. Аккаунт `Progery222` имеет только `READ` и не может открывать PR / мерджить.
+- CI триггерится только на push в `master`/`main` и на PR в них; обычный push feature-ветки CI не запускает — валидируем через PR в `master`.
+
 ## Локальные артефакты
 
 `promo-clips/`, `video-lessons/`, `scripts/promo/output/` — тяжёлые mp4, исключены из Git. Код промо-пайплайна и метаданные — в [`scripts/promo/`](scripts/promo/) (метаданные программы — [`scripts/promo/program.json`](scripts/promo/program.json)).
