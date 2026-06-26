@@ -57,6 +57,12 @@ def configured_drm(monkeypatch):
     monkeypatch.setattr(settings, "KINESCOPE_DRM_BASIC_PASS", "test-pass-123")
     monkeypatch.setattr(settings, "KINESCOPE_DRM_TOKEN_TTL_SECONDS", 300)
     monkeypatch.setattr(settings, "BACKEND_URL", "https://api.test.local")
+    # The webhook endpoint holds a module-level kinescope_jwt_service built at
+    # import time (before these settings were patched). Rebuild it so the endpoint
+    # verifies tokens with the same freshly-configured key.
+    import app.api.integrations.kinescope as _kin_endpoint
+
+    monkeypatch.setattr(_kin_endpoint, "kinescope_jwt_service", KinescopeJwtService())
     yield
 
 
