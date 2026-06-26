@@ -58,6 +58,9 @@ async def test_create_and_list_purchases(client: AsyncClient, db: AsyncSession):
     login = await client.post("/api/auth/login", json={"email": "buyer@t.com", "password": "password123"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
+    # Bearer-only auth: drop login cookies so the CSRF middleware does not require
+    # an X-CSRF-Token header on the unsafe POST below.
+    client.cookies.clear()
 
     res_create = await client.post(
         "/api/purchases/create",
