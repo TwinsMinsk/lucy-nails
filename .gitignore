@@ -124,3 +124,11 @@ scripts/*/.last-setup-output.txt
 
 # === Browser DRM debug logs accidentally saved to repo root ===
 kinescope_player_log_*.json
+
+# === Removed committed dev artifacts / secrets — do not re-add (audit SEC-01/02, DEBT-01) ===
+# Exact paths only (no broad globs) so real pytest suites under backend/tests/ stay tracked.
+/test-login.txt
+/backend/test_courses.py
+/backend/check_lesson_db.py
+/backend/test_payment.py
+/backend/run_test.bat
