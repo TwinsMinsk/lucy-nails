@@ -30,7 +30,7 @@ export function ProgramModuleCard({
     photos.length > 0 ? (
       <WorksMarquee photos={photos} title={title} reverse={reverseMarquee} />
     ) : (
-      <div className="flex h-36 w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-primary/25 bg-white/50 md:h-40">
+      <div className="flex h-64 w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-primary/25 bg-white/50 md:h-72">
         <Sparkles className="h-6 w-6 text-[#D4AF37]" />
         <p className="px-4 text-center text-sm text-text-secondary/80">
           Фото работ скоро появятся

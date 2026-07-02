@@ -11,7 +11,7 @@ import {
 import type { WorkPhoto } from "@/lib/landing/works-photos";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
-const SECONDS_PER_PHOTO = 4.5;
+const SECONDS_PER_PHOTO = 8;
 // If a module has few photos, repeat them so one strip copy always fills the viewport
 const MIN_TILES = 6;
 
@@ -73,14 +73,14 @@ export function WorksMarquee({ photos, title, reverse = false }: WorksMarqueePro
           type="button"
           tabIndex={hidden ? -1 : 0}
           onClick={() => setActiveIndex(i % photos.length)}
-          className="relative size-36 shrink-0 overflow-hidden rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] md:size-40"
+          className="relative size-64 shrink-0 overflow-hidden rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] md:size-72"
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- pre-sized static WebP thumb, no transform needed */}
           <img
             src={photo.thumb}
             alt={hidden ? "" : `${title} — пример работы ${i + 1}`}
-            width={320}
-            height={320}
+            width={640}
+            height={640}
             loading={inView ? "eager" : "lazy"}
             decoding="async"
             draggable={false}
@@ -95,7 +95,7 @@ export function WorksMarquee({ photos, title, reverse = false }: WorksMarqueePro
     <>
       <div
         ref={viewportRef}
-        className="works-marquee-mask h-36 w-full overflow-hidden rounded-2xl [content-visibility:auto] md:h-40"
+        className="works-marquee-mask h-64 w-full overflow-hidden rounded-2xl [content-visibility:auto] md:h-72"
       >
         <div
           className="flex w-max animate-[works-marquee_var(--works-duration)_linear_infinite] hover:paused focus-within:paused motion-reduce:paused"

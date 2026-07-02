@@ -2,7 +2,7 @@
 
 For every known module folder in <repo>/photo-work/ this script:
   1. Applies EXIF orientation and center-crops to a square.
-  2. Writes 1024x1024 WebP (lightbox) and 320x320 WebP (marquee thumb)
+  2. Writes 1024x1024 WebP (lightbox) and 640x640 WebP (marquee thumb)
      into frontend/public/works/<slug>/.
   3. Regenerates the typed manifest frontend/src/lib/landing/works-photos.ts.
 
@@ -40,7 +40,7 @@ FOLDER_TO_SLUG = {
 }
 
 FULL_SIZE = 1024
-THUMB_SIZE = 320
+THUMB_SIZE = 640
 EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 
 
