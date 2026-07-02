@@ -107,6 +107,7 @@ dump.rdb
 # Исходники уроков, нарезки промо, выход промо-пайплайна — не в Git
 promo-clips/
 video-lessons/
+photo-work/
 scripts/promo/output/
 
 # Иногда остаются «хвосты» от загрузки/рендера

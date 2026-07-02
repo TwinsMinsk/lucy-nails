@@ -1,14 +1,7 @@
-"use client";
+import { CheckCircle, Sparkles } from "lucide-react";
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { CheckCircle, Play } from "lucide-react";
-import Image from "next/image";
+import { WorksMarquee } from "@/components/landing/WorksMarquee";
+import type { WorkPhoto } from "@/lib/landing/works-photos";
 
 export interface ProgramModuleCardProps {
   orderIndex: number;
@@ -17,8 +10,8 @@ export interface ProgramModuleCardProps {
   outcome?: string;
   bullets: string[];
   mistakes?: string[];
-  promoVideoId: string | null;
-  posterUrl: string | null;
+  photos: WorkPhoto[];
+  reverseMarquee?: boolean;
   durationLabel?: string;
 }
 
@@ -29,67 +22,25 @@ export function ProgramModuleCard({
   outcome,
   bullets,
   mistakes = [],
-  promoVideoId,
-  posterUrl,
+  photos,
+  reverseMarquee = false,
   durationLabel,
 }: ProgramModuleCardProps) {
-  const hasVideo = Boolean(promoVideoId);
-  const embedSrc = promoVideoId
-    ? `https://kinescope.io/embed/${promoVideoId}?preload=false&autopause=1&muted=0`
-    : null;
-
-  const posterArea = hasVideo && embedSrc ? (
-    <Dialog>
-      <DialogTrigger asChild>
-        <button
-          type="button"
-          className="group relative w-full aspect-video rounded-2xl overflow-hidden border-2 border-primary/20 shadow-lg text-left focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:ring-offset-2"
-        >
-          {posterUrl ? (
-            <Image
-              src={posterUrl}
-              alt={title}
-              fill
-              className="object-cover transition duration-500 group-hover:scale-105"
-              sizes="(max-width: 768px) 100vw, 33vw"
-            />
-          ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-[#fff1f4] to-[#e8c4c4]" />
-          )}
-          <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/35 transition">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/90 text-primary shadow-xl group-hover:scale-110 transition">
-              <Play className="h-8 w-8 fill-current" />
-            </div>
-          </div>
-        </button>
-      </DialogTrigger>
-      <DialogContent className="max-w-4xl w-[95vw] p-0 overflow-hidden bg-black border-primary/20">
-        <DialogHeader className="sr-only">
-          <DialogTitle>Превью: {title}</DialogTitle>
-        </DialogHeader>
-        <div className="relative aspect-video w-full bg-black">
-          <iframe
-            src={embedSrc}
-            title={title}
-            className="absolute inset-0 h-full w-full"
-            allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-            allowFullScreen
-            loading="lazy"
-          />
-        </div>
-      </DialogContent>
-    </Dialog>
-  ) : (
-    <div className="relative w-full aspect-video rounded-2xl overflow-hidden border-2 border-dashed border-primary/25 bg-gradient-to-br from-[#fff1f4] to-[#f5e6e9] flex items-center justify-center">
-      <p className="text-sm text-text-secondary/80 text-center px-4">
-        Промо-ролик появится после загрузки в Kinescope
-      </p>
-    </div>
-  );
+  const mediaArea =
+    photos.length > 0 ? (
+      <WorksMarquee photos={photos} title={title} reverse={reverseMarquee} />
+    ) : (
+      <div className="flex h-36 w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-primary/25 bg-white/50 md:h-40">
+        <Sparkles className="h-6 w-6 text-[#D4AF37]" />
+        <p className="px-4 text-center text-sm text-text-secondary/80">
+          Фото работ скоро появятся
+        </p>
+      </div>
+    );
 
   return (
     <article className="flex flex-col bg-[#FFF1F4] rounded-[2rem] border border-primary/20 border-b-[6px] border-b-primary/15 shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
-      <div className="p-5 pb-4">{posterArea}</div>
+      <div className="p-5 pb-4">{mediaArea}</div>
       <div className="px-6 pb-6 flex flex-col flex-1 gap-3">
         <div className="flex items-start justify-between gap-3">
           <h3 className="font-serif text-2xl text-text-primary leading-snug">

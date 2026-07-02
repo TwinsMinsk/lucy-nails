@@ -222,6 +222,18 @@ body {
       transform: translateX(100%);
     }
   }
+
+  /* Works marquee (program module cards) */
+  @keyframes works-marquee {
+    to {
+      transform: translateX(-50%);
+    }
+  }
+}
+
+.works-marquee-mask {
+  mask-image: linear-gradient(to right, transparent, black 6%, black 94%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 6%, black 94%, transparent);
 }
 
 /* Typography List Fixes */

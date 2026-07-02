@@ -4,9 +4,10 @@ import {
   programModules as staticProgramModules,
   type ProgramModuleContent,
 } from "@/lib/landing/course-content";
+import { worksPhotos } from "@/lib/landing/works-photos";
 
 export interface ProgramSectionProps {
-  /** Lesson-level promo overrides (poster/videoId/etc) coming from /api/courses/:id/modules */
+  /** Lesson-level overrides (description/duration) coming from /api/courses/:id/modules */
   apiModules: ModuleResponse[] | null;
   /** Pre-merged copy for each module (DB landing-fields applied on top of static fallback) */
   modules?: ProgramModuleContent[];
@@ -29,8 +30,6 @@ export function ProgramSection({ apiModules, modules }: ProgramSectionProps) {
         const apiMod = apiByTitle.get(copy.title);
         const apiLesson = apiMod?.lessons?.[0];
 
-        const promoId = apiLesson?.promo_kinescope_video_id || copy.promoVideoId || null;
-        const poster = apiLesson?.promo_poster_url || copy.promoPosterUrl || null;
         const description =
           copy.description ||
           apiLesson?.promo_description?.trim() ||
@@ -55,8 +54,8 @@ export function ProgramSection({ apiModules, modules }: ProgramSectionProps) {
             outcome={copy.outcome}
             bullets={bullets}
             mistakes={copy.mistakes}
-            promoVideoId={promoId}
-            posterUrl={poster}
+            photos={worksPhotos[copy.slug] ?? []}
+            reverseMarquee={idx % 2 === 1}
             durationLabel={durationLabel}
           />
         );
