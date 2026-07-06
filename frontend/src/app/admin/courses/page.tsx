@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Loader2, BookOpen, Plus, Pencil, Trash2, Eye, EyeOff, ChevronRight, Upload } from "lucide-react";
+import { Loader2, BookOpen, Plus, Pencil, Trash2, Eye, EyeOff, ChevronRight } from "lucide-react";
 import {
     adminGetCourses,
     adminCreateCourse,
