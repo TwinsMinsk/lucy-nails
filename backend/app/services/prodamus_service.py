@@ -76,12 +76,19 @@ class ProdamusService:
         # Backend API URL for webhook notifications
         backend_url = settings.BACKEND_URL.rstrip("/") if settings.BACKEND_URL else "http://localhost:8000"
 
+        product = {
+            "name": course_name,
+            "price": str(price),
+            "quantity": "1",
+            "type": "course",
+        }
+
         params: dict[str, Any] = {
             "do": "pay",
-            "products[0][name]": course_name,
-            "products[0][price]": str(price),
-            "products[0][quantity]": "1",
-            "products[0][type]": "course",
+            "products[0][name]": product["name"],
+            "products[0][price]": product["price"],
+            "products[0][quantity]": product["quantity"],
+            "products[0][type]": product["type"],
             "urlSuccess": f"{settings.FRONTEND_URL.rstrip('/')}/payment-success",
             "urlReturn": f"{settings.FRONTEND_URL.rstrip('/')}/#pricing",
             "urlNotification": f"{backend_url}/api/payments/webhook",
@@ -101,11 +108,14 @@ class ProdamusService:
         if settings.PRODAMUS_DEMO_MODE or settings.ENVIRONMENT != "production":
             params["demo_mode"] = "1"
 
-        # Подпись считается по «плоскому» dict (без вложенности product[0][name])
-        # Prodamus принимает как flat params в URL, так и подпись по исходному dict.
-        # Для простоты подписываем flat dict.
-        flat_for_sign = {k: v for k, v in params.items()}
-        params["signature"] = _make_signature(flat_for_sign, secret)
+        # The signature MUST be computed over the NESTED structure that Prodamus
+        # reconstructs from the flat products[0][...] GET params, i.e. with a real
+        # "products": [ {...} ] list — not over the flat dict. Signing the flat dict
+        # produces a signature Prodamus rejects ("Ошибка подписи передаваемых
+        # данных"), so no payment link ever validated. See audit 2026-07-06 (LIVE-1).
+        sign_data = {k: v for k, v in params.items() if not k.startswith("products[")}
+        sign_data["products"] = [product]
+        params["signature"] = _make_signature(sign_data, secret)
 
         query = urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
         link = f"{base_url}?{query}"
