@@ -12,6 +12,13 @@ import urllib.parse
 from app.core.config import settings
 from app.services.prodamus_service import ProdamusService, _make_signature
 
+_WEBHOOK_PAYLOAD = {
+    "order_id": "course|11111111-1111-1111-1111-111111111111|self|deadbeef",
+    "sum": "5900",
+    "currency": "rub",
+    "payment_status": "success",
+}
+
 
 def _reconstruct_nested(params: dict) -> dict:
     """Rebuild the nested products structure Prodamus derives from products[0][...]."""
@@ -61,3 +68,25 @@ def test_payment_link_signature_is_not_the_old_flat_form():
 
     flat_signature = _make_signature(params, settings.PRODAMUS_SECRET_KEY)
     assert signature != flat_signature
+
+
+def test_demo_signature_rejected_in_production(monkeypatch):
+    """P0-2: a demo-suffixed signature must NOT be accepted in production real mode."""
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "PRODAMUS_DEMO_MODE", False)
+
+    demo_sig = _make_signature(_WEBHOOK_PAYLOAD, settings.PRODAMUS_SECRET_KEY + "demo")
+    assert ProdamusService.verify_signature(_WEBHOOK_PAYLOAD, demo_sig) is False
+
+    # A correctly (normally) signed webhook still verifies.
+    normal_sig = _make_signature(_WEBHOOK_PAYLOAD, settings.PRODAMUS_SECRET_KEY)
+    assert ProdamusService.verify_signature(_WEBHOOK_PAYLOAD, normal_sig) is True
+
+
+def test_demo_signature_accepted_when_demo_mode_enabled(monkeypatch):
+    """Demo signature is accepted only when demo mode is explicitly on."""
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "PRODAMUS_DEMO_MODE", True)
+
+    demo_sig = _make_signature(_WEBHOOK_PAYLOAD, settings.PRODAMUS_SECRET_KEY + "demo")
+    assert ProdamusService.verify_signature(_WEBHOOK_PAYLOAD, demo_sig) is True

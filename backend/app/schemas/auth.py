@@ -22,6 +22,26 @@ class UserLogin(BaseModel):
     password: str = Field(..., description="Пароль")
 
 
+class ChangePasswordRequest(BaseModel):
+    """Смена пароля залогиненным пользователем."""
+
+    current_password: str = Field(..., description="Текущий пароль")
+    new_password: str = Field(..., min_length=6, description="Новый пароль (минимум 6 символов)")
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Запрос ссылки на сброс пароля."""
+
+    email: EmailStr = Field(..., description="Email аккаунта")
+
+
+class ResetPasswordRequest(BaseModel):
+    """Установка нового пароля по токену из письма."""
+
+    token: str = Field(..., min_length=10, description="Токен из письма")
+    new_password: str = Field(..., min_length=6, description="Новый пароль (минимум 6 символов)")
+
+
 class Token(BaseModel):
     """Схема JWT токенов."""
     

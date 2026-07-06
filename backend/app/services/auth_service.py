@@ -101,6 +101,23 @@ class AuthService:
         )
     
     @staticmethod
+    async def change_password(
+        db: AsyncSession, user: User, current_password: str, new_password: str
+    ) -> bool:
+        """Меняет пароль после проверки текущего. False — текущий пароль неверен."""
+        if not verify_password(current_password, user.password_hash):
+            return False
+        user.password_hash = get_password_hash(new_password)
+        user.updated_at = datetime.utcnow()
+        return True
+
+    @staticmethod
+    async def set_password(db: AsyncSession, user: User, new_password: str) -> None:
+        """Устанавливает новый пароль (после проверки reset-токена)."""
+        user.password_hash = get_password_hash(new_password)
+        user.updated_at = datetime.utcnow()
+
+    @staticmethod
     async def get_user_by_id(db: AsyncSession, user_id: UUID) -> User | None:
         """
         Получить пользователя по ID.

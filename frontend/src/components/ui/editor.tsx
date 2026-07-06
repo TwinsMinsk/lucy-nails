@@ -1,6 +1,6 @@
 "use client";
 import { useEffect } from "react";
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, type Editor as TiptapEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
@@ -15,8 +15,7 @@ import {
     Heading2,
     Quote,
     Undo,
-    Redo,
-    Link as LinkIcon
+    Redo
 } from "lucide-react";
 import { Button } from "./button";
 import { cn } from "@/lib/utils";
@@ -28,7 +27,7 @@ interface EditorProps {
     className?: string;
 }
 
-const Toolbar = ({ editor }: { editor: any }) => {
+const Toolbar = ({ editor }: { editor: TiptapEditor | null }) => {
     if (!editor) return null;
 
     const handleAction = (e: React.MouseEvent, action: () => void) => {

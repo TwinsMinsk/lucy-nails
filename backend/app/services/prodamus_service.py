@@ -139,17 +139,21 @@ class ProdamusService:
         if hmac.compare_digest(expected, signature):
             return True
 
-        # Second, try demo mode signature (suffix 'demo')
-        # В документации: "при демо-платежах используется намеренно отличающаяся подпись (secret key с суффиксом demo)"
-        expected_demo = _make_signature(payload, secret + "demo")
-        if hmac.compare_digest(expected_demo, signature):
-            logger.info("Matched demo signature for Prodamus webhook")
-            return True
+        # Demo-mode signature uses the secret with a "demo" suffix. Accept it ONLY
+        # when demo mode is explicitly enabled (or outside production), otherwise a
+        # leaked secret could forge a demo-signed webhook against a live shop and
+        # grant free access. See audit 2026-07-06 (P0-2 / INTEG-01).
+        demo_allowed = settings.PRODAMUS_DEMO_MODE or settings.ENVIRONMENT.lower() != "production"
+        if demo_allowed:
+            expected_demo = _make_signature(payload, secret + "demo")
+            if hmac.compare_digest(expected_demo, signature):
+                logger.info("Matched demo signature for Prodamus webhook")
+                return True
 
         logger.warning(
-            "Prodamus signature mismatch. Expected normal=%s or demo=%s, Got=%s",
+            "Prodamus signature mismatch. Expected normal=%s, Got=%s (demo_allowed=%s)",
             expected[:16] + "...",
-            expected_demo[:16] + "...",
             signature[:16] + "...",
+            demo_allowed,
         )
         return False

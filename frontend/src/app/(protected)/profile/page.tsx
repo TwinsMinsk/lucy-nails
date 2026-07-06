@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getMe, isAuthError, logout, UserResponse } from "@/lib/api";
+import { changePassword, getMe, isAuthError, logout, UserResponse } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { BookOpen, Loader2, LogOut, User } from "lucide-react";
@@ -15,6 +15,10 @@ export default function ProfilePage() {
     const router = useRouter();
     const [user, setUser] = useState<UserResponse | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [currentPassword, setCurrentPassword] = useState("");
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [isChanging, setIsChanging] = useState(false);
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -44,6 +48,31 @@ export default function ProfilePage() {
         }
     };
 
+    const handleChangePassword = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (newPassword.length < 6) {
+            toast.error("Новый пароль должен быть не короче 6 символов");
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            toast.error("Пароли не совпадают");
+            return;
+        }
+        setIsChanging(true);
+        try {
+            await changePassword(currentPassword, newPassword);
+            toast.success("Пароль изменён");
+            setCurrentPassword("");
+            setNewPassword("");
+            setConfirmPassword("");
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Не удалось изменить пароль";
+            toast.error("Ошибка", { description: message });
+        } finally {
+            setIsChanging(false);
+        }
+    };
+
     if (isLoading) {
         return (
             <div className="flex justify-center items-center min-h-[50vh]">
@@ -55,7 +84,7 @@ export default function ProfilePage() {
     if (!user) return null;
 
     return (
-        <div className="container max-w-lg py-12">
+        <div className="container max-w-lg py-12 space-y-6">
             <Card className="w-full shadow-lg border-primary/10">
                 <CardHeader className="text-center pb-2">
                     <div className="mx-auto bg-primary/10 p-4 rounded-full w-fit mb-4">
@@ -117,6 +146,56 @@ export default function ProfilePage() {
                         Выйти
                     </Button>
                 </CardFooter>
+            </Card>
+
+            <Card className="w-full shadow-lg border-primary/10">
+                <CardHeader className="pb-2">
+                    <CardTitle className="text-xl font-serif text-text-primary">Смена пароля</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <form onSubmit={handleChangePassword} className="space-y-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="current_password" className="text-text-secondary">Текущий пароль</Label>
+                            <Input
+                                id="current_password"
+                                type="password"
+                                placeholder="••••••••"
+                                value={currentPassword}
+                                onChange={(event) => setCurrentPassword(event.target.value)}
+                                required
+                                className="h-12 border-primary/20"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="new_password" className="text-text-secondary">Новый пароль</Label>
+                            <Input
+                                id="new_password"
+                                type="password"
+                                placeholder="••••••••"
+                                value={newPassword}
+                                onChange={(event) => setNewPassword(event.target.value)}
+                                required
+                                className="h-12 border-primary/20"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="confirm_password" className="text-text-secondary">Повторите новый пароль</Label>
+                            <Input
+                                id="confirm_password"
+                                type="password"
+                                placeholder="••••••••"
+                                value={confirmPassword}
+                                onChange={(event) => setConfirmPassword(event.target.value)}
+                                required
+                                className="h-12 border-primary/20"
+                            />
+                        </div>
+                        <Button type="submit" className="w-full h-12 text-base" disabled={isChanging}>
+                            {isChanging && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Сохранить новый пароль
+                        </Button>
+                    </form>
+                </CardContent>
             </Card>
         </div>
     );

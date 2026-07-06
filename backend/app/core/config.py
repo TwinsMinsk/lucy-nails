@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    # Short-lived token emailed for the forgot-password flow.
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
     # Parent domain for auth/CSRF cookies. Empty = host-only cookies (single-host dev).
     # Set to e.g. "lucysmirnova.ru" so cookies are readable by frontend on a sibling
     # subdomain (lucysmirnova.ru reading cookies set by api.lucysmirnova.ru).
@@ -97,7 +99,11 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM_NAME: str = "Lucy Nails Academy"
-    SMTP_REQUIRED_FOR_PAYMENT_EMAIL: bool = False
+    # Fail-closed by default: a paid product cannot deliver access without email
+    # (credentials on guest checkout, password-reset links). Production refuses to
+    # start unless SMTP creds are set. Override to false only for a deployment that
+    # genuinely never emails users.
+    SMTP_REQUIRED_FOR_PAYMENT_EMAIL: bool = True
 
     # === Telegram ===
     TELEGRAM_BOT_TOKEN: str = ""
@@ -143,6 +149,8 @@ class Settings(BaseSettings):
             errors.append("DEBUG must be false in production")
         if self.JWT_SECRET_KEY == "your-super-secret-key-change-in-production":
             errors.append("JWT_SECRET_KEY must be changed in production")
+        elif len(self.JWT_SECRET_KEY) < 32:
+            errors.append("JWT_SECRET_KEY must be at least 32 characters in production")
         if not self.KINESCOPE_API_KEY:
             errors.append("KINESCOPE_API_KEY is required in production")
         if not self.PRODAMUS_URL:
