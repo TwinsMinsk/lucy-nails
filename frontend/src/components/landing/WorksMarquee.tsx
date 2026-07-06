@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import useEmblaCarousel from "embla-carousel-react";
+import AutoScroll from "embla-carousel-auto-scroll";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import {
   Dialog,
@@ -9,10 +13,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { WorkPhoto } from "@/lib/landing/works-photos";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 
-const SECONDS_PER_PHOTO = 8;
-// If a module has few photos, repeat them so one strip copy always fills the viewport
+// If a module has few photos, repeat them so the loop always fills the viewport
 const MIN_TILES = 6;
 
 export interface WorksMarqueeProps {
@@ -23,13 +25,37 @@ export interface WorksMarqueeProps {
 
 export function WorksMarquee({ photos, title, reverse = false }: WorksMarqueeProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const viewportRef = useRef<HTMLDivElement>(null);
-  // Native lazy loading never fires for tiles moved by the CSS transform animation,
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  // Native lazy loading never fires for tiles moved by the carousel transform,
   // so load the whole strip once the marquee itself approaches the viewport.
   const [inView, setInView] = useState(false);
 
+  const [emblaRef, emblaApi] = useEmblaCarousel(
+    { loop: true, align: "start", skipSnaps: true },
+    [
+      AutoScroll({
+        speed: 0.6,
+        direction: reverse ? "backward" : "forward",
+        stopOnInteraction: false,
+        stopOnMouseEnter: true,
+        startDelay: 1200,
+        rootNode: (root) => root.parentElement,
+      }),
+    ]
+  );
+
+  const handleArrow = useCallback(
+    (dir: 1 | -1) => {
+      if (!emblaApi) return;
+      if (dir > 0) emblaApi.scrollNext();
+      else emblaApi.scrollPrev();
+      emblaApi.plugins()?.autoScroll?.reset();
+    },
+    [emblaApi]
+  );
+
   useEffect(() => {
-    const el = viewportRef.current;
+    const el = wrapperRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
       (entries) => {
@@ -65,50 +91,53 @@ export function WorksMarquee({ photos, title, reverse = false }: WorksMarqueePro
       ? photos
       : Array.from({ length: Math.ceil(MIN_TILES / photos.length) }, () => photos).flat();
 
-  const strip = (hidden: boolean) => (
-    <div className="flex shrink-0 gap-2 pr-2" aria-hidden={hidden || undefined}>
-      {seq.map((photo, i) => (
-        <button
-          key={`${photo.thumb}-${i}`}
-          type="button"
-          tabIndex={hidden ? -1 : 0}
-          onClick={() => setActiveIndex(i % photos.length)}
-          className="relative size-64 shrink-0 overflow-hidden rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] md:size-72"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element -- pre-sized static WebP thumb, no transform needed */}
-          <img
-            src={photo.thumb}
-            alt={hidden ? "" : `${title} — пример работы ${i + 1}`}
-            width={640}
-            height={640}
-            loading={inView ? "eager" : "lazy"}
-            decoding="async"
-            draggable={false}
-            className="size-full select-none object-cover"
-          />
-        </button>
-      ))}
-    </div>
-  );
-
   return (
     <>
-      <div
-        ref={viewportRef}
-        className="works-marquee-mask h-64 w-full overflow-hidden rounded-2xl [content-visibility:auto] md:h-72"
-      >
+      <div ref={wrapperRef} className="relative">
         <div
-          className="flex w-max animate-[works-marquee_var(--works-duration)_linear_infinite] hover:paused focus-within:paused motion-reduce:paused"
-          style={
-            {
-              "--works-duration": `${seq.length * SECONDS_PER_PHOTO}s`,
-              animationDirection: reverse ? "reverse" : undefined,
-            } as React.CSSProperties
-          }
+          ref={emblaRef}
+          className="works-marquee-mask h-64 w-full overflow-hidden rounded-2xl [content-visibility:auto] md:h-72"
         >
-          {strip(false)}
-          {strip(true)}
+          <div className="flex">
+            {seq.map((photo, i) => (
+              <div key={`${photo.thumb}-${i}`} className="min-w-0 flex-[0_0_auto] pl-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveIndex(i % photos.length)}
+                  className="relative size-64 shrink-0 overflow-hidden rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] md:size-72"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element -- pre-sized static WebP thumb, no transform needed */}
+                  <img
+                    src={photo.thumb}
+                    alt={`${title} — пример работы ${(i % photos.length) + 1}`}
+                    width={640}
+                    height={640}
+                    loading={inView ? "eager" : "lazy"}
+                    decoding="async"
+                    draggable={false}
+                    className="size-full select-none object-cover"
+                  />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
+        <button
+          type="button"
+          aria-label="Предыдущие работы"
+          onClick={() => handleArrow(-1)}
+          className="absolute left-2 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-text-primary shadow-lg transition hover:scale-110 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+        >
+          <ChevronLeft className="size-5" />
+        </button>
+        <button
+          type="button"
+          aria-label="Следующие работы"
+          onClick={() => handleArrow(1)}
+          className="absolute right-2 top-1/2 z-10 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-text-primary shadow-lg transition hover:scale-110 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+        >
+          <ChevronRight className="size-5" />
+        </button>
       </div>
       <Dialog
         open={activeIndex !== null}

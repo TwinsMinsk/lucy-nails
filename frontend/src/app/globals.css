@@ -222,13 +222,6 @@ body {
       transform: translateX(100%);
     }
   }
-
-  /* Works marquee (program module cards) */
-  @keyframes works-marquee {
-    to {
-      transform: translateX(-50%);
-    }
-  }
 }
 
 .works-marquee-mask {
