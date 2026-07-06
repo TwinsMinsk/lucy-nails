@@ -104,3 +104,76 @@ class EmailService:
         except Exception as exc:
             logger.error("Failed to send email to %s: %s", email, exc)
             raise
+
+    @staticmethod
+    def _build_reset_html(reset_url: str) -> str:
+        safe_url = escape(reset_url, quote=True)
+        return f"""
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <style>
+    body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f9f0f4; margin: 0; padding: 0; }}
+    .wrapper {{ max-width: 560px; margin: 40px auto; background: #fff; border-radius: 16px;
+                box-shadow: 0 4px 24px rgba(200,80,120,.10); overflow: hidden; }}
+    .header {{ background: linear-gradient(135deg, #e75480 0%, #b5006e 100%);
+               padding: 36px 32px; text-align: center; }}
+    .header h1 {{ color: #fff; margin: 0; font-size: 24px; letter-spacing: 0.5px; }}
+    .body {{ padding: 36px 32px; }}
+    .body p {{ color: #444; font-size: 15px; line-height: 1.6; }}
+    .btn {{ display: inline-block; background: linear-gradient(135deg, #e75480, #b5006e);
+            color: #fff !important; text-decoration: none; padding: 14px 32px;
+            border-radius: 50px; font-size: 16px; font-weight: 600; margin-top: 8px; }}
+    .footer {{ background: #f3e6ec; text-align: center; padding: 18px 32px;
+               color: #999; font-size: 12px; }}
+  </style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="header">
+    <h1>Сброс пароля — Lucy Nails Academy</h1>
+  </div>
+  <div class="body">
+    <p>Вы запросили сброс пароля. Нажмите кнопку ниже, чтобы задать новый пароль. Ссылка действует ограниченное время.</p>
+    <p style="text-align:center; margin-top:28px;">
+      <a href="{safe_url}" class="btn">Сбросить пароль →</a>
+    </p>
+    <p style="color:#999; font-size:13px; margin-top:24px;">Если вы не запрашивали сброс — просто проигнорируйте это письмо, пароль останется прежним.</p>
+  </div>
+  <div class="footer">
+    Lucy Nails Academy
+  </div>
+</div>
+</body>
+</html>
+"""
+
+    @staticmethod
+    async def send_password_reset(email: str, reset_url: str) -> None:
+        """Отправляет письмо со ссылкой на сброс пароля."""
+        if not EmailService.is_configured():
+            logger.warning("SMTP credentials not configured — skipping reset email to %s", email)
+            return
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "Сброс пароля — Lucy Nails Academy"
+        msg["From"] = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_USER}>"
+        msg["To"] = email
+
+        html = EmailService._build_reset_html(reset_url)
+        msg.attach(MIMEText(html, "html", "utf-8"))
+
+        try:
+            await aiosmtplib.send(
+                msg,
+                hostname=settings.SMTP_HOST,
+                port=settings.SMTP_PORT,
+                username=settings.SMTP_USER,
+                password=settings.SMTP_PASSWORD,
+                start_tls=True,
+            )
+            logger.info("Password reset email sent to %s", email)
+        except Exception as exc:
+            logger.error("Failed to send reset email to %s: %s", email, exc)
+            raise

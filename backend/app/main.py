@@ -71,6 +71,8 @@ class CsrfProtectionMiddleware(BaseHTTPMiddleware):
         "/api/auth/register",
         "/api/auth/refresh",
         "/api/auth/logout",
+        "/api/auth/forgot-password",
+        "/api/auth/reset-password",
     }
 
     async def dispatch(self, request: Request, call_next):

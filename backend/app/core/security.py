@@ -5,7 +5,7 @@
 from datetime import datetime, timedelta
 from typing import Any
 
-from jose import jwt
+from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 from app.core.config import settings
@@ -50,3 +50,21 @@ def create_refresh_token(data: dict[str, Any]) -> str:
     to_encode = data.copy()
     to_encode.update({"exp": expire, "type": "refresh"})
     return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def create_password_reset_token(user_id: Any) -> str:
+    """Создаёт короткоживущий JWT для сброса пароля (type="reset")."""
+    expire = datetime.utcnow() + timedelta(minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES)
+    to_encode = {"sub": str(user_id), "exp": expire, "type": "reset"}
+    return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def verify_password_reset_token(token: str) -> str | None:
+    """Проверяет reset-токен и возвращает user_id (sub) или None."""
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+    except JWTError:
+        return None
+    if payload.get("type") != "reset":
+        return None
+    return payload.get("sub")

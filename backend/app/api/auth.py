@@ -1,6 +1,7 @@
 """
 API эндпоинты для аутентификации.
 """
+import logging
 import secrets
 
 from uuid import UUID
@@ -15,10 +16,22 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.core.rate_limit import limiter
+from app.core.security import create_password_reset_token, verify_password_reset_token
 from app.models.user import User
-from app.schemas.auth import Token, UserLogin, UserRegister, UserResponse
+from app.schemas.auth import (
+    ChangePasswordRequest,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+    Token,
+    UserLogin,
+    UserRegister,
+    UserResponse,
+)
 from app.services.auth_service import AuthService
+from app.services.email_service import EmailService
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -228,3 +241,84 @@ async def logout(response: Response):
     """
     _clear_auth_cookies(response)
     return {"message": "Successfully logged out"}
+
+
+@router.post("/change-password")
+@limiter.limit("10/minute")
+async def change_password(
+    request: Request,
+    data: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Меняет пароль залогиненного пользователя (нужен текущий пароль)."""
+    ok = await AuthService.change_password(
+        db, current_user, data.current_password, data.new_password
+    )
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+    await db.commit()
+    return {"message": "Password changed"}
+
+
+@router.post("/forgot-password")
+@limiter.limit("5/minute")
+async def forgot_password(
+    request: Request,
+    data: ForgotPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Отправляет ссылку на сброс пароля, если аккаунт существует.
+
+    Ответ всегда одинаковый (не раскрывает наличие email — защита от enumeration).
+    """
+    email = data.email.strip().lower()
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+    if user:
+        token = create_password_reset_token(user.id)
+        reset_url = f"{settings.FRONTEND_URL.rstrip('/')}/auth/reset-password?token={token}"
+        try:
+            await EmailService.send_password_reset(user.email, reset_url)
+        except Exception:
+            logger.exception("Failed to send reset email to %s", user.email)
+    return {"message": "If the account exists, a reset link has been sent"}
+
+
+@router.post("/reset-password")
+@limiter.limit("10/minute")
+async def reset_password(
+    request: Request,
+    data: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Устанавливает новый пароль по токену из письма."""
+    user_id = verify_password_reset_token(data.token)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+    try:
+        user_uuid = UUID(user_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    result = await db.execute(select(User).where(User.id == user_uuid))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    await AuthService.set_password(db, user, data.new_password)
+    await db.commit()
+    return {"message": "Password has been reset"}
