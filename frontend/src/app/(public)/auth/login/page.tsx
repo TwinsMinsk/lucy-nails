@@ -104,6 +104,14 @@ export default function LoginPage() {
                                     </FormItem>
                                 )}
                             />
+                            <div className="text-right">
+                                <Link
+                                    href="/auth/forgot-password"
+                                    className="text-sm text-muted-foreground hover:text-primary hover:underline"
+                                >
+                                    Забыли пароль?
+                                </Link>
+                            </div>
                             <Button type="submit" className="w-full" disabled={isLoading}>
                                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                 Войти

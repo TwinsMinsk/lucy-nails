@@ -274,6 +274,42 @@ export const logout = async (): Promise<void> => {
 };
 
 /**
+ * Сменить пароль (требуется авторизация)
+ */
+export const changePassword = async (
+    currentPassword: string,
+    newPassword: string
+): Promise<{ message: string }> => {
+    return apiFetch<{ message: string }>("/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    });
+};
+
+/**
+ * Запросить ссылку на сброс пароля (отправляется на email)
+ */
+export const forgotPassword = async (email: string): Promise<{ message: string }> => {
+    return apiFetch<{ message: string }>("/auth/forgot-password", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+    });
+};
+
+/**
+ * Установить новый пароль по токену из письма
+ */
+export const resetPassword = async (
+    token: string,
+    newPassword: string
+): Promise<{ message: string }> => {
+    return apiFetch<{ message: string }>("/auth/reset-password", {
+        method: "POST",
+        body: JSON.stringify({ token, new_password: newPassword }),
+    });
+};
+
+/**
  * ============================================
  * LESSONS METHODS
  * ============================================
