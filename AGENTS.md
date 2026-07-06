@@ -1,6 +1,23 @@
+<!-- Generated: manual | Updated: 2026-07-06 (deepinit: добавлена иерархия AGENTS.md) -->
+
 # AGENTS.md — ориентир для AI в Cursor
 
 Этот файл — **главная точка входа** для агента в Cursor. Детальные правила: [`.cursor/rules/`](.cursor/rules). Карта кода: [`CODEBASE.md`](CODEBASE.md).
+
+## Иерархия AGENTS.md
+
+В ключевых каталогах лежат локальные `AGENTS.md` с деталями по этой части кода; тег `<!-- Parent: ../AGENTS.md -->` в каждом из них ведёт к родителю. Перед работой в каталоге читай его `AGENTS.md`:
+
+- [`backend/AGENTS.md`](backend/AGENTS.md) — backend в целом (Procfile, requirements, служебные скрипты)
+  - [`backend/app/AGENTS.md`](backend/app/AGENTS.md) — FastAPI-приложение: `main.py`, lifespan, middleware
+    - [`api/`](backend/app/api/AGENTS.md) · [`bot/`](backend/app/bot/AGENTS.md) · [`core/`](backend/app/core/AGENTS.md) · [`models/`](backend/app/models/AGENTS.md) · [`schemas/`](backend/app/schemas/AGENTS.md) · [`services/`](backend/app/services/AGENTS.md)
+  - [`backend/alembic/AGENTS.md`](backend/alembic/AGENTS.md) — миграции БД
+  - [`backend/tests/AGENTS.md`](backend/tests/AGENTS.md) — pytest, тестовая БД
+- [`frontend/AGENTS.md`](frontend/AGENTS.md) — Next.js-приложение, env, проверки
+  - [`frontend/src/AGENTS.md`](frontend/src/AGENTS.md) → [`app/`](frontend/src/app/AGENTS.md) · [`components/`](frontend/src/components/AGENTS.md) · [`lib/`](frontend/src/lib/AGENTS.md)
+  - [`frontend/public/AGENTS.md`](frontend/public/AGENTS.md) — статика и фото работ
+- [`scripts/AGENTS.md`](scripts/AGENTS.md) — dev-скрипты; детали: [`promo/`](scripts/promo/AGENTS.md), [`kinescope/`](scripts/kinescope/AGENTS.md)
+- [`Docs/AGENTS.md`](Docs/AGENTS.md) — карта документации
 
 ## Стек
 
