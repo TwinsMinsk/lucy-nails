@@ -40,7 +40,7 @@ export const metadata: Metadata = {
 
 const COURSE_DATA = {
   level: "Для практикующих мастеров",
-  certificate: false,
+  certificate: true,
   prices: {
     self: 5900,
     support: 11900,

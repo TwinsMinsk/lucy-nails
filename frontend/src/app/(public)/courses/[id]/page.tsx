@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { CheckCircle, Clock, Video, Star, ShieldCheck } from "lucide-react";
+import { CheckCircle, Clock, Video, Award, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ModuleList, Module } from "@/components/course/ModuleList";
@@ -80,7 +80,7 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
     const course = {
         ...courseData,
         level: "Для всех уровней", // Placeholder or add to DB
-        certificate: false, // Сертификаты вынесены в post-MVP.
+        certificate: true,
         prices: {
             self: courseData.price_self,
             support: courseData.price_support,
@@ -103,7 +103,7 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                                 </Badge>
                                 {course.certificate && (
                                     <Badge variant="outline" className="border-primary/20 text-primary gap-1">
-                                        <Star className="w-3 h-3" /> Сертификат
+                                        <Award className="w-3 h-3" /> Сертификат
                                     </Badge>
                                 )}
                             </div>

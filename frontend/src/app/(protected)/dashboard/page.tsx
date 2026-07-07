@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BookOpen, CalendarClock, Loader2, MessageCircle, PlayCircle } from "lucide-react";
+import { Award, BookOpen, CalendarClock, CheckCircle, Loader2, MessageCircle, PlayCircle } from "lucide-react";
 import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
@@ -18,12 +18,14 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { getMyCourses, getMe, isAuthError, MyCourseResponse, UserResponse } from "@/lib/api";
 import { toast } from "sonner";
+import { CertificateClaimDialog } from "@/components/certificate/CertificateClaimDialog";
 
 export default function DashboardPage() {
     const router = useRouter();
     const [user, setUser] = useState<UserResponse | null>(null);
     const [courses, setCourses] = useState<MyCourseResponse[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [claimCourse, setClaimCourse] = useState<MyCourseResponse | null>(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -170,8 +172,9 @@ export default function DashboardPage() {
                                         )}
                                         <div className="space-y-2">
                                             <div className="flex justify-between text-sm">
-                                                <span className="font-medium text-text-primary">
+                                                <span className="font-medium text-text-primary flex items-center gap-1">
                                                     {course.progress}% завершено
+                                                    {course.progress === 100 && <CheckCircle className="w-3.5 h-3.5 text-[#D4AF37]" />}
                                                 </span>
                                                 <span className="text-text-secondary">
                                                     {course.completed_lessons}/{course.total_lessons} уроков
@@ -199,13 +202,34 @@ export default function DashboardPage() {
                                         )}
                                     </CardContent>
 
-                                    <CardFooter className="pt-2">
+                                    <CardFooter className="pt-2 flex flex-col gap-2">
                                         <Button className="w-full gap-2 group" asChild>
                                             <Link href={course.last_lesson_id ? `/courses/${course.id}/lessons/${course.last_lesson_id}` : `/courses/${course.id}`}>
                                                 <PlayCircle className="w-4 h-4 transition-all duration-300" />
                                                 {continueLabel}
                                             </Link>
                                         </Button>
+                                        {course.progress === 100 && (
+                                            course.certificate_number ? (
+                                                <Button
+                                                    asChild
+                                                    className="w-full gap-2 rounded-full bg-gradient-to-r from-[#D4AF37] via-[#FFF3AD] to-[#BFA15F] text-[#5A4B4B] font-bold shadow-[0_4px_15px_rgba(191,161,95,0.3)]"
+                                                >
+                                                    <Link href={`/certificate/${course.certificate_number}`}>
+                                                        <Award className="w-4 h-4" />
+                                                        Мой сертификат
+                                                    </Link>
+                                                </Button>
+                                            ) : (
+                                                <Button
+                                                    className="w-full gap-2 rounded-full bg-gradient-to-r from-[#D4AF37] via-[#FFF3AD] to-[#BFA15F] text-[#5A4B4B] font-bold shadow-[0_4px_15px_rgba(191,161,95,0.3)]"
+                                                    onClick={() => setClaimCourse(course)}
+                                                >
+                                                    <Award className="w-4 h-4" />
+                                                    Получить сертификат
+                                                </Button>
+                                            )
+                                        )}
                                     </CardFooter>
                                 </Card>
                             );
@@ -226,6 +250,22 @@ export default function DashboardPage() {
                     </div>
                 )}
             </section>
+
+            <CertificateClaimDialog
+                open={!!claimCourse}
+                onOpenChange={(open) => { if (!open) setClaimCourse(null); }}
+                courseId={claimCourse?.id ?? ""}
+                courseTitle={claimCourse?.title ?? ""}
+                certificate={null}
+                onClaimed={(cert) => {
+                    setCourses((prev) =>
+                        prev.map((c) =>
+                            c.id === claimCourse?.id ? { ...c, certificate_number: cert.certificate_number } : c
+                        )
+                    );
+                    setClaimCourse(null);
+                }}
+            />
         </div>
     );
 }
