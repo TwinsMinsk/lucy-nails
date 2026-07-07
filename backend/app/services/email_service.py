@@ -1,5 +1,10 @@
 """
-Email-сервис: отправка писем через SMTP (aiosmtplib).
+Email-сервис: отправка писем через Resend HTTP API (основной путь) либо SMTP (fallback).
+
+Railway блокирует исходящий SMTP на планах ниже Pro, поэтому в production письма
+уходят через Resend (HTTPS/443). Локально, если RESEND_API_KEY не задан, отправка
+идёт через SMTP. Любой транспорт вызывается с жёстким таймаутом, чтобы медленная или
+недоступная почта никогда не подвешивала HTTP-запрос (сброс пароля, вебхук оплаты).
 """
 
 import logging
@@ -8,17 +13,77 @@ from email.mime.text import MIMEText
 from html import escape
 
 import aiosmtplib
+import httpx
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Ни одна отправка письма не должна висеть дольше этого времени внутри запроса.
+EMAIL_TIMEOUT_SECONDS = 10.0
+RESEND_ENDPOINT = "https://api.resend.com/emails"
+
 
 class EmailService:
     @staticmethod
     def is_configured() -> bool:
-        """Returns whether SMTP credentials are available."""
-        return bool(settings.SMTP_USER and settings.SMTP_PASSWORD)
+        """Returns whether an email transport (Resend or SMTP) is available."""
+        return bool(
+            settings.RESEND_API_KEY or (settings.SMTP_USER and settings.SMTP_PASSWORD)
+        )
+
+    @staticmethod
+    def _from_address() -> str:
+        """From-заголовок письма: EMAIL_FROM, иначе '<SMTP_FROM_NAME> <SMTP_USER>'."""
+        if settings.EMAIL_FROM:
+            return settings.EMAIL_FROM
+        return f"{settings.SMTP_FROM_NAME} <{settings.SMTP_USER}>"
+
+    @staticmethod
+    async def _send(email: str, subject: str, html: str) -> None:
+        """Отправляет письмо через Resend (если задан ключ) или SMTP. С таймаутом."""
+        if not EmailService.is_configured():
+            logger.warning("Email transport not configured — skipping email to %s", email)
+            return
+
+        from_address = EmailService._from_address()
+        if settings.RESEND_API_KEY:
+            await EmailService._send_via_resend(from_address, email, subject, html)
+        else:
+            await EmailService._send_via_smtp(from_address, email, subject, html)
+
+    @staticmethod
+    async def _send_via_resend(from_address: str, email: str, subject: str, html: str) -> None:
+        async with httpx.AsyncClient(timeout=EMAIL_TIMEOUT_SECONDS) as client:
+            response = await client.post(
+                RESEND_ENDPOINT,
+                headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
+                json={"from": from_address, "to": [email], "subject": subject, "html": html},
+            )
+        if response.status_code >= 400:
+            logger.error(
+                "Resend rejected email to %s: %s %s", email, response.status_code, response.text
+            )
+            response.raise_for_status()
+        logger.info("Email sent to %s via Resend", email)
+
+    @staticmethod
+    async def _send_via_smtp(from_address: str, email: str, subject: str, html: str) -> None:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = from_address
+        msg["To"] = email
+        msg.attach(MIMEText(html, "html", "utf-8"))
+        await aiosmtplib.send(
+            msg,
+            hostname=settings.SMTP_HOST,
+            port=settings.SMTP_PORT,
+            username=settings.SMTP_USER,
+            password=settings.SMTP_PASSWORD,
+            start_tls=True,
+            timeout=EMAIL_TIMEOUT_SECONDS,
+        )
+        logger.info("Email sent to %s via SMTP", email)
 
     @staticmethod
     def _build_credentials_html(email: str, password: str) -> str:
@@ -79,31 +144,8 @@ class EmailService:
     @staticmethod
     async def send_credentials(email: str, password: str) -> None:
         """Отправляет email с логином и сгенерированным паролем."""
-        if not EmailService.is_configured():
-            logger.warning("SMTP credentials not configured — skipping email to %s", email)
-            return
-
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = "🎉 Ваш доступ к курсу — Lucy Nails Academy"
-        msg["From"]    = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_USER}>"
-        msg["To"]      = email
-
         html = EmailService._build_credentials_html(email, password)
-        msg.attach(MIMEText(html, "html", "utf-8"))
-
-        try:
-            await aiosmtplib.send(
-                msg,
-                hostname=settings.SMTP_HOST,
-                port=settings.SMTP_PORT,
-                username=settings.SMTP_USER,
-                password=settings.SMTP_PASSWORD,
-                start_tls=True,
-            )
-            logger.info("Credentials email sent to %s", email)
-        except Exception as exc:
-            logger.error("Failed to send email to %s: %s", email, exc)
-            raise
+        await EmailService._send(email, "🎉 Ваш доступ к курсу — Lucy Nails Academy", html)
 
     @staticmethod
     def _build_reset_html(reset_url: str) -> str:
@@ -152,28 +194,5 @@ class EmailService:
     @staticmethod
     async def send_password_reset(email: str, reset_url: str) -> None:
         """Отправляет письмо со ссылкой на сброс пароля."""
-        if not EmailService.is_configured():
-            logger.warning("SMTP credentials not configured — skipping reset email to %s", email)
-            return
-
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = "Сброс пароля — Lucy Nails Academy"
-        msg["From"] = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_USER}>"
-        msg["To"] = email
-
         html = EmailService._build_reset_html(reset_url)
-        msg.attach(MIMEText(html, "html", "utf-8"))
-
-        try:
-            await aiosmtplib.send(
-                msg,
-                hostname=settings.SMTP_HOST,
-                port=settings.SMTP_PORT,
-                username=settings.SMTP_USER,
-                password=settings.SMTP_PASSWORD,
-                start_tls=True,
-            )
-            logger.info("Password reset email sent to %s", email)
-        except Exception as exc:
-            logger.error("Failed to send reset email to %s: %s", email, exc)
-            raise
+        await EmailService._send(email, "Сброс пароля — Lucy Nails Academy", html)
