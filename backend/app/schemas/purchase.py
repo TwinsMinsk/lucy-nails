@@ -66,7 +66,11 @@ class MyCourseResponse(BaseModel):
         None,
         description="Ссылка на Telegram-чат (только тариф support)",
     )
-    
+    certificate_number: str | None = Field(
+        None,
+        description="Номер сертификата, если уже выдан",
+    )
+
     class Config:
         from_attributes = True
 
