@@ -32,7 +32,11 @@ interface CertificateClaimDialogProps {
   defaultName?: string;
 }
 
-const NAME_ALLOWED_CHARS_RE = /^[A-Za-zА-Яа-яЁё\s'\-.]+$/;
+// Mirrors backend `_FULL_NAME_PATTERN` (backend/app/schemas/certificate.py): first
+// character must be a letter (Latin or Cyrillic); the rest may also contain
+// apostrophes (straight or curly, for smart-quote names like «Д’Арк»), spaces,
+// dots and hyphens.
+const NAME_ALLOWED_CHARS_RE = /^[A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё'’ .\-]*$/;
 
 function validateFullName(raw: string): { value: string; error: string | null } {
   const value = raw.replace(/\s+/g, " ").trim();
@@ -41,7 +45,7 @@ function validateFullName(raw: string): { value: string; error: string | null } 
     return { value, error: "Имя должно быть от 2 до 120 символов" };
   }
   if (!NAME_ALLOWED_CHARS_RE.test(value)) {
-    return { value, error: "Допустимы только буквы, пробел, дефис, апостроф и точка" };
+    return { value, error: "Имя должно начинаться с буквы. Допустимы буквы, пробел, дефис, апостроф и точка" };
   }
 
   const words = value.split(" ").filter(Boolean);
