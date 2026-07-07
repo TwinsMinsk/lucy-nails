@@ -13,7 +13,13 @@ from io import BytesIO
 from PIL import Image, ImageDraw
 
 from app.services import certificate_layout as layout
-from app.services.certificate_renderer import _fit_font_size, png_to_pdf, render_certificate_png
+from app.services.certificate_renderer import (
+    _COURSE_TITLE_SIZE_FLOOR,
+    _fit_font_size,
+    _wrap_course_title_two_lines,
+    png_to_pdf,
+    render_certificate_png,
+)
 
 _TYPICAL_KWARGS = {
     "student_name": "Анна Иванова",
@@ -78,6 +84,76 @@ def test_render_certificate_png_long_course_title_wraps_to_two_lines():
     png_bytes = render_certificate_png(**kwargs)
 
     assert png_bytes.startswith(b"\x89PNG")
+
+
+def test_wrap_course_title_two_lines_splits_long_title_at_word_boundary():
+    draw = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+    long_title = (
+        "Аппаратный маникюр, педикюр и сложные покрытия: продвинутый курс "
+        "для мастеров индустрии красоты"
+    )
+    assert len(long_title) > 90
+
+    line1, line2, font = _wrap_course_title_two_lines(
+        draw,
+        long_title,
+        layout.COURSE_TITLE_FONT,
+        layout.COURSE_TITLE_SIZE,
+        layout.COURSE_TITLE_MAX_WIDTH,
+        _COURSE_TITLE_SIZE_FLOOR,
+    )
+
+    assert line1 and line2
+    width1 = draw.textlength(line1, font=font)
+    width2 = draw.textlength(line2, font=font)
+    assert width1 <= layout.COURSE_TITLE_MAX_WIDTH
+    assert width2 <= layout.COURSE_TITLE_MAX_WIDTH
+
+    # Split happened at a word boundary: rejoining with a single space
+    # reconstructs the original title exactly.
+    assert f"{line1} {line2}" == long_title
+
+    # Reasonably balanced: the shorter line is at least 25% of the longer
+    # line's width. A degenerate split (e.g. everything crammed onto one
+    # line and an empty/near-empty second line) would fail this.
+    shorter_width, longer_width = sorted((width1, width2))
+    assert shorter_width >= 0.25 * longer_width
+
+
+def test_wrap_course_title_two_lines_short_single_word_stays_on_one_line():
+    draw = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+    short_title = "Маникюр"
+
+    line1, line2, font = _wrap_course_title_two_lines(
+        draw,
+        short_title,
+        layout.COURSE_TITLE_FONT,
+        layout.COURSE_TITLE_SIZE,
+        layout.COURSE_TITLE_MAX_WIDTH,
+        _COURSE_TITLE_SIZE_FLOOR,
+    )
+
+    assert line1 == short_title
+    assert line2 == ""
+    assert font.size == _COURSE_TITLE_SIZE_FLOOR
+
+
+def test_wrap_course_title_two_lines_unsplittable_long_token_does_not_raise():
+    draw = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+    long_token = "А" * 90
+
+    line1, line2, font = _wrap_course_title_two_lines(
+        draw,
+        long_token,
+        layout.COURSE_TITLE_FONT,
+        layout.COURSE_TITLE_SIZE,
+        layout.COURSE_TITLE_MAX_WIDTH,
+        _COURSE_TITLE_SIZE_FLOOR,
+    )
+
+    assert line1 == long_token
+    assert line2 == ""
+    assert font.size == _COURSE_TITLE_SIZE_FLOOR
 
 
 def test_png_to_pdf_produces_pdf_bytes():
