@@ -14,9 +14,9 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from PIL import Image, ImageDraw, ImageFont  # noqa: E402
+from PIL import Image, ImageDraw, ImageFont
 
-from app.services import certificate_layout as layout  # noqa: E402
+from app.services import certificate_layout as layout
 
 
 def _diamond_points(center: tuple[float, float], half_diagonal: float) -> list[tuple[float, float]]:
@@ -76,12 +76,12 @@ def _draw_underline_with_diamond(
     draw: ImageDraw.ImageDraw, center_x: float, y: float, width: float, stroke: float, color: str, diamond_half_diagonal: float
 ) -> None:
     """A continuous line with a diamond overlaid at its center."""
-    draw.line([(center_x - width / 2, y), (center_x + width / 2, y)], fill=color, width=int(stroke))
+    draw.line([(center_x - width / 2, y), (center_x + width / 2, y)], fill=color, width=round(stroke))
     _draw_diamond(draw, (center_x, y), diamond_half_diagonal, color)
 
 
 def _draw_plain_line(draw: ImageDraw.ImageDraw, center_x: float, y: float, width: float, stroke: float, color: str) -> None:
-    draw.line([(center_x - width / 2, y), (center_x + width / 2, y)], fill=color, width=int(stroke))
+    draw.line([(center_x - width / 2, y), (center_x + width / 2, y)], fill=color, width=round(stroke))
 
 
 def generate_template() -> Image.Image:
