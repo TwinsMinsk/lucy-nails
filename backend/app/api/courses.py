@@ -125,11 +125,8 @@ async def get_course_modules(
 
 from app.api.auth import get_current_user
 from app.models.user import User
-from app.models.progress import Progress
-from app.models.module import Module
-from app.models.lesson import Lesson
+from app.services.progress_service import ProgressService
 from app.services.purchase_service import PurchaseService
-from sqlalchemy import select, and_
 from pydantic import BaseModel
 
 class CourseProgressResponse(BaseModel):
@@ -153,43 +150,10 @@ async def get_my_course_progress(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Course access required",
             )
-    # 1. Получаем все уроки курса для подсчета общего количества
-    # Используем join для эффективности
-    query_lessons = (
-        select(Lesson.id)
-        .join(Module, Module.id == Lesson.module_id)
-        .where(
-            and_(
-                Module.course_id == course_id,
-                Module.is_published.is_(True),
-            )
-        )
-    )
-    result_lessons = await db.execute(query_lessons)
-    all_lesson_ids = result_lessons.scalars().all()
-    total_lessons = len(all_lesson_ids)
 
-    if total_lessons == 0:
-        return CourseProgressResponse(completed_lesson_ids=[], progress_percent=0)
+    completion = await ProgressService.get_course_completion(db, current_user.id, course_id)
 
-    # 2. Получаем завершенные уроки пользователя для этого курса
-    query_progress = (
-        select(Progress.lesson_id)
-        .where(
-            and_(
-                Progress.user_id == current_user.id,
-                Progress.is_completed,
-                Progress.lesson_id.in_(all_lesson_ids)
-            )
-        )
-    )
-    result_progress = await db.execute(query_progress)
-    completed_lesson_ids = result_progress.scalars().all()
-    
-    completed_count = len(completed_lesson_ids)
-    progress_percent = int((completed_count / total_lessons) * 100)
-    
     return CourseProgressResponse(
-        completed_lesson_ids=completed_lesson_ids,
-        progress_percent=progress_percent
+        completed_lesson_ids=completion.completed_lesson_ids,
+        progress_percent=completion.percent,
     )
