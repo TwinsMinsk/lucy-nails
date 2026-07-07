@@ -28,6 +28,10 @@ class CertificateClaimRequest(BaseModel):
     def validate_full_name(cls, value: str) -> str:
         # Strip and collapse internal whitespace runs to a single space.
         normalized = " ".join(value.split())
+        # Field(min_length=2/max_length=120) only bounds the RAW string — e.g. "И "
+        # (2 raw chars) collapses to the 1-char "И" here, so re-check post-normalization.
+        if not (2 <= len(normalized) <= 120):
+            raise ValueError("Full name must be between 2 and 120 characters")
         if not _FULL_NAME_PATTERN.fullmatch(normalized):
             raise ValueError("Full name contains unsupported characters")
         return normalized

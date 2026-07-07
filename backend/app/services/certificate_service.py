@@ -129,7 +129,10 @@ class CertificateService:
         """Returns (status, progress_percent, certificate) for the claim-status check."""
         completion = await ProgressService.get_course_completion(db, user.id, course_id)
 
-        existing = await CertificateService.get_for_user_course(db, user.id, course_id)
+        # Course-eager-loaded lookup (not the bare get_for_user_course): callers
+        # (the router) need certificate.course.title without triggering a lazy
+        # load on the async session.
+        existing = await CertificateService._get_existing_with_course(db, user.id, course_id)
         if existing:
             return "issued", completion.percent, existing
 
@@ -151,7 +154,13 @@ class CertificateService:
 
         Returns (certificate, newly_issued).
         """
-        existing = await CertificateService._get_existing_with_course(db, user.id, course_id)
+        # Captured up front: a rollback later in this function (concurrent-claim
+        # race) expires every attribute on `user`, and accessing user.id after
+        # that would trigger a synchronous lazy-refresh outside greenlet context
+        # (MissingGreenlet). Use this local for the rest of the function instead.
+        user_id = user.id
+
+        existing = await CertificateService._get_existing_with_course(db, user_id, course_id)
         if existing:
             return existing, False
 
@@ -163,7 +172,7 @@ class CertificateService:
         if not await CertificateService._has_course_access(db, user, course_id):
             raise NoCourseAccessError("User has no access to this course")
 
-        completion = await ProgressService.get_course_completion(db, user.id, course_id)
+        completion = await ProgressService.get_course_completion(db, user_id, course_id)
         if not completion.is_complete:
             raise CourseNotCompletedError("Course is not fully completed yet")
 
@@ -208,7 +217,7 @@ class CertificateService:
         await run_in_threadpool(pdf_path.write_bytes, pdf_bytes)
 
         certificate = Certificate(
-            user_id=user.id,
+            user_id=user_id,
             course_id=course_id,
             certificate_number=certificate_number,
             student_name=full_name,
@@ -227,15 +236,20 @@ class CertificateService:
             await db.rollback()
             logger.warning(
                 "Certificate claim race for user=%s course=%s: returning existing row",
-                user.id,
+                user_id,
                 course_id,
             )
-            existing = await CertificateService._get_existing_with_course(db, user.id, course_id)
+            existing = await CertificateService._get_existing_with_course(db, user_id, course_id)
             if existing is None:
                 raise CertificateError("Certificate commit conflicted but no existing row found") from None
             return existing, False
 
         await db.refresh(certificate)
+        # Populate the relationship from the already-loaded `course` in-memory —
+        # expire_on_commit=False means this stays put and callers can safely read
+        # certificate.course.title without an extra query or a lazy-load attempt
+        # on the async session (which would raise MissingGreenlet).
+        certificate.course = course
 
         try:
             await EmailService.send_certificate(
