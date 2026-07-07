@@ -4,7 +4,7 @@ import { use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, CheckCircle, Loader2, Check, ListVideo, Award } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getLesson, LessonResponse, getPublicCourseModules, ModuleResponse, getCourseProgress, updateLessonProgress, isAuthError, getPublicCourse, getCertificateStatus, CertificateResponse } from "@/lib/api";
 import { toast } from "sonner";
 import { sanitizeHtml } from "@/lib/sanitize";
@@ -38,6 +38,7 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
     const [nextLessonId, setNextLessonId] = useState<string | null>(null);
     const [progressPercent, setProgressPercent] = useState(0);
     const [courseTitle, setCourseTitle] = useState("");
+    const courseTitleRef = useRef("");
     const [certificate, setCertificate] = useState<CertificateResponse | null | undefined>(undefined);
     const [claimOpen, setClaimOpen] = useState(false);
 
@@ -45,25 +46,34 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
         const fetchData = async () => {
             setIsLoading(true);
             try {
-                // Fetch current lesson, course structure, progress and course title in parallel
-                const [lessonData, modulesData, progressData, courseData] = await Promise.all([
+                // Fetch current lesson, course structure and progress in parallel
+                const [lessonData, modulesData, progressData] = await Promise.all([
                     getLesson(lessonId),
                     getPublicCourseModules(id),
                     getCourseProgress(id),
-                    getPublicCourse(id)
                 ]);
 
                 setLesson(lessonData);
                 setModules(modulesData);
                 setCompletedLessonIds(progressData.completed_lesson_ids);
                 setProgressPercent(progressData.progress_percent);
-                setCourseTitle(courseData.title);
 
                 // Course already complete on load (e.g. re-entering a finished course) — power the CTA without extra requests otherwise
                 if (progressData.progress_percent === 100) {
                     getCertificateStatus(id)
                         .then((status) => setCertificate(status.certificate))
-                        .catch((error) => console.error(error));
+                        .catch((error) => {
+                            console.error(error);
+                            setCertificate(null);
+                        });
+                    if (!courseTitleRef.current) {
+                        getPublicCourse(id)
+                            .then((course) => {
+                                courseTitleRef.current = course.title;
+                                setCourseTitle(course.title);
+                            })
+                            .catch(() => {});
+                    }
                 }
 
                 // Calculate navigation
@@ -123,13 +133,29 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
 
             // 0→100% transition — any lesson can be the finisher (out-of-order completion)
             if (newStatus && !wasComplete && progressData.progress_percent === 100) {
-                void fireConfetti();
+                const alreadyCertified = !!certificate;
+                if (!alreadyCertified) {
+                    void fireConfetti();
+                }
                 getCertificateStatus(id)
                     .then((status) => {
                         setCertificate(status.certificate);
-                        setClaimOpen(true);
+                        if (!alreadyCertified) {
+                            setClaimOpen(true);
+                        }
                     })
-                    .catch((error) => console.error(error));
+                    .catch((error) => {
+                        console.error(error);
+                        setCertificate(null);
+                    });
+                if (!courseTitleRef.current) {
+                    getPublicCourse(id)
+                        .then((course) => {
+                            courseTitleRef.current = course.title;
+                            setCourseTitle(course.title);
+                        })
+                        .catch(() => {});
+                }
             }
 
         } catch (error) {
@@ -393,7 +419,7 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
                 open={claimOpen}
                 onOpenChange={setClaimOpen}
                 courseId={id}
-                courseTitle={courseTitle}
+                courseTitle={courseTitle || "курс"}
                 certificate={certificate ?? null}
                 onClaimed={(c) => setCertificate(c)}
             />
