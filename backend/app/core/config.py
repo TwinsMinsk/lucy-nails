@@ -163,12 +163,29 @@ class Settings(BaseSettings):
             errors.append("JWT_SECRET_KEY must be at least 32 characters in production")
         if not self.KINESCOPE_API_KEY:
             errors.append("KINESCOPE_API_KEY is required in production")
+        # DRM signing backend must be configured, otherwise get_embed_url would
+        # emit embed URLs without drmauthtoken (freely shareable video links).
+        has_drm_key = bool(self.KINESCOPE_JWT_PRIVATE_KEY_PEM or self.KINESCOPE_JWT_PRIVATE_KEY_PATH)
+        if not (has_drm_key and self.KINESCOPE_JWK_KID):
+            errors.append(
+                "Kinescope DRM signing key is required in production: set "
+                "KINESCOPE_JWT_PRIVATE_KEY_PEM (or _PATH) and KINESCOPE_JWK_KID"
+            )
+        if not (self.KINESCOPE_DRM_BASIC_USER and self.KINESCOPE_DRM_BASIC_PASS):
+            errors.append(
+                "KINESCOPE_DRM_BASIC_USER and KINESCOPE_DRM_BASIC_PASS are required in production"
+            )
         if not self.PRODAMUS_URL:
             errors.append("PRODAMUS_URL is required in production")
         if not self.PRODAMUS_SECRET_KEY:
             errors.append("PRODAMUS_SECRET_KEY is required in production")
         if not self.PRODAMUS_SHOP_ID:
             errors.append("PRODAMUS_SHOP_ID is required in production")
+        if self.PRODAMUS_DEMO_MODE:
+            errors.append(
+                "PRODAMUS_DEMO_MODE must be false in production "
+                "(demo links collect no money and re-enable the demo-suffix signature)"
+            )
         if self.SMTP_REQUIRED_FOR_PAYMENT_EMAIL:
             has_resend = bool(self.RESEND_API_KEY)
             has_smtp = bool(self.SMTP_USER and self.SMTP_PASSWORD)

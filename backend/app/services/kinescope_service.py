@@ -132,9 +132,16 @@ class KinescopeService:
                 )
                 params["drmauthtoken"] = token
             except KinescopeJwtNotConfiguredError:
-                # На случай ошибки конфигурации не ломаем embed —
-                # видео откроется, но без серверной авторизации DRM.
-                pass
+                # В production не отдаём embed без серверной DRM-авторизации
+                # (иначе ссылка расшариваема). Вне прода — degrade без токена.
+                if self._production:
+                    raise KinescopeNotConfiguredError(
+                        "Kinescope DRM auth backend is misconfigured; refusing to emit an unprotected embed URL."
+                    )
+        elif self._production:
+            raise KinescopeNotConfiguredError(
+                "Kinescope DRM auth backend is required in production."
+            )
 
         return f"{base_embed_url}?{urllib.parse.urlencode(params)}"
 

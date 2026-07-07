@@ -54,17 +54,23 @@ async def get_current_user(
             settings.JWT_SECRET_KEY,
             algorithms=[settings.JWT_ALGORITHM],
         )
-        if payload.get("type") == "refresh":
+        # Only access tokens authenticate. Reset/refresh tokens carry the same
+        # signature+sub but must not grant API access.
+        if payload.get("type") != "access":
             raise credentials_exception
         user_id: str = payload.get("sub")
         if user_id is None:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-    
+
     result = await db.execute(select(User).where(User.id == UUID(user_id)))
     user = result.scalar_one_or_none()
     if user is None:
+        raise credentials_exception
+    # Token invalidation: a password change/reset bumps User.token_version, so
+    # tokens minted before it (mismatched or missing "ver") are rejected.
+    if payload.get("ver") != user.token_version:
         raise credentials_exception
     return user
 

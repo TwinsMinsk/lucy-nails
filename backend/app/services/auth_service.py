@@ -81,19 +81,21 @@ class AuthService:
         return user
     
     @staticmethod
-    def create_tokens(user_id: UUID) -> Token:
+    def create_tokens(user_id: UUID, token_version: int = 0) -> Token:
         """
         Создание JWT токенов для пользователя.
-        
+
         Args:
             user_id: ID пользователя
-        
+            token_version: текущая версия сессий пользователя (кладётся в "ver")
+
         Returns:
             Токены (access + refresh)
         """
-        access_token = create_access_token({"sub": str(user_id)})
-        refresh_token = create_refresh_token({"sub": str(user_id)})
-        
+        payload = {"sub": str(user_id), "ver": token_version}
+        access_token = create_access_token(payload)
+        refresh_token = create_refresh_token(payload)
+
         return Token(
             access_token=access_token,
             refresh_token=refresh_token,
@@ -108,6 +110,7 @@ class AuthService:
         if not verify_password(current_password, user.password_hash):
             return False
         user.password_hash = get_password_hash(new_password)
+        user.token_version = (user.token_version or 0) + 1
         user.updated_at = datetime.utcnow()
         return True
 
@@ -115,6 +118,7 @@ class AuthService:
     async def set_password(db: AsyncSession, user: User, new_password: str) -> None:
         """Устанавливает новый пароль (после проверки reset-токена)."""
         user.password_hash = get_password_hash(new_password)
+        user.token_version = (user.token_version or 0) + 1
         user.updated_at = datetime.utcnow()
 
     @staticmethod

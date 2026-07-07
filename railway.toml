@@ -9,7 +9,7 @@ restartPolicyType = "ON_FAILURE"
 root = "backend"
 buildCommand = "pip install -r requirements.txt"
 # Миграции перед стартом (как в backend/Procfile), чтобы схема БД совпадала с кодом.
-startCommand = "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+startCommand = "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'"
 
 # === Frontend Service ===
 [service.frontend]

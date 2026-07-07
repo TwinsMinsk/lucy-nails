@@ -27,6 +27,10 @@ class User(Base):
         nullable=False,
         default="student"
     )
+    # Bumped on every password change/reset. Embedded as "ver" in issued JWTs;
+    # a token whose "ver" != this value is rejected, so changing the password
+    # invalidates all previously issued access/refresh/reset tokens.
+    token_version: Mapped[int] = mapped_column(default=0, server_default="0", nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
     
