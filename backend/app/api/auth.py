@@ -157,7 +157,7 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    tokens = AuthService.create_tokens(user.id)
+    tokens = AuthService.create_tokens(user.id, user.token_version)
     _set_auth_cookies(response, tokens)
     return tokens
 
@@ -208,8 +208,14 @@ async def refresh_token_endpoint(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
         )
+    # Reject refresh tokens issued before the last password change/reset.
+    if payload.get("ver") != user.token_version:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
 
-    tokens = AuthService.create_tokens(user.id)
+    tokens = AuthService.create_tokens(user.id, user.token_version)
     _set_auth_cookies(response, tokens)
     return tokens
 
@@ -247,6 +253,7 @@ async def logout(response: Response):
 @limiter.limit("10/minute")
 async def change_password(
     request: Request,
+    response: Response,
     data: ChangePasswordRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -261,6 +268,11 @@ async def change_password(
             detail="Current password is incorrect",
         )
     await db.commit()
+    # The bumped token_version invalidated every prior session (incl. this one),
+    # so re-issue fresh cookies to keep the current device logged in while other
+    # devices are logged out.
+    tokens = AuthService.create_tokens(current_user.id, current_user.token_version)
+    _set_auth_cookies(response, tokens)
     return {"message": "Password changed"}
 
 
@@ -280,7 +292,7 @@ async def forgot_password(
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
     if user:
-        token = create_password_reset_token(user.id)
+        token = create_password_reset_token(user.id, user.token_version)
         reset_url = f"{settings.FRONTEND_URL.rstrip('/')}/auth/reset-password?token={token}"
         try:
             await EmailService.send_password_reset(user.email, reset_url)
@@ -297,27 +309,26 @@ async def reset_password(
     db: AsyncSession = Depends(get_db),
 ):
     """Устанавливает новый пароль по токену из письма."""
-    user_id = verify_password_reset_token(data.token)
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired reset token",
-        )
+    invalid = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Invalid or expired reset token",
+    )
+    payload = verify_password_reset_token(data.token)
+    if not payload or not payload.get("sub"):
+        raise invalid
     try:
-        user_uuid = UUID(user_id)
+        user_uuid = UUID(payload["sub"])
     except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired reset token",
-        )
+        raise invalid
 
     result = await db.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired reset token",
-        )
+        raise invalid
+    # Single-use: a reset bumps token_version, so replaying the same token
+    # (its "ver" now stale) is rejected here.
+    if payload.get("ver") != user.token_version:
+        raise invalid
 
     await AuthService.set_password(db, user, data.new_password)
     await db.commit()
