@@ -1,7 +1,7 @@
 """add_certificate_issuance_fields
 
 Revision ID: 3d5067c10861
-Revises: b3a91d4f2c87
+Revises: d4e5f6a7b8c9
 Create Date: 2026-07-07
 
 """
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 revision: str = "3d5067c10861"
-down_revision: Union[str, None] = "b3a91d4f2c87"
+down_revision: Union[str, None] = "d4e5f6a7b8c9"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
