@@ -39,6 +39,14 @@ def test_app_registers_slowapi_middleware():
     assert "SlowAPIMiddleware" in middleware_names
 
 
+@pytest.mark.asyncio
+async def test_health_endpoint_reports_ok_with_db(client):
+    """Readiness probe returns ok when the database is reachable."""
+    r = await client.get("/health")
+    assert r.status_code == 200
+    assert r.json()["status"] == "ok"
+
+
 def test_production_config_rejects_insecure_defaults():
     with pytest.raises(ValidationError) as exc_info:
         Settings(

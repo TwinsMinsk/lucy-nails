@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from sqlalchemy import select
+from sqlalchemy import select, text
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.requests import Request
@@ -57,6 +57,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Production-only: force HTTPS (HSTS) and lock the API down with a strict
+        # CSP. Swagger/openapi are disabled in production, so a hard CSP is safe
+        # here; in dev it's skipped so /docs keeps working.
+        if _is_production():
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+            response.headers.setdefault(
+                "Content-Security-Policy",
+                "default-src 'none'; frame-ancestors 'none'; "
+                "img-src 'self' data: https:; style-src 'self' 'unsafe-inline'",
+            )
         return response
 
 
@@ -174,7 +184,13 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Проверка работоспособности API."""
+    """Readiness probe: verifies the app can reach the database."""
+    try:
+        async with async_session_maker() as session:
+            await session.execute(text("SELECT 1"))
+    except Exception:
+        logger.exception("Health check: database unreachable")
+        return JSONResponse(status_code=503, content={"status": "db_unreachable"})
     return {"status": "ok"}
 
 
