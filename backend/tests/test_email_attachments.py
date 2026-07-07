@@ -1,5 +1,6 @@
 import base64
 
+import aiosmtplib
 import httpx
 import pytest
 
@@ -121,6 +122,41 @@ async def test_send_via_resend_attachment_payload_and_timeout(monkeypatch):
 
     assert captured["timeout"] == EMAIL_TIMEOUT_SECONDS
     assert "attachments" not in captured["json"]
+
+
+@pytest.mark.asyncio
+async def test_send_via_smtp_attachment_and_timeout(monkeypatch):
+    captured: dict = {}
+
+    async def fake_send(msg, **kwargs):
+        captured["msg"] = msg
+        captured["timeout"] = kwargs.get("timeout")
+
+    monkeypatch.setattr(aiosmtplib, "send", fake_send)
+
+    pdf_bytes = b"%PDF-1.4 fake pdf content"
+    attachment = EmailAttachment(filename="Lucy-Nails-Certificate-LN-0007.pdf", content=pdf_bytes)
+
+    await EmailService._send_via_smtp(
+        "Lucy Nails <noreply@example.com>",
+        "student@example.com",
+        "Subject",
+        "<p>Hi</p>",
+        [attachment],
+    )
+
+    assert captured["timeout"] == EMAIL_ATTACHMENT_TIMEOUT_SECONDS
+
+    captured.clear()
+    await EmailService._send_via_smtp(
+        "Lucy Nails <noreply@example.com>",
+        "student@example.com",
+        "Subject",
+        "<p>Hi</p>",
+        None,
+    )
+
+    assert captured["timeout"] == EMAIL_TIMEOUT_SECONDS
 
 
 @pytest.mark.asyncio

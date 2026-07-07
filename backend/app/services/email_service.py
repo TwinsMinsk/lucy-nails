@@ -139,6 +139,7 @@ class EmailService:
         attachments: list[EmailAttachment] | None = None,
     ) -> None:
         msg = EmailService._build_mime_message(from_address, email, subject, html, attachments)
+        timeout = EMAIL_ATTACHMENT_TIMEOUT_SECONDS if attachments else EMAIL_TIMEOUT_SECONDS
         await aiosmtplib.send(
             msg,
             hostname=settings.SMTP_HOST,
@@ -146,7 +147,7 @@ class EmailService:
             username=settings.SMTP_USER,
             password=settings.SMTP_PASSWORD,
             start_tls=True,
-            timeout=EMAIL_TIMEOUT_SECONDS,
+            timeout=timeout,
         )
         logger.info("Email sent to %s via SMTP", email)
 
