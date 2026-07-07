@@ -123,7 +123,7 @@ def _resolve_payment_key(order_num_raw: Any, order_id_raw: str) -> str:
 
 
 def _is_success_payment_payload(payload: dict[str, Any]) -> bool:
-    """Accepts common Prodamus success markers and ignores empty status fields."""
+    """Require an explicit success marker; an empty/absent status is NOT success."""
     status_markers = [
         payload.get("payment_status"),
         payload.get("status"),
@@ -131,7 +131,7 @@ def _is_success_payment_payload(payload: dict[str, Any]) -> bool:
     ]
     normalized = {str(value).strip().lower() for value in status_markers if value not in (None, "")}
     if not normalized:
-        return True
+        return False
     success_values = {"success", "paid", "ok", "completed", "succeeded", "1", "true"}
     return any(value in success_values for value in normalized)
 
@@ -181,6 +181,77 @@ def _checkout_link_for_course(
 # ---------------------------------------------------------------------------
 
 
+async def _record_purchase_once(
+    payment_key: str,
+    course_id_uuid: UUID,
+    tariff: str,
+    payload: dict[str, Any],
+) -> tuple[str, str | None]:
+    """One attempt at recording the purchase in its own transaction.
+
+    Returns (customer_email, plain_password); plain_password is set only for a
+    newly created user (to email credentials). Raises HTTPException on
+    validation failure; IntegrityError propagates for the caller's retry.
+    """
+    customer_email = _normalize_email(payload.get("customer_email"))
+    async with async_session_maker() as db:
+        existing_pay = await db.execute(select(Purchase).where(Purchase.payment_id == payment_key))
+        if existing_pay.scalars().first():
+            return customer_email, None
+
+        customer_phone = _normalize_phone(payload.get("customer_phone"))
+
+        course_result = await db.execute(select(Course).where(Course.id == course_id_uuid))
+        course = course_result.scalars().first()
+        if not course or not course.is_published:
+            logger.error("Prodamus webhook: course not found or unpublished %s", course_id_uuid)
+            raise HTTPException(status_code=422, detail="Course not found")
+
+        amount_str: str = str(payload.get("sum", "0")).replace(",", ".")
+        try:
+            paid_kopecks = int(round(float(amount_str) * 100))
+        except ValueError:
+            paid_kopecks = 0
+
+        expected_rub = course.price_self if tariff == "self" else course.price_support
+        expected_kopecks = int(expected_rub) * 100
+        if abs(paid_kopecks - expected_kopecks) > 2:
+            logger.error(
+                "Prodamus webhook: amount mismatch expected_kop=%s got_kop=%s",
+                expected_kopecks,
+                paid_kopecks,
+            )
+            raise HTTPException(status_code=422, detail="Amount mismatch")
+
+        currency = str(payload.get("currency", "rub")).lower()
+        if currency not in ("rub", "rur"):
+            logger.error("Prodamus webhook: unsupported currency=%s", currency)
+            raise HTTPException(status_code=422, detail="Unsupported currency")
+
+        user, plain_password = await _get_or_create_user(db, customer_email, customer_phone)
+
+        if customer_phone and not user.phone:
+            user.phone = customer_phone
+
+        paid_at = datetime.utcnow()
+        expires_at = paid_at + timedelta(days=settings.COURSE_ACCESS_DAYS)
+
+        purchase = Purchase(
+            user_id=user.id,
+            course_id=course.id,
+            tariff=tariff,
+            amount_kopecks=paid_kopecks,
+            payment_id=payment_key,
+            payment_status="success",
+            paid_at=paid_at,
+            customer_phone=customer_phone,
+            expires_at=expires_at,
+        )
+        db.add(purchase)
+        await db.commit()
+        return customer_email, plain_password
+
+
 @router.post(
     "/webhook",
     summary="Webhook от Prodamus (оповещение об успешной оплате)",
@@ -222,73 +293,30 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
 
     course_id_uuid, tariff = parsed
     payment_key = _resolve_payment_key(payload.get("order_num"), order_id_raw)
-    customer_email = ""
+    customer_email = _normalize_email(payload.get("customer_email"))
     plain_password_for_email: str | None = None
 
-    try:
-        async with async_session_maker() as db:
-            existing_pay = await db.execute(select(Purchase).where(Purchase.payment_id == payment_key))
-            if existing_pay.scalars().first():
-                return {"status": "ok"}
-
-            customer_email = _normalize_email(payload.get("customer_email"))
-
-            customer_phone = _normalize_phone(payload.get("customer_phone"))
-
-            course_result = await db.execute(select(Course).where(Course.id == course_id_uuid))
-            course = course_result.scalars().first()
-            if not course or not course.is_published:
-                logger.error("Prodamus webhook: course not found or unpublished %s", course_id_uuid)
-                raise HTTPException(status_code=422, detail="Course not found")
-
-            amount_str: str = str(payload.get("sum", "0")).replace(",", ".")
-            try:
-                paid_kopecks = int(round(float(amount_str) * 100))
-            except ValueError:
-                paid_kopecks = 0
-
-            expected_rub = course.price_self if tariff == "self" else course.price_support
-            expected_kopecks = int(expected_rub) * 100
-            if abs(paid_kopecks - expected_kopecks) > 2:
-                logger.error(
-                    "Prodamus webhook: amount mismatch expected_kop=%s got_kop=%s",
-                    expected_kopecks,
-                    paid_kopecks,
-                )
-                raise HTTPException(status_code=422, detail="Amount mismatch")
-
-            currency = str(payload.get("currency", "rub")).lower()
-            if currency not in ("rub", "rur"):
-                logger.error("Prodamus webhook: unsupported currency=%s", currency)
-                raise HTTPException(status_code=422, detail="Unsupported currency")
-
-            user, plain_password = await _get_or_create_user(db, customer_email, customer_phone)
-
-            if customer_phone and not user.phone:
-                user.phone = customer_phone
-
-            paid_at = datetime.utcnow()
-            expires_at = paid_at + timedelta(days=settings.COURSE_ACCESS_DAYS)
-
-            purchase = Purchase(
-                user_id=user.id,
-                course_id=course.id,
-                tariff=tariff,
-                amount_kopecks=paid_kopecks,
-                payment_id=payment_key,
-                payment_status="success",
-                paid_at=paid_at,
-                customer_phone=customer_phone,
-                expires_at=expires_at,
+    # Record the purchase, retrying once. A concurrent first-time buyer can hit a
+    # users.email unique collision (two payments, same brand-new email): the racing
+    # request commits the user, and the retry then finds it and inserts only the
+    # Purchase — so a distinct second payment is never silently dropped. A genuine
+    # duplicate payment_id short-circuits at the existing-purchase check.
+    for attempt in range(2):
+        try:
+            customer_email, plain_password_for_email = await _record_purchase_once(
+                payment_key, course_id_uuid, tariff, payload
             )
-            db.add(purchase)
-
-            await db.commit()
-            plain_password_for_email = plain_password
-
-    except IntegrityError:
-        logger.info("Prodamus webhook duplicate payment_key=%s", payment_key)
-        return {"status": "ok"}
+            break
+        except IntegrityError:
+            if attempt == 0:
+                continue
+            async with async_session_maker() as db:
+                done = await db.execute(select(Purchase).where(Purchase.payment_id == payment_key))
+                if done.scalars().first():
+                    logger.info("Prodamus webhook duplicate payment_key=%s", payment_key)
+                    return {"status": "ok"}
+            logger.error("Prodamus webhook: unresolved integrity error payment_key=%s", payment_key)
+            raise
 
     if plain_password_for_email:
         try:

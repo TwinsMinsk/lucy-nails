@@ -487,6 +487,24 @@ export const adminGrantAccess = async (
     });
 };
 
+export interface RevokeAccessResponse {
+    message: string;
+    purchase_id: string;
+    payment_status: string;
+}
+
+/**
+ * Отозвать доступ по покупке (возврат/chargeback) — только для админов
+ */
+export const adminRevokeAccess = async (
+    purchaseId: string
+): Promise<RevokeAccessResponse> => {
+    return apiFetch<RevokeAccessResponse>("/admin/revoke-access", {
+        method: "POST",
+        body: JSON.stringify({ purchase_id: purchaseId }),
+    });
+};
+
 
 /**
  * ============================================

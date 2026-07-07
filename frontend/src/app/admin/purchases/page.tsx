@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { adminGetPurchases, AdminPurchaseResponse } from "@/lib/api";
+import { adminGetPurchases, adminRevokeAccess, AdminPurchaseResponse } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const formatMoney = (kopecks: number) => `${(kopecks / 100).toLocaleString("ru-RU")} ₽`;
@@ -13,9 +14,13 @@ const formatDate = (date: string | null | undefined) => (
     date ? new Date(date).toLocaleDateString("ru-RU") : "—"
 );
 
+const isActive = (purchase: AdminPurchaseResponse) =>
+    purchase.payment_status === "success" && new Date(purchase.expires_at) > new Date();
+
 export default function AdminPurchasesPage() {
     const [purchases, setPurchases] = useState<AdminPurchaseResponse[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [revokingId, setRevokingId] = useState<string | null>(null);
 
     useEffect(() => {
         const loadPurchases = async () => {
@@ -32,6 +37,30 @@ export default function AdminPurchasesPage() {
 
         loadPurchases();
     }, []);
+
+    const handleRevoke = async (purchase: AdminPurchaseResponse) => {
+        if (!window.confirm(`Отозвать доступ у ${purchase.user_email || "пользователя"} к «${purchase.course_title || "курсу"}»?`)) {
+            return;
+        }
+        setRevokingId(purchase.id);
+        try {
+            const result = await adminRevokeAccess(purchase.id);
+            setPurchases((prev) =>
+                prev.map((p) =>
+                    p.id === purchase.id
+                        ? { ...p, payment_status: result.payment_status as AdminPurchaseResponse["payment_status"], expires_at: new Date().toISOString() }
+                        : p
+                )
+            );
+            toast.success("Доступ отозван");
+        } catch (error) {
+            toast.error("Не удалось отозвать доступ", {
+                description: error instanceof Error ? error.message : "Попробуйте ещё раз",
+            });
+        } finally {
+            setRevokingId(null);
+        }
+    };
 
     return (
         <div className="container px-6 py-8 space-y-6">
@@ -66,6 +95,7 @@ export default function AdminPurchasesPage() {
                                         <th className="py-3 pr-4 font-medium">ID платежа</th>
                                         <th className="py-3 pr-4 font-medium">Оплачено</th>
                                         <th className="py-3 pr-4 font-medium">Доступ до</th>
+                                        <th className="py-3 pr-4 font-medium text-right">Действия</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -92,6 +122,23 @@ export default function AdminPurchasesPage() {
                                             </td>
                                             <td className="py-3 pr-4">{formatDate(purchase.paid_at)}</td>
                                             <td className="py-3 pr-4">{formatDate(purchase.expires_at)}</td>
+                                            <td className="py-3 pr-4 text-right">
+                                                {isActive(purchase) ? (
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => handleRevoke(purchase)}
+                                                        disabled={revokingId === purchase.id}
+                                                    >
+                                                        {revokingId === purchase.id && (
+                                                            <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                                                        )}
+                                                        Отозвать
+                                                    </Button>
+                                                ) : (
+                                                    <span className="text-text-secondary">—</span>
+                                                )}
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>

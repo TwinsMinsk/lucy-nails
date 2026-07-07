@@ -42,6 +42,18 @@ class GrantAccessResponse(BaseModel):
     expires_at: datetime
 
 
+class RevokeAccessRequest(BaseModel):
+    """Схема запроса на отзыв доступа (возврат/chargeback)."""
+    purchase_id: UUID
+
+
+class RevokeAccessResponse(BaseModel):
+    """Схема ответа на отзыв доступа."""
+    message: str
+    purchase_id: UUID
+    payment_status: str
+
+
 # --- Course Schemas ---
 class CourseCreateRequest(BaseModel):
     """Схема создания курса."""
@@ -795,3 +807,34 @@ async def grant_course_access(
             purchase_id=new_purchase.id,
             expires_at=new_purchase.expires_at
         )
+
+
+@router.post("/revoke-access", response_model=RevokeAccessResponse)
+async def revoke_course_access(
+    data: RevokeAccessRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Отозвать доступ по покупке (возврат/chargeback).
+
+    Гасит конкретную покупку: payment_status=failed + expires_at=now.
+    check_access гейтит по success + expires_at>now, так что доступ пропадает
+    мгновенно.
+    """
+    purchase_result = await db.execute(
+        select(Purchase).where(Purchase.id == data.purchase_id)
+    )
+    purchase = purchase_result.scalar_one_or_none()
+    if not purchase:
+        raise HTTPException(status_code=404, detail="Purchase not found")
+
+    purchase.payment_status = "failed"
+    purchase.expires_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(purchase)
+
+    return RevokeAccessResponse(
+        message="Access revoked",
+        purchase_id=purchase.id,
+        payment_status=purchase.payment_status,
+    )
