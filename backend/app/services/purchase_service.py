@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
+from app.models.certificate import Certificate
 from app.models.course import Course
 from app.models.module import Module
 from app.models.progress import Progress
@@ -28,6 +29,25 @@ class PurchaseService:
                     Purchase.course_id == course_id,
                     Purchase.payment_status == "success",
                     Purchase.expires_at > now,
+                )
+            )
+            .order_by(Purchase.expires_at.desc(), Purchase.created_at.desc())
+        )
+        return result.scalars().first()
+
+    @staticmethod
+    async def get_any_successful_purchase(
+        db: AsyncSession,
+        user_id: UUID,
+        course_id: UUID,
+    ) -> Purchase | None:
+        """Любая успешно оплаченная покупка (без учёта истечения доступа)."""
+        result = await db.execute(
+            select(Purchase).where(
+                and_(
+                    Purchase.user_id == user_id,
+                    Purchase.course_id == course_id,
+                    Purchase.payment_status == "success",
                 )
             )
             .order_by(Purchase.expires_at.desc(), Purchase.created_at.desc())
@@ -84,6 +104,16 @@ class PurchaseService:
 
         if not purchases:
             return []
+
+        course_ids = [purchase.course_id for purchase in purchases]
+        certificates_query = select(Certificate.course_id, Certificate.certificate_number).where(
+            and_(
+                Certificate.user_id == user_id,
+                Certificate.course_id.in_(course_ids),
+            )
+        )
+        certificates_result = await db.execute(certificates_query)
+        certificate_numbers_by_course = dict(certificates_result.all())
 
         progress_query = select(Progress).where(
             and_(
@@ -155,6 +185,7 @@ class PurchaseService:
                     "tariff": purchase.tariff,
                     "expires_at": purchase.expires_at,
                     "support_chat_url": support_chat_url,
+                    "certificate_number": certificate_numbers_by_course.get(course.id),
                 }
             )
 

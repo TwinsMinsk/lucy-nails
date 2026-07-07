@@ -377,6 +377,7 @@ export interface MyCourseResponse {
     tariff?: string | null;
     expires_at?: string | null;
     support_chat_url?: string | null;
+    certificate_number?: string | null;
 }
 
 /**
@@ -942,3 +943,75 @@ export const getGuestPaymentLink = async (data: GuestPaymentLinkRequest): Promis
         body: JSON.stringify(data),
     });
 };
+
+/**
+ * ============================================
+ * CERTIFICATES
+ * ============================================
+ */
+
+export interface CertificateResponse {
+    id: string;
+    certificate_number: string;
+    course_id: string;
+    course_title: string;
+    student_name: string;
+    png_url: string | null;
+    pdf_url: string | null;
+    issued_at: string;
+}
+
+export interface CertificateStatusResponse {
+    status: "not_available" | "available" | "issued";
+    progress_percent: number;
+    certificate: CertificateResponse | null;
+}
+
+export interface CertificateVerifyResponse {
+    certificate_number: string;
+    student_name: string;
+    course_id: string;
+    course_title: string;
+    issued_at: string;
+    png_url: string | null;
+    pdf_url: string | null;
+}
+
+/**
+ * Получить сертификат за прохождение курса (идемпотентно — повторный вызов вернёт тот же сертификат)
+ */
+export const claimCertificate = async (courseId: string, fullName: string): Promise<CertificateResponse> => {
+    return apiFetch<CertificateResponse>(`/courses/${courseId}/certificate`, {
+        method: "POST",
+        body: JSON.stringify({ full_name: fullName }),
+    });
+};
+
+/**
+ * Получить статус сертификата по курсу (доступность, прогресс, сам сертификат если выдан)
+ */
+export const getCertificateStatus = async (courseId: string): Promise<CertificateStatusResponse> => {
+    return apiFetch<CertificateStatusResponse>(`/courses/${courseId}/certificate`);
+};
+
+/**
+ * Публичная проверка сертификата по номеру (без авторизации). Для SSR на странице проверки.
+ */
+export async function verifyCertificate(number: string): Promise<CertificateVerifyResponse | null> {
+    const base = getBaseUrl();
+    const res = await fetch(`${base}/certificates/verify/${encodeURIComponent(number)}`, { cache: "no-store" });
+    if (res.status === 404) {
+        return null;
+    }
+    if (!res.ok) {
+        throw new Error(`Failed to verify certificate: ${res.status}`);
+    }
+    return res.json();
+}
+
+/**
+ * Абсолютный URL на файл сертификата (PDF/PNG) — публичный эндпоинт со скачиванием
+ */
+export function certificateFileUrl(number: string, format: "pdf" | "png"): string {
+    return `${API_BASE_URL}/certificates/${encodeURIComponent(number)}/file?format=${format}`;
+}

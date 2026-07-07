@@ -30,7 +30,7 @@ const nextConfig: NextConfig = {
                 "form-action 'self'",
                 "frame-ancestors 'none'",
                 "frame-src 'self' https://kinescope.io https://*.kinescope.io https://www.youtube.com https://*.youtube.com",
-                "img-src 'self' data: blob: https:",
+                `img-src 'self' data: blob: https: ${apiOrigin}`,
                 "media-src 'self' blob: https://kinescope.io https://*.kinescope.io",
                 "object-src 'none'",
                 "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com",

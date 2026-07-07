@@ -56,6 +56,7 @@ class UserResponse(BaseModel):
     id: UUID = Field(..., description="UUID пользователя")
     email: str = Field(..., description="Email")
     phone: str | None = Field(None, description="Телефон (если указан)")
+    full_name: str | None = Field(None, description="ФИО (если указано)")
     role: str = Field(..., description="Роль (student/admin)")
     telegram_id: int | None = Field(None, description="Telegram ID")
     created_at: datetime = Field(..., description="Дата регистрации")

@@ -3,9 +3,9 @@
 import { use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, CheckCircle, Loader2, Check, ListVideo } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { getLesson, LessonResponse, getPublicCourseModules, ModuleResponse, getCourseProgress, updateLessonProgress, isAuthError } from "@/lib/api";
+import { ChevronLeft, ChevronRight, CheckCircle, Loader2, Check, ListVideo, Award } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getLesson, LessonResponse, getPublicCourseModules, ModuleResponse, getCourseProgress, updateLessonProgress, isAuthError, getPublicCourse, getCertificateStatus, CertificateResponse } from "@/lib/api";
 import { toast } from "sonner";
 import { sanitizeHtml } from "@/lib/sanitize";
 
@@ -15,6 +15,8 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { VideoPlayer } from "@/components/course/VideoPlayer";
+import { CertificateClaimDialog } from "@/components/certificate/CertificateClaimDialog";
+import { fireConfetti } from "@/components/certificate/confetti";
 import {
     Sheet,
     SheetContent,
@@ -35,22 +37,44 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
     const [prevLessonId, setPrevLessonId] = useState<string | null>(null);
     const [nextLessonId, setNextLessonId] = useState<string | null>(null);
     const [progressPercent, setProgressPercent] = useState(0);
+    const [courseTitle, setCourseTitle] = useState("");
+    const courseTitleRef = useRef("");
+    const [certificate, setCertificate] = useState<CertificateResponse | null | undefined>(undefined);
+    const [claimOpen, setClaimOpen] = useState(false);
 
     useEffect(() => {
         const fetchData = async () => {
             setIsLoading(true);
             try {
-                // Fetch current lesson, course structure, and progress in parallel
+                // Fetch current lesson, course structure and progress in parallel
                 const [lessonData, modulesData, progressData] = await Promise.all([
                     getLesson(lessonId),
                     getPublicCourseModules(id),
-                    getCourseProgress(id)
+                    getCourseProgress(id),
                 ]);
 
                 setLesson(lessonData);
                 setModules(modulesData);
                 setCompletedLessonIds(progressData.completed_lesson_ids);
                 setProgressPercent(progressData.progress_percent);
+
+                // Course already complete on load (e.g. re-entering a finished course) — power the CTA without extra requests otherwise
+                if (progressData.progress_percent === 100) {
+                    getCertificateStatus(id)
+                        .then((status) => setCertificate(status.certificate))
+                        .catch((error) => {
+                            console.error(error);
+                            setCertificate(null);
+                        });
+                    if (!courseTitleRef.current) {
+                        getPublicCourse(id)
+                            .then((course) => {
+                                courseTitleRef.current = course.title;
+                                setCourseTitle(course.title);
+                            })
+                            .catch(() => {});
+                    }
+                }
 
                 // Calculate navigation
                 const allLessons: { id: string, module_id: string }[] = [];
@@ -89,6 +113,7 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
 
         const isCompleted = completedLessonIds.includes(lesson.id);
         const newStatus = !isCompleted;
+        const wasComplete = progressPercent === 100;
 
         try {
             // Optimistic update
@@ -105,6 +130,33 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
             // Refresh progress stats in background
             const progressData = await getCourseProgress(id);
             setProgressPercent(progressData.progress_percent);
+
+            // 0→100% transition — any lesson can be the finisher (out-of-order completion)
+            if (newStatus && !wasComplete && progressData.progress_percent === 100) {
+                const alreadyCertified = !!certificate;
+                if (!alreadyCertified) {
+                    void fireConfetti();
+                }
+                getCertificateStatus(id)
+                    .then((status) => {
+                        setCertificate(status.certificate);
+                        if (!alreadyCertified) {
+                            setClaimOpen(true);
+                        }
+                    })
+                    .catch((error) => {
+                        console.error(error);
+                        setCertificate(null);
+                    });
+                if (!courseTitleRef.current) {
+                    getPublicCourse(id)
+                        .then((course) => {
+                            courseTitleRef.current = course.title;
+                            setCourseTitle(course.title);
+                        })
+                        .catch(() => {});
+                }
+            }
 
         } catch (error) {
             console.error(error);
@@ -309,6 +361,32 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
                                                     Следующий урок <ChevronRight className="w-4 h-4" />
                                                 </Link>
                                             </Button>
+                                        ) : progressPercent === 100 && certificate === undefined ? (
+                                            <Button
+                                                size="lg"
+                                                disabled
+                                                className="rounded-full px-8 gap-2 bg-gradient-to-r from-[#D4AF37] via-[#FFF3AD] to-[#BFA15F] text-[#5A4B4B] font-bold shadow-[0_4px_15px_rgba(191,161,95,0.3)]"
+                                            >
+                                                <Loader2 className="w-4 h-4 animate-spin" /> Получить сертификат
+                                            </Button>
+                                        ) : progressPercent === 100 && certificate === null ? (
+                                            <Button
+                                                size="lg"
+                                                onClick={() => setClaimOpen(true)}
+                                                className="rounded-full px-8 gap-2 bg-gradient-to-r from-[#D4AF37] via-[#FFF3AD] to-[#BFA15F] text-[#5A4B4B] font-bold shadow-[0_4px_15px_rgba(191,161,95,0.3)] transition-all hover:scale-105"
+                                            >
+                                                <Award className="w-5 h-5" /> Получить сертификат
+                                            </Button>
+                                        ) : progressPercent === 100 && certificate ? (
+                                            <Button
+                                                asChild
+                                                size="lg"
+                                                className="rounded-full px-8 gap-2 bg-gradient-to-r from-[#D4AF37] via-[#FFF3AD] to-[#BFA15F] text-[#5A4B4B] font-bold shadow-[0_4px_15px_rgba(191,161,95,0.3)] transition-all hover:scale-105"
+                                            >
+                                                <Link href={`/certificate/${certificate.certificate_number}`}>
+                                                    <Award className="w-5 h-5" /> Мой сертификат
+                                                </Link>
+                                            </Button>
                                         ) : (
                                             <Button asChild size="lg" className="rounded-full px-8 gap-2 bg-primary hover:bg-primary/90 shadow-md animate-in fade-in zoom-in duration-300">
                                                 <Link href="/dashboard">
@@ -336,6 +414,15 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
                     {courseOutline}
                 </ScrollArea>
             </div>
+
+            <CertificateClaimDialog
+                open={claimOpen}
+                onOpenChange={setClaimOpen}
+                courseId={id}
+                courseTitle={courseTitle || "курс"}
+                certificate={certificate ?? null}
+                onClaimed={(c) => setCertificate(c)}
+            />
         </div>
     );
 }

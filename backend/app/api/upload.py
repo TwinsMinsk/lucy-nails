@@ -10,6 +10,8 @@ from pydantic import BaseModel
 
 from app.api.admin import require_admin
 from app.core.config import settings
+from app.core.uploads import public_upload_url as _public_upload_url
+from app.core.uploads import upload_dir as _upload_dir
 from app.models.user import User
 
 
@@ -18,18 +20,6 @@ router = APIRouter()
 
 def _is_production() -> bool:
     return settings.ENVIRONMENT.lower() == "production"
-
-
-def _upload_dir() -> Path:
-    if settings.UPLOAD_STORAGE_DIR:
-        return Path(settings.UPLOAD_STORAGE_DIR)
-    return Path(__file__).parent.parent.parent.parent / "frontend" / "public" / "uploads"
-
-
-def _public_upload_url(filename: str) -> str:
-    if settings.UPLOAD_PUBLIC_BASE_URL:
-        return f"{settings.UPLOAD_PUBLIC_BASE_URL.rstrip('/')}/{filename}"
-    return f"/uploads/{filename}"
 
 
 class UploadResponse(BaseModel):

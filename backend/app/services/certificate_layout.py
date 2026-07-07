@@ -1,0 +1,236 @@
+"""
+Shared layout constants for course completion certificates.
+
+Used by BOTH the one-off template generator script
+(backend/scripts/generate_certificate_template.py, which bakes the static
+elements into template.png) and the runtime certificate renderer (draws the
+dynamic elements: student name, course title, date, number, QR code, on top
+of the template). Keeping both in one module guarantees they agree on
+coordinates, fonts and colors.
+
+Canvas: A4 landscape @ 300 DPI (3508x2480 px).
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+# === Paths ===
+
+# backend/app/services/certificate_layout.py -> backend/app/assets/certificates
+ASSETS_DIR = Path(__file__).resolve().parents[1] / "assets" / "certificates"
+FONTS_DIR = ASSETS_DIR / "fonts"
+TEMPLATE_PATH = ASSETS_DIR / "template.png"
+
+FONT_PLAYFAIR_BOLD = FONTS_DIR / "PlayfairDisplay-Bold.ttf"
+FONT_PLAYFAIR_REGULAR = FONTS_DIR / "PlayfairDisplay-Regular.ttf"
+FONT_PLAYFAIR_ITALIC = FONTS_DIR / "PlayfairDisplay-Italic.ttf"
+FONT_PLAYFAIR_BOLD_ITALIC = FONTS_DIR / "PlayfairDisplay-BoldItalic.ttf"
+FONT_INTER_REGULAR = FONTS_DIR / "Inter-Regular.ttf"
+FONT_INTER_MEDIUM = FONTS_DIR / "Inter-Medium.ttf"
+FONT_CAVEAT_SEMIBOLD = FONTS_DIR / "Caveat-SemiBold.ttf"
+
+# === Canvas ===
+
+CANVAS_WIDTH = 3508
+CANVAS_HEIGHT = 2480
+CENTER_X = CANVAS_WIDTH // 2  # 1754
+
+# === Palette ===
+
+COLOR_BACKGROUND = "#FFF9F5"  # warm cream
+COLOR_INK = "#2D2D2D"
+COLOR_SECONDARY = "#666666"
+COLOR_GOLD = "#D4AF37"
+COLOR_GOLD_DEEP = "#BFA15F"
+COLOR_BRAND_DARK_PINK = "#B02A52"
+COLOR_BRAND_PINK = "#DB3F6E"
+
+# === Frames (static) ===
+
+OUTER_FRAME_INSET = 60
+OUTER_FRAME_STROKE = 8
+OUTER_FRAME_COLOR = COLOR_GOLD
+OUTER_FRAME_BOUNDS = (
+    OUTER_FRAME_INSET,
+    OUTER_FRAME_INSET,
+    CANVAS_WIDTH - OUTER_FRAME_INSET,
+    CANVAS_HEIGHT - OUTER_FRAME_INSET,
+)
+
+INNER_FRAME_INSET = 100
+INNER_FRAME_STROKE = 3
+INNER_FRAME_COLOR = COLOR_GOLD_DEEP
+INNER_FRAME_BOUNDS = (
+    INNER_FRAME_INSET,
+    INNER_FRAME_INSET,
+    CANVAS_WIDTH - INNER_FRAME_INSET,
+    CANVAS_HEIGHT - INNER_FRAME_INSET,
+)
+
+# Small filled gold diamonds centered on the 4 inner-frame corners.
+CORNER_DIAMOND_HALF_DIAGONAL = 10
+CORNER_DIAMOND_COLOR = COLOR_GOLD
+CORNER_DIAMOND_POSITIONS = (
+    (INNER_FRAME_BOUNDS[0], INNER_FRAME_BOUNDS[1]),
+    (INNER_FRAME_BOUNDS[2], INNER_FRAME_BOUNDS[1]),
+    (INNER_FRAME_BOUNDS[0], INNER_FRAME_BOUNDS[3]),
+    (INNER_FRAME_BOUNDS[2], INNER_FRAME_BOUNDS[3]),
+)
+
+# === Watermark (static, optional) ===
+
+WATERMARK_TEXT = "LS"
+WATERMARK_FONT = FONT_PLAYFAIR_BOLD
+WATERMARK_SIZE = 900
+WATERMARK_COLOR = COLOR_BRAND_PINK
+WATERMARK_ALPHA = 0.05  # ~5%, composited via an RGBA overlay
+WATERMARK_CENTER = (CENTER_X, 1030)  # behind the name zone
+
+# === Header: "LUCY NAILS ACADEMY" (static) ===
+
+HEADER_TEXT = "LUCY NAILS ACADEMY"
+HEADER_FONT = FONT_PLAYFAIR_BOLD
+HEADER_SIZE = 72
+HEADER_COLOR = COLOR_BRAND_DARK_PINK
+HEADER_Y = 300
+HEADER_LETTER_SPACING = 28  # px between chars; Pillow has no native tracking
+
+HEADER_DIAMOND_HALF_DIAGONAL = 24
+HEADER_DIAMOND_COLOR = COLOR_GOLD
+HEADER_DIAMOND_OFFSET_Y = 70  # above HEADER_Y
+
+# === Title: "СЕРТИФИКАТ" (static) ===
+
+TITLE_TEXT = "СЕРТИФИКАТ"
+TITLE_FONT = FONT_PLAYFAIR_BOLD
+TITLE_SIZE = 210
+TITLE_COLOR = COLOR_INK
+TITLE_Y = 540
+TITLE_LETTER_SPACING = 40
+
+# === Ornament dividers (static) ===
+
+DIVIDER_COLOR = COLOR_GOLD
+DIVIDER_LINE_STROKE = 2
+DIVIDER_DIAMOND_HALF_DIAGONAL = 16
+
+DIVIDER_1_Y = 760
+DIVIDER_1_WIDTH = 600
+
+DIVIDER_2_Y = 1760
+DIVIDER_2_WIDTH = 400
+
+# === Subtitle: "настоящим подтверждается, что" (static) ===
+
+SUBTITLE_TEXT = "настоящим подтверждается, что"
+SUBTITLE_FONT = FONT_PLAYFAIR_ITALIC
+SUBTITLE_SIZE = 64
+SUBTITLE_COLOR = COLOR_SECONDARY
+SUBTITLE_Y = 850
+
+# === Name underline (static) ===
+
+NAME_UNDERLINE_Y = 1190
+NAME_UNDERLINE_WIDTH = 1200
+NAME_UNDERLINE_STROKE = 2
+NAME_UNDERLINE_COLOR = COLOR_GOLD
+NAME_UNDERLINE_DIAMOND_HALF_DIAGONAL = 14
+
+# === Course intro: "успешно прошла курс" (static) ===
+
+COURSE_INTRO_TEXT = "успешно прошла курс"
+COURSE_INTRO_FONT = FONT_PLAYFAIR_REGULAR
+COURSE_INTRO_SIZE = 64
+COURSE_INTRO_COLOR = COLOR_SECONDARY
+COURSE_INTRO_Y = 1300
+
+# === Bottom row: date block (static line/label, dynamic value) ===
+
+DATE_BLOCK_CENTER_X = 700
+
+DATE_LINE_Y = 2050
+DATE_LINE_WIDTH = 500
+DATE_LINE_STROKE = 1.5
+DATE_LINE_COLOR = COLOR_GOLD_DEEP
+
+DATE_LABEL_TEXT = "Дата выдачи"
+DATE_LABEL_FONT = FONT_INTER_REGULAR
+DATE_LABEL_SIZE = 44
+DATE_LABEL_COLOR = COLOR_SECONDARY
+DATE_LABEL_Y = 2210
+
+# Dynamic: the actual date value, sitting above its line (mirrors how the
+# signature sits on its line below).
+DATE_VALUE_FONT = FONT_INTER_MEDIUM
+DATE_VALUE_SIZE = 60
+DATE_VALUE_COLOR = COLOR_INK
+DATE_VALUE_Y = 2000
+
+# === Bottom row: signature block (static) ===
+
+SIGNATURE_BLOCK_CENTER_X = 2560
+
+SIGNATURE_TEXT = "Люся Смирнова"
+SIGNATURE_FONT = FONT_CAVEAT_SEMIBOLD
+SIGNATURE_SIZE = 96
+SIGNATURE_COLOR = COLOR_INK
+SIGNATURE_BASELINE_Y = 2020
+
+SIGNATURE_LINE_Y = 2100
+SIGNATURE_LINE_WIDTH = 500
+SIGNATURE_LINE_STROKE = 1.5
+SIGNATURE_LINE_COLOR = COLOR_GOLD_DEEP
+
+SIGNATURE_LABEL_TEXT = "автор курса"
+SIGNATURE_LABEL_FONT = FONT_INTER_REGULAR
+SIGNATURE_LABEL_SIZE = 44
+SIGNATURE_LABEL_COLOR = COLOR_SECONDARY
+SIGNATURE_LABEL_Y = 2150
+
+# === Dynamic: certificate number + verify URL (not baked into template) ===
+
+CERTIFICATE_NUMBER_TEMPLATE = "Сертификат № {number}"
+CERTIFICATE_NUMBER_FONT = FONT_INTER_MEDIUM
+CERTIFICATE_NUMBER_SIZE = 52
+CERTIFICATE_NUMBER_COLOR = COLOR_INK
+CERTIFICATE_NUMBER_CENTER_X = CENTER_X
+CERTIFICATE_NUMBER_Y = 2130
+
+VERIFY_URL_FONT = FONT_INTER_REGULAR
+VERIFY_URL_SIZE = 36
+VERIFY_URL_COLOR = COLOR_SECONDARY
+VERIFY_URL_CENTER_X = CENTER_X
+VERIFY_URL_Y = 2210
+
+# === Dynamic: QR code (not baked into template) ===
+
+QR_BOX = (3020, 1950, 3360, 2290)  # (x0, y0, x1, y1), 340x340 px
+
+QR_CAPTION_TEXT = "проверка подлинности"
+QR_CAPTION_FONT = FONT_INTER_REGULAR
+QR_CAPTION_SIZE = 30
+QR_CAPTION_COLOR = COLOR_SECONDARY
+QR_CAPTION_CENTER_X = (QR_BOX[0] + QR_BOX[2]) // 2
+QR_CAPTION_Y = 2320
+
+# === Dynamic: student name ===
+
+STUDENT_NAME_CENTER_X = CENTER_X
+STUDENT_NAME_Y = 1030  # vertical center of the name zone
+STUDENT_NAME_FONT = FONT_PLAYFAIR_BOLD_ITALIC
+STUDENT_NAME_SIZE_START = 170
+STUDENT_NAME_SIZE_FLOOR = 110  # autoshrink floor for long names
+STUDENT_NAME_MAX_WIDTH = 2800
+STUDENT_NAME_COLOR = COLOR_BRAND_DARK_PINK
+
+# === Dynamic: course title (wraps up to 2 lines) ===
+
+COURSE_TITLE_TEMPLATE = "«{title}»"
+COURSE_TITLE_FONT = FONT_PLAYFAIR_BOLD
+COURSE_TITLE_SIZE = 110
+COURSE_TITLE_COLOR = COLOR_INK
+COURSE_TITLE_MAX_WIDTH = 2800
+COURSE_TITLE_MAX_LINES = 2
+COURSE_TITLE_Y_LINE_1 = 1450
+COURSE_TITLE_Y_LINE_2 = 1590
