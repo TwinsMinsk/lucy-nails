@@ -99,10 +99,20 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM_NAME: str = "Lucy Nails Academy"
+
+    # === Resend (HTTP email API) ===
+    # Preferred transport in production: Railway blocks outbound SMTP below the Pro
+    # plan, so credentials/reset emails must go over HTTPS. When RESEND_API_KEY is
+    # set, EmailService uses Resend; otherwise it falls back to SMTP (local dev).
+    RESEND_API_KEY: str = ""
+    # Full From header, e.g. "Lucy Nails Academy <noreply@lucysmirnova.ru>".
+    # The domain must be verified in Resend. Empty -> "<SMTP_FROM_NAME> <SMTP_USER>".
+    EMAIL_FROM: str = ""
+
     # Fail-closed by default: a paid product cannot deliver access without email
     # (credentials on guest checkout, password-reset links). Production refuses to
-    # start unless SMTP creds are set. Override to false only for a deployment that
-    # genuinely never emails users.
+    # start unless an email transport (Resend or SMTP) is configured. Override to
+    # false only for a deployment that genuinely never emails users.
     SMTP_REQUIRED_FOR_PAYMENT_EMAIL: bool = True
 
     # === Telegram ===
@@ -159,8 +169,14 @@ class Settings(BaseSettings):
             errors.append("PRODAMUS_SECRET_KEY is required in production")
         if not self.PRODAMUS_SHOP_ID:
             errors.append("PRODAMUS_SHOP_ID is required in production")
-        if self.SMTP_REQUIRED_FOR_PAYMENT_EMAIL and (not self.SMTP_USER or not self.SMTP_PASSWORD):
-            errors.append("SMTP_USER and SMTP_PASSWORD are required in production")
+        if self.SMTP_REQUIRED_FOR_PAYMENT_EMAIL:
+            has_resend = bool(self.RESEND_API_KEY)
+            has_smtp = bool(self.SMTP_USER and self.SMTP_PASSWORD)
+            if not (has_resend or has_smtp):
+                errors.append(
+                    "Email transport required in production: set RESEND_API_KEY "
+                    "(recommended; Railway blocks outbound SMTP) or SMTP_USER/SMTP_PASSWORD"
+                )
         if "localhost" in self.FRONTEND_URL or "127.0.0.1" in self.FRONTEND_URL:
             errors.append("FRONTEND_URL must be public in production")
         if "localhost" in self.BACKEND_URL or "127.0.0.1" in self.BACKEND_URL:

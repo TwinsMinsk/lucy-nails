@@ -31,7 +31,7 @@ def test_production_config_rejects_insecure_defaults():
     assert "JWT_SECRET_KEY must be changed in production" in message
 
 
-def test_production_config_requires_smtp_for_payment_credentials():
+def test_production_config_requires_email_transport():
     with pytest.raises(ValidationError) as exc_info:
         Settings(
             _env_file=None,
@@ -46,11 +46,34 @@ def test_production_config_requires_smtp_for_payment_credentials():
             BACKEND_URL="https://api.lucysmirnova.ru",
             TRUSTED_HOSTS="api.lucysmirnova.ru",
             SMTP_REQUIRED_FOR_PAYMENT_EMAIL=True,
+            RESEND_API_KEY="",
             SMTP_USER="",
             SMTP_PASSWORD="",
         )
 
-    assert "SMTP_USER and SMTP_PASSWORD are required in production" in str(exc_info.value)
+    assert "Email transport required in production" in str(exc_info.value)
+
+
+def test_production_config_accepts_resend_api_key():
+    settings = Settings(
+        _env_file=None,
+        ENVIRONMENT="production",
+        DEBUG=False,
+        JWT_SECRET_KEY="production-secret-that-is-32-chars-min",
+        KINESCOPE_API_KEY="kinescope-key",
+        PRODAMUS_URL="https://shop.payform.ru/",
+        PRODAMUS_SECRET_KEY="prodamus-secret",
+        PRODAMUS_SHOP_ID="shop-id",
+        FRONTEND_URL="https://lucysmirnova.ru",
+        BACKEND_URL="https://api.lucysmirnova.ru",
+        TRUSTED_HOSTS="api.lucysmirnova.ru",
+        SMTP_REQUIRED_FOR_PAYMENT_EMAIL=True,
+        RESEND_API_KEY="re_test_key",
+        SMTP_USER="",
+        SMTP_PASSWORD="",
+    )
+
+    assert settings.RESEND_API_KEY == "re_test_key"
 
 
 def test_production_config_allows_smtp_disabled_for_registered_checkout_only():
