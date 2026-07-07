@@ -1,8 +1,10 @@
 import uuid
+from datetime import datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.payments import _build_prodamus_order_id, parse_checkout_order_id
@@ -11,6 +13,14 @@ from app.models.course import Course
 from app.models.purchase import Purchase
 from app.models.user import User
 from app.services.prodamus_service import _make_signature
+
+
+async def _published_course(db: AsyncSession, title: str) -> Course:
+    course = Course(title=title, price_self=5000, price_support=10000, is_published=True)
+    db.add(course)
+    await db.commit()
+    await db.refresh(course)
+    return course
 
 
 def _signed_payload(payload: dict) -> tuple[dict, dict]:
@@ -110,6 +120,7 @@ async def test_prodamus_webhook_uses_order_id_as_stable_fallback_payment_id(
             "customer_phone": "+79990000000",
             "sum": "5000",
             "currency": "rub",
+            "payment_status": "success",
         }
     )
 
@@ -428,3 +439,208 @@ async def test_payment_link_requires_authenticated_user(client: AsyncClient, db:
     )
 
     assert response.status_code == 401
+
+
+# --- Webhook hardening (audit round 2: B1 status, B2 race, signature/amount) ---
+
+
+@pytest.mark.asyncio
+async def test_webhook_missing_signature_rejected(client: AsyncClient, db: AsyncSession):
+    course = await _published_course(db, "No Sign Course")
+    payload = {
+        "order_id": _build_prodamus_order_id(course.id, "self"),
+        "customer_email": "nosign@example.com",
+        "sum": "5000",
+        "currency": "rub",
+        "payment_status": "success",
+    }
+    r = await client.post("/api/payments/webhook", json=payload)
+    assert r.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_webhook_invalid_signature_rejected(client: AsyncClient, db: AsyncSession):
+    course = await _published_course(db, "Bad Sign Course")
+    payload = {
+        "order_id": _build_prodamus_order_id(course.id, "self"),
+        "customer_email": "badsign@example.com",
+        "sum": "5000",
+        "currency": "rub",
+        "payment_status": "success",
+    }
+    r = await client.post("/api/payments/webhook", json=payload, headers={"Sign": "deadbeef"})
+    assert r.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_webhook_amount_mismatch_rejected(client: AsyncClient, db: AsyncSession):
+    course = await _published_course(db, "Amount Mismatch Course")
+    payload, headers = _signed_payload(
+        {
+            "order_id": _build_prodamus_order_id(course.id, "self"),
+            "customer_email": "mismatch@example.com",
+            "sum": "9999",  # course.price_self is 5000
+            "currency": "rub",
+            "payment_status": "success",
+        }
+    )
+    r = await client.post("/api/payments/webhook", json=payload, headers=headers)
+    assert r.status_code == 422
+
+    count = await db.execute(select(func.count(Purchase.id)))
+    assert count.scalar_one() == 0
+
+
+@pytest.mark.asyncio
+async def test_webhook_empty_status_rejected(client: AsyncClient, db: AsyncSession):
+    """A signed webhook with no status marker must NOT be treated as success."""
+    course = await _published_course(db, "Empty Status Course")
+    payload, headers = _signed_payload(
+        {
+            "order_id": _build_prodamus_order_id(course.id, "self"),
+            "customer_email": "empty@example.com",
+            "sum": "5000",
+            "currency": "rub",
+        }
+    )
+    r = await client.post("/api/payments/webhook", json=payload, headers=headers)
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_webhook_two_payments_same_new_email_keeps_both(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Two distinct payments for the same brand-new email create two purchases."""
+    async def fake_send_credentials(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", fake_send_credentials)
+
+    course = await _published_course(db, "Two Payments Course")
+
+    p1, h1 = _signed_payload(
+        {
+            "order_id": _build_prodamus_order_id(course.id, "self"),
+            "order_num": "race-one",
+            "customer_email": "racebuyer@example.com",
+            "sum": "5000",
+            "currency": "rub",
+            "payment_status": "success",
+        }
+    )
+    p2, h2 = _signed_payload(
+        {
+            "order_id": _build_prodamus_order_id(course.id, "support"),
+            "order_num": "race-two",
+            "customer_email": "racebuyer@example.com",
+            "sum": "10000",
+            "currency": "rub",
+            "payment_status": "success",
+        }
+    )
+
+    r1 = await client.post("/api/payments/webhook", json=p1, headers=h1)
+    r2 = await client.post("/api/payments/webhook", json=p2, headers=h2)
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+
+    purchases = await db.execute(select(func.count(Purchase.id)))
+    assert purchases.scalar_one() == 2
+    users = await db.execute(select(func.count(User.id)).where(User.email == "racebuyer@example.com"))
+    assert users.scalar_one() == 1
+
+
+@pytest.mark.asyncio
+async def test_webhook_retries_on_integrity_error(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A transient IntegrityError (new-user email race) is retried, not swallowed."""
+    async def fake_send_credentials(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", fake_send_credentials)
+
+    course = await _published_course(db, "Retry Course")
+
+    import app.api.payments as payments_module
+
+    real_get_or_create = payments_module._get_or_create_user
+    calls = {"n": 0}
+
+    async def flaky(session, email, phone):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise IntegrityError("INSERT users", {}, Exception("duplicate email"))
+        return await real_get_or_create(session, email, phone)
+
+    monkeypatch.setattr("app.api.payments._get_or_create_user", flaky)
+
+    order_id = _build_prodamus_order_id(course.id, "self")
+    payload, headers = _signed_payload(
+        {
+            "order_id": order_id,
+            "customer_email": "retry@example.com",
+            "sum": "5000",
+            "currency": "rub",
+            "payment_status": "success",
+        }
+    )
+
+    r = await client.post("/api/payments/webhook", json=payload, headers=headers)
+    assert r.status_code == 200
+    assert calls["n"] == 2
+
+    purchase = await db.execute(select(Purchase).where(Purchase.payment_id == f"order_id:{order_id}"))
+    assert purchase.scalar_one_or_none() is not None
+
+
+@pytest.mark.asyncio
+async def test_admin_revoke_access(client: AsyncClient, db: AsyncSession):
+    admin = User(
+        email="admin-revoke@example.com",
+        password_hash=get_password_hash("adminpass1"),
+        role="admin",
+    )
+    student = await _create_user(db, "revoke-student@example.com")
+    course = await _published_course(db, "Revoke Course")
+    db.add(admin)
+    await db.commit()
+    await db.refresh(admin)
+    await db.refresh(student)
+
+    now = datetime.utcnow()
+    purchase = Purchase(
+        user_id=student.id,
+        course_id=course.id,
+        tariff="self",
+        amount_kopecks=500000,
+        payment_id="admin-revoke-test",
+        payment_status="success",
+        paid_at=now,
+        expires_at=now + timedelta(days=30),
+    )
+    db.add(purchase)
+    await db.commit()
+    await db.refresh(purchase)
+
+    login = await client.post(
+        "/api/auth/login", json={"email": "admin-revoke@example.com", "password": "adminpass1"}
+    )
+    token = login.json()["access_token"]
+    client.cookies.clear()
+
+    r = await client.post(
+        "/api/admin/revoke-access",
+        json={"purchase_id": str(purchase.id)},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+
+    await db.refresh(purchase)
+    assert purchase.payment_status == "failed"
+    assert purchase.expires_at <= datetime.utcnow()
