@@ -65,6 +65,20 @@ async def prepare_database():
         await conn.run_sync(Base.metadata.drop_all)
 
 
+@pytest.fixture(scope="function", autouse=True)
+def _reset_rate_limiter():
+    """Clear slowapi's in-memory counters before each test.
+
+    The limiter is a session-lived module object, so without a reset the
+    per-test request volume accumulates and later tests get rate-limited
+    (429 on /login → missing access_token).
+    """
+    from app.core.rate_limit import limiter
+
+    limiter.reset()
+    yield
+
+
 @pytest_asyncio.fixture(scope="function")
 async def db() -> AsyncGenerator[AsyncSession, None]:
     """
