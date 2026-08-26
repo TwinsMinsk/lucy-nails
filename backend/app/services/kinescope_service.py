@@ -3,6 +3,7 @@
 """
 
 import httpx
+import logging
 import urllib.parse
 from typing import Dict
 from uuid import UUID
@@ -13,6 +14,9 @@ from app.services.kinescope_jwt_service import (
     KinescopeJwtNotConfiguredError,
     kinescope_jwt_service,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class KinescopeNotConfiguredError(RuntimeError):
@@ -31,7 +35,7 @@ class KinescopeService:
     def __init__(self):
         """Инициализация сервиса."""
         self.api_key = (settings.KINESCOPE_API_KEY or "").strip()
-        self._production = settings.ENVIRONMENT == "production"
+        self._production = settings.ENVIRONMENT in {"production", "staging"}
         # В development/test без ключа разрешён mock; в production — нет
         self.is_mock_mode = not self.api_key
 
@@ -90,7 +94,7 @@ class KinescopeService:
         except httpx.HTTPError as e:
             if self._production:
                 raise RuntimeError(f"Kinescope API error: {e}") from e
-            print(f"Kinescope API error: {e}. Falling back to mock mode.")
+            logger.warning("Kinescope API error in development; using mock metadata: %s", e)
             return self._get_mock_video_info(video_id)
 
     def get_embed_url(

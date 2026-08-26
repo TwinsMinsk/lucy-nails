@@ -16,6 +16,7 @@ from app.models.auth_security import AuthSession
 from app.models.rbac import Role, UserRoleAssignment
 from app.models.user import User
 from app.services.audit_service import append_audit_log
+from app.services.runtime_settings_service import RuntimeSettingsService
 
 
 router = APIRouter()
@@ -70,6 +71,41 @@ class AuditLogResponse(BaseModel):
 class TeamCapabilitiesResponse(BaseModel):
     roles: list[str]
     permissions: list[str]
+
+
+class CheckoutToggleRequest(BaseModel):
+    enabled: bool
+    reason: str = Field(..., min_length=5, max_length=1000)
+
+
+class CheckoutToggleResponse(BaseModel):
+    checkout_enabled: bool
+
+
+@router.put("/system/checkout", response_model=CheckoutToggleResponse)
+async def toggle_checkout(
+    data: CheckoutToggleRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    operator: User = Depends(require_permission("system.manage_operations")),
+):
+    old_enabled = await RuntimeSettingsService.checkout_enabled(db)
+    await RuntimeSettingsService.set_checkout_enabled(
+        db, enabled=data.enabled, updated_by_id=operator.id
+    )
+    append_audit_log(
+        db,
+        actor_user_id=operator.id,
+        action="system.checkout.toggle",
+        object_type="runtime_setting",
+        object_id=RuntimeSettingsService.CHECKOUT_KEY,
+        old_value={"enabled": old_enabled},
+        new_value={"enabled": data.enabled},
+        reason=data.reason,
+        correlation_id=request.state.correlation_id,
+    )
+    await db.commit()
+    return CheckoutToggleResponse(checkout_enabled=data.enabled)
 
 
 @router.get("/team/me", response_model=TeamCapabilitiesResponse)

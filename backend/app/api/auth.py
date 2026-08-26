@@ -406,7 +406,7 @@ async def forgot_password(
         try:
             await EmailService.send_password_reset(user.email, reset_url)
         except Exception:
-            logger.exception("Failed to send reset email to %s", user.email)
+            logger.exception("Failed to send password reset email")
     return {"message": "If the account exists, a reset link has been sent"}
 
 

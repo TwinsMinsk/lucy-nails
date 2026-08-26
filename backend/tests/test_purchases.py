@@ -637,6 +637,53 @@ async def test_guest_checkout_is_blocked_by_kill_switch(
 
 
 @pytest.mark.asyncio
+async def test_admin_can_toggle_checkout_without_deploy(
+    client: AsyncClient,
+    db: AsyncSession,
+):
+    course = await _published_course(db, "Runtime Disabled Checkout Course")
+    admin = User(
+        email="checkout-operator@example.com",
+        password_hash=get_password_hash("checkout-operator-pass"),
+        role="admin",
+    )
+    db.add(admin)
+    await db.commit()
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": admin.email, "password": "checkout-operator-pass"},
+    )
+    client.cookies.clear()
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    disabled = await client.put(
+        "/api/admin/system/checkout",
+        json={"enabled": False, "reason": "Provider webhook incident"},
+        headers=headers,
+    )
+    assert disabled.status_code == 200, disabled.text
+    assert disabled.json()["checkout_enabled"] is False
+
+    checkout = await client.post(
+        "/api/payments/guest-link",
+        json={
+            "course_id": str(course.id),
+            "tariff": "self",
+            "customer_email": "runtime-disabled@example.com",
+        },
+    )
+    assert checkout.status_code == 503
+
+    enabled = await client.put(
+        "/api/admin/system/checkout",
+        json={"enabled": True, "reason": "Webhook processing restored"},
+        headers=headers,
+    )
+    assert enabled.status_code == 200, enabled.text
+    assert enabled.json()["checkout_enabled"] is True
+
+
+@pytest.mark.asyncio
 async def test_checkout_order_keeps_original_price_when_course_price_changes(
     client: AsyncClient,
     db: AsyncSession,

@@ -7,7 +7,6 @@ import hmac
 import logging
 import secrets
 from datetime import datetime, timedelta
-from email.utils import parseaddr
 from typing import Any, Literal
 from urllib.parse import urlencode
 from uuid import UUID
@@ -29,6 +28,7 @@ from app.models.purchase import Purchase
 from app.models.payment_event import PaymentEvent
 from app.models.user import User
 from app.services.outbox_service import enqueue_outbox_message
+from app.services.runtime_settings_service import RuntimeSettingsService
 from app.services.prodamus_service import ProdamusService
 from app.services.access_service import AccessService
 from app.services.payment_event_service import (
@@ -71,7 +71,7 @@ def _normalize_email(raw: Any) -> str:
     try:
         return str(_email_adapter.validate_python(candidate))
     except ValidationError:
-        logger.error("Prodamus webhook: invalid customer_email=%s", parseaddr(candidate)[1])
+        logger.error("Prodamus webhook: invalid customer email")
         raise HTTPException(status_code=422, detail="Invalid customer_email")
 
 
@@ -109,8 +109,10 @@ def _hash_status_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def _ensure_checkout_enabled() -> None:
-    if not settings.CHECKOUT_ENABLED:
+async def _ensure_checkout_enabled(db: AsyncSession) -> None:
+    if not await RuntimeSettingsService.checkout_enabled(
+        db, default_enabled=settings.CHECKOUT_ENABLED
+    ):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Checkout is temporarily unavailable",
@@ -629,8 +631,8 @@ async def get_guest_payment_link(
     data: GuestPaymentLinkRequest,
 ) -> dict[str, str]:
     """Гостевая оплата: после webhook создаётся аккаунт и отправляется пароль на email."""
-    _ensure_checkout_enabled()
     async with async_session_maker() as db:
+        await _ensure_checkout_enabled(db)
         course = await _resolve_course_for_checkout(db, data.course_id)
         email_normalized = str(data.customer_email).strip().lower()
         phone = _normalize_phone(data.customer_phone)
@@ -666,8 +668,8 @@ async def get_payment_link(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, str]:
     """Возвращает ссылку на оплату для выбранного тарифа авторизованного пользователя."""
-    _ensure_checkout_enabled()
     async with async_session_maker() as db:
+        await _ensure_checkout_enabled(db)
         course = await _resolve_course_for_checkout(db, data.course_id)
         phone = _normalize_phone(data.customer_phone or current_user.phone)
         order, status_token = await _create_checkout_order(

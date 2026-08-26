@@ -54,7 +54,7 @@ class Settings(BaseSettings):
         return v
     
     # === Redis ===
-    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_URL: str = ""
     
     # === Auth ===
     JWT_SECRET_KEY: str = "your-super-secret-key-change-in-production"
@@ -219,6 +219,12 @@ class Settings(BaseSettings):
             errors.append("TRUSTED_HOSTS is required in production")
         if not self.COOKIE_DOMAIN:
             errors.append("COOKIE_DOMAIN is required in production for sibling frontend/API hosts")
+        if not self.REDIS_URL:
+            errors.append("REDIS_URL is required in production for shared rate limiting")
+        if not self.TELEGRAM_BOT_TOKEN or not self.TELEGRAM_BOT_USERNAME:
+            errors.append("Telegram bot token and username are required in production")
+        if self.TELEGRAM_OWNER_CHAT_ID is None:
+            errors.append("TELEGRAM_OWNER_CHAT_ID is required for production alerts")
 
         if errors:
             raise ValueError("; ".join(errors))

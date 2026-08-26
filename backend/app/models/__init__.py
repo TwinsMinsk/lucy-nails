@@ -21,6 +21,7 @@ from app.models.auth_security import AuthSession, MfaCredential
 from app.models.crm import StudentNote, StudentTag, StudentTagAssignment
 from app.models.analytics_event import AnalyticsEvent
 from app.models.telegram_link import TelegramLinkToken
+from app.models.runtime_setting import RuntimeSetting
 
 __all__ = [
     "User",
@@ -48,4 +49,5 @@ __all__ = [
     "StudentTagAssignment",
     "AnalyticsEvent",
     "TelegramLinkToken",
+    "RuntimeSetting",
 ]

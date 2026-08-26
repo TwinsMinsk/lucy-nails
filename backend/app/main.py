@@ -3,8 +3,10 @@
 """
 
 import logging
+import json
 import secrets
 import re
+import time
 import uuid
 from contextlib import asynccontextmanager
 
@@ -112,11 +114,39 @@ class CsrfProtectionMiddleware(BaseHTTPMiddleware):
 
 class CorrelationIdMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        started = time.perf_counter()
         supplied = request.headers.get("x-correlation-id", "")
         correlation_id = supplied if _CORRELATION_ID_PATTERN.fullmatch(supplied) else str(uuid.uuid4())
         request.state.correlation_id = correlation_id
-        response: Response = await call_next(request)
+        try:
+            response: Response = await call_next(request)
+        except Exception:
+            logger.exception(
+                json.dumps(
+                    {
+                        "event": "http_request",
+                        "correlation_id": correlation_id,
+                        "method": request.method,
+                        "path": request.url.path,
+                        "status": 500,
+                        "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                    }
+                )
+            )
+            raise
         response.headers["X-Correlation-ID"] = correlation_id
+        logger.info(
+            json.dumps(
+                {
+                    "event": "http_request",
+                    "correlation_id": correlation_id,
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status": response.status_code,
+                    "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                }
+            )
+        )
         return response
 
 

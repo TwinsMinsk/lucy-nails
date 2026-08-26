@@ -26,6 +26,10 @@ def _valid_prod(**overrides):
         BACKEND_URL="https://api.lucysmirnova.ru",
         COOKIE_DOMAIN="lucysmirnova.ru",
         TRUSTED_HOSTS="api.lucysmirnova.ru",
+        REDIS_URL="redis://shared-redis.internal:6379/0",
+        TELEGRAM_BOT_TOKEN="telegram-token",
+        TELEGRAM_BOT_USERNAME="lucy_nails_bot",
+        TELEGRAM_OWNER_CHAT_ID=123456789,
         SMTP_REQUIRED_FOR_PAYMENT_EMAIL=True,
         RESEND_API_KEY="re_default_key",
         SMTP_USER="",
@@ -121,3 +125,17 @@ def test_production_config_requires_shared_cookie_domain():
         _valid_prod(COOKIE_DOMAIN="")
 
     assert "COOKIE_DOMAIN is required in production" in str(exc_info.value)
+
+
+def test_production_config_requires_shared_redis_rate_limit():
+    with pytest.raises(ValidationError) as exc_info:
+        _valid_prod(REDIS_URL="")
+
+    assert "REDIS_URL is required in production" in str(exc_info.value)
+
+
+def test_production_config_requires_telegram_operations_channel():
+    with pytest.raises(ValidationError) as exc_info:
+        _valid_prod(TELEGRAM_BOT_TOKEN="", TELEGRAM_BOT_USERNAME="")
+
+    assert "Telegram bot token and username are required" in str(exc_info.value)

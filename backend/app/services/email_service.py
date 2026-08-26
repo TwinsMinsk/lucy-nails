@@ -8,6 +8,7 @@ Railway блокирует исходящий SMTP на планах ниже Pr
 """
 
 import base64
+import hashlib
 import logging
 from dataclasses import dataclass
 from email.mime.application import MIMEApplication
@@ -21,6 +22,10 @@ import httpx
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _recipient_label(email: str) -> str:
+    return hashlib.sha256(email.strip().lower().encode("utf-8")).hexdigest()[:12]
 
 # Ни одна отправка письма не должна висеть дольше этого времени внутри запроса.
 EMAIL_TIMEOUT_SECONDS = 10.0
@@ -61,7 +66,10 @@ class EmailService:
     ) -> None:
         """Отправляет письмо через Resend (если задан ключ) или SMTP. С таймаутом."""
         if not EmailService.is_configured():
-            logger.warning("Email transport not configured — skipping email to %s", email)
+            logger.warning(
+                "Email transport not configured — skipping recipient=%s",
+                _recipient_label(email),
+            )
             return
 
         from_address = EmailService._from_address()
@@ -92,13 +100,15 @@ class EmailService:
                 RESEND_ENDPOINT,
                 headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
                 json=payload,
-            )
+        )
         if response.status_code >= 400:
             logger.error(
-                "Resend rejected email to %s: %s %s", email, response.status_code, response.text
+                "Resend rejected email recipient=%s status=%s",
+                _recipient_label(email),
+                response.status_code,
             )
             response.raise_for_status()
-        logger.info("Email sent to %s via Resend", email)
+        logger.info("Email sent via Resend recipient=%s", _recipient_label(email))
 
     @staticmethod
     def _build_mime_message(
@@ -149,7 +159,7 @@ class EmailService:
             start_tls=True,
             timeout=timeout,
         )
-        logger.info("Email sent to %s via SMTP", email)
+        logger.info("Email sent via SMTP recipient=%s", _recipient_label(email))
 
     @staticmethod
     def _build_credentials_html(email: str, password: str) -> str:

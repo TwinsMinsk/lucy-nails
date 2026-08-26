@@ -1140,6 +1140,11 @@ export const adminUpdateTeamRoles = (userId: string, roles: string[], reason: st
 export const adminGetAuditLogs = (params: { limit?: number; offset?: number; action?: string } = {}) =>
     apiFetch<AdminAuditLog[]>(`/admin/audit-logs${queryString(params)}`);
 export const adminGetSystemStatus = () => apiFetch<AdminSystemStatus>("/admin/system/status");
+export const adminSetCheckoutEnabled = (enabled: boolean, reason: string) =>
+    apiFetch<{ checkout_enabled: boolean }>("/admin/system/checkout", {
+        method: "PUT",
+        body: JSON.stringify({ enabled, reason }),
+    });
 export const adminGetCertificates = (params: {
     search?: string; status?: string; limit?: number; offset?: number;
 } = {}) => apiFetch<PageResponse<AdminCertificate>>(`/admin/certificates${queryString(params)}`);

@@ -34,7 +34,7 @@ async def create_purchase(
     Получить ссылку на оплату Prodamus (авторизованный пользователь).
     Подставляется email/телефон профиля, если есть.
     """
-    _ensure_checkout_enabled()
+    await _ensure_checkout_enabled(db)
     course = await _resolve_course_for_checkout(db, str(purchase_data.course_id))
     order, status_token = await _create_checkout_order(
         db,

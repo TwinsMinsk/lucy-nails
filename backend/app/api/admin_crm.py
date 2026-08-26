@@ -23,6 +23,7 @@ from app.models.purchase import Purchase
 from app.models.refund import RefundRequest
 from app.models.user import User
 from app.services.audit_service import append_audit_log
+from app.services.runtime_settings_service import RuntimeSettingsService
 
 
 router = APIRouter()
@@ -307,7 +308,7 @@ async def system_status(
     )
     last_payment = await db.scalar(select(func.max(PaymentEvent.received_at)))
     return SystemStatusResponse(
-        checkout_enabled=settings.CHECKOUT_ENABLED,
+        checkout_enabled=await RuntimeSettingsService.checkout_enabled(db),
         environment=settings.ENVIRONMENT,
         integrations={
             "prodamus": bool(settings.PRODAMUS_URL and settings.PRODAMUS_SECRET_KEY),

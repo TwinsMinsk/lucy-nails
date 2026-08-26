@@ -4,6 +4,8 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from starlette.requests import Request
 
+from app.core.config import settings
+
 
 def client_ip(request: Request) -> str:
     """Настоящий IP клиента за Cloudflare/Railway.
@@ -22,4 +24,8 @@ def client_ip(request: Request) -> str:
     return get_remote_address(request)
 
 
-limiter = Limiter(key_func=client_ip, default_limits=["200/minute"])
+limiter = Limiter(
+    key_func=client_ip,
+    default_limits=["200/minute"],
+    storage_uri=settings.REDIS_URL or "memory://",
+)
