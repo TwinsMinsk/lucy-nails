@@ -13,6 +13,7 @@ from app.models.course import Course
 from app.models.entitlement import Entitlement
 from app.models.outbox import DeliveryAttempt, OutboxMessage
 from app.models.user import User
+from app.services.access_service import AccessService
 from app.services.outbox_service import enqueue_outbox_message
 import app.workers.outbox as outbox_worker
 
@@ -164,6 +165,179 @@ async def test_worker_skips_stale_group_removal_when_support_access_is_active(
     assert delivered == []
     assert message.status == "sent"
     assert attempt is not None and attempt.status == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_worker_skips_stale_group_restore_when_support_access_is_inactive(
+    db: AsyncSession,
+):
+    student = User(
+        email="outbox-inactive-support@example.com",
+        password_hash=get_password_hash("studentpass1"),
+        role="student",
+        telegram_id=556677,
+    )
+    course = Course(
+        title="Inactive Outbox Support",
+        price_self=5000,
+        price_support=10000,
+        is_published=True,
+    )
+    db.add_all([student, course])
+    await db.flush()
+    now = datetime.utcnow()
+    db.add(
+        Entitlement(
+            user_id=student.id,
+            course_id=course.id,
+            source="manual",
+            tariff="support",
+            status="revoked",
+            starts_at=now,
+            expires_at=now + timedelta(days=30),
+            revoked_at=now,
+        )
+    )
+    message = enqueue_outbox_message(
+        db,
+        kind="telegram_group_restore",
+        channel="telegram",
+        recipient=str(student.telegram_id),
+        payload={"group_id": -100123, "user_id": str(student.id)},
+        dedupe_key="stale-support-restore",
+    )
+    await db.commit()
+
+    delivered: list[str] = []
+
+    async def capture_delivery(current: OutboxMessage) -> None:
+        delivered.append(current.recipient)
+
+    assert await outbox_service.process_outbox_batch(db, deliver=capture_delivery) == 1
+    await db.refresh(message)
+    attempt = await db.scalar(
+        select(DeliveryAttempt).where(DeliveryAttempt.outbox_message_id == message.id)
+    )
+    assert delivered == []
+    assert message.status == "sent"
+    assert attempt is not None and attempt.status == "skipped"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("initial_status", "queued_kind", "mutation", "followup_kind"),
+    [
+        ("active", "telegram_group_restore", "revoke", "telegram_group_remove"),
+        ("suspended", "telegram_group_remove", "restore", "telegram_group_restore"),
+    ],
+)
+async def test_membership_delivery_serializes_with_entitlement_mutation(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    initial_status: str,
+    queued_kind: str,
+    mutation: str,
+    followup_kind: str,
+):
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-bot-token")
+    monkeypatch.setattr(settings, "TELEGRAM_SUPPORT_GROUP_ID", -100123)
+    student = User(
+        email=f"membership-lock-{mutation}@example.com",
+        password_hash=get_password_hash("studentpass1"),
+        role="student",
+        telegram_id=667788,
+    )
+    course = Course(
+        title=f"Membership Lock {mutation}",
+        price_self=5000,
+        price_support=10000,
+        is_published=True,
+    )
+    db.add_all([student, course])
+    await db.flush()
+    now = datetime.utcnow()
+    entitlement = Entitlement(
+        user_id=student.id,
+        course_id=course.id,
+        source="manual",
+        tariff="support",
+        status=initial_status,
+        starts_at=now,
+        expires_at=now + timedelta(days=30),
+    )
+    db.add(entitlement)
+    await db.flush()
+    queued = enqueue_outbox_message(
+        db,
+        kind=queued_kind,
+        channel="telegram",
+        recipient=str(student.telegram_id),
+        payload={"group_id": -100123, "user_id": str(student.id)},
+        dedupe_key=f"membership-lock:{mutation}:initial",
+    )
+    await db.commit()
+
+    delivery_started = asyncio.Event()
+    release_delivery = asyncio.Event()
+    mutation_started = asyncio.Event()
+    mutation_finished = asyncio.Event()
+
+    async def slow_delivery(_message: OutboxMessage) -> None:
+        delivery_started.set()
+        await release_delivery.wait()
+
+    sessions = async_sessionmaker(
+        bind=db.bind,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    async with sessions() as delivery_session, sessions() as mutation_session:
+        delivery_task = asyncio.create_task(
+            outbox_service.process_outbox_batch(
+                delivery_session,
+                deliver=slow_delivery,
+                limit=1,
+            )
+        )
+        await asyncio.wait_for(delivery_started.wait(), timeout=5)
+
+        async def mutate_entitlement() -> None:
+            current = await mutation_session.get(Entitlement, entitlement.id)
+            assert current is not None
+            mutation_started.set()
+            if mutation == "revoke":
+                await AccessService.revoke_entitlement(
+                    mutation_session,
+                    current,
+                    reason="concurrency test",
+                )
+            else:
+                await AccessService.restore_entitlement(
+                    mutation_session,
+                    current,
+                    reason="concurrency test",
+                )
+            await mutation_session.commit()
+            mutation_finished.set()
+
+        mutation_task = asyncio.create_task(mutate_entitlement())
+        await asyncio.wait_for(mutation_started.wait(), timeout=5)
+        try:
+            await asyncio.sleep(0.2)
+            mutation_was_blocked = not mutation_finished.is_set()
+        finally:
+            release_delivery.set()
+        assert await delivery_task == 1
+        await asyncio.wait_for(mutation_task, timeout=5)
+        assert mutation_was_blocked
+
+    followup = await db.scalar(
+        select(OutboxMessage).where(
+            OutboxMessage.id != queued.id,
+            OutboxMessage.kind == followup_kind,
+        )
+    )
+    assert followup is not None
 
 
 @pytest.mark.asyncio

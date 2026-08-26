@@ -3,10 +3,22 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entitlement import Entitlement
+
+
+def support_membership_lock_key(user_id: UUID) -> int:
+    """Return a stable signed bigint key for PostgreSQL advisory locks."""
+    return int.from_bytes(user_id.bytes[:8], byteorder="big", signed=True)
+
+
+async def lock_support_membership_state(db: AsyncSession, user_id: UUID) -> None:
+    """Serialize support-access changes and Telegram membership delivery."""
+    await db.execute(
+        select(func.pg_advisory_xact_lock(support_membership_lock_key(user_id)))
+    )
 
 
 async def has_active_support_entitlement(

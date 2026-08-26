@@ -16,7 +16,10 @@ from app.models.outbox import OutboxMessage
 from app.models.user import User
 from app.core.config import settings
 from app.services.outbox_service import enqueue_outbox_message
-from app.services.support_access_service import has_active_support_entitlement
+from app.services.support_access_service import (
+    has_active_support_entitlement,
+    lock_support_membership_state,
+)
 
 
 @dataclass(frozen=True)
@@ -123,6 +126,10 @@ class AccessService:
             or settings.TELEGRAM_SUPPORT_GROUP_ID is None
         ):
             return False
+        # Keep the entitlement state change, its queued membership command,
+        # and any concurrent worker delivery in one per-user order. The lock
+        # is transaction-scoped and is released by the caller's commit.
+        await lock_support_membership_state(db, entitlement.user_id)
         if kind == "telegram_group_remove" and await has_active_support_entitlement(
             db,
             entitlement.user_id,

@@ -11,7 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models.outbox import DeliveryAttempt, OutboxMessage
 from app.services.email_service import EmailService
-from app.services.support_access_service import has_active_support_entitlement
+from app.services.support_access_service import (
+    has_active_support_entitlement,
+    lock_support_membership_state,
+)
 
 
 TELEGRAM_API_TIMEOUT_SECONDS = 10.0
@@ -118,12 +121,12 @@ async def deliver_outbox_message(message: OutboxMessage) -> None:
     raise ValueError(f"Unsupported outbox kind: {message.kind}")
 
 
-async def _group_removal_is_obsolete(
+async def _membership_message_is_obsolete(
     db: AsyncSession,
     message: OutboxMessage,
 ) -> bool:
-    """Do not ban a member who regained or still has another support access."""
-    if message.kind != "telegram_group_remove":
+    """Lock membership delivery and compare it with aggregate access state."""
+    if message.kind not in {"telegram_group_remove", "telegram_group_restore"}:
         return False
     raw_user_id = message.payload.get("user_id")
     if not raw_user_id:
@@ -134,7 +137,14 @@ async def _group_removal_is_obsolete(
         user_id = UUID(str(raw_user_id))
     except ValueError:
         return False
-    return await has_active_support_entitlement(db, user_id)
+    # This transaction lock is intentionally held through the external call
+    # and its DeliveryAttempt commit. Entitlement mutations take the same lock,
+    # so two workers cannot apply an older restore/remove after a newer state.
+    await lock_support_membership_state(db, user_id)
+    should_be_member = await has_active_support_entitlement(db, user_id)
+    if message.kind == "telegram_group_remove":
+        return should_be_member
+    return not should_be_member
 
 
 async def process_outbox_batch(
@@ -178,7 +188,7 @@ async def process_outbox_batch(
     for message in messages:
         skipped = False
         try:
-            skipped = await _group_removal_is_obsolete(db, message)
+            skipped = await _membership_message_is_obsolete(db, message)
             if not skipped:
                 await deliver(message)
         except Exception as exc:
