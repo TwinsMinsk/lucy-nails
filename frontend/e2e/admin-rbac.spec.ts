@@ -40,4 +40,7 @@ test("content manager enters only permitted admin sections without legacy admin 
     await expect(page.getByRole("link", { name: "Курсы и контент" })).toBeVisible()
     await expect(page.getByRole("link", { name: "Ученики" })).toHaveCount(0)
     await expect(page.getByRole("link", { name: "Аудит и система" })).toHaveCount(0)
+
+    await page.goto("/admin/users")
+    await expect(page).toHaveURL(/\/admin\/courses$/)
 })

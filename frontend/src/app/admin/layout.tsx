@@ -43,6 +43,25 @@ const adminNavItems = [
     { href: "/admin/system", icon: ShieldCheck, label: "Аудит и система", permissions: ["audit.read", "system.manage_roles"] },
 ]
 
+const adminRouteRules = [
+    ...adminNavItems.filter((item) => item.href !== "/admin").map((item) => ({
+        matches: (pathname: string) => pathname.startsWith(item.href),
+        permissions: item.permissions,
+    })),
+    {
+        matches: (pathname: string) => pathname.startsWith("/admin/purchases"),
+        permissions: ["commerce.read"],
+    },
+    {
+        matches: (pathname: string) => pathname === "/admin",
+        permissions: ["analytics.read"],
+    },
+]
+
+const hasAnyPermission = (granted: string[], required: string[]) => (
+    granted.includes("*") || required.some((permission) => granted.includes(permission))
+)
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<UserResponse | null>(null)
     const [capabilities, setCapabilities] = useState<AdminCapabilities | null>(null)
@@ -72,16 +91,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     const hasPermission = (permissions: string[]) => {
         const granted = capabilities?.permissions ?? []
-        return granted.includes("*") || permissions.some((permission) => granted.includes(permission))
+        return hasAnyPermission(granted, permissions)
     }
     const visibleItems = adminNavItems.filter((item) => hasPermission(item.permissions))
+    const currentRoute = adminRouteRules.find((rule) => rule.matches(pathname))
+    const routeAllowed = !currentRoute || hasPermission(currentRoute.permissions)
+
+    useEffect(() => {
+        if (isLoading || !capabilities || routeAllowed) return
+        const fallback = adminNavItems.find((item) => hasAnyPermission(capabilities.permissions, item.permissions))
+        router.replace(fallback?.href ?? "/dashboard")
+    }, [capabilities, isLoading, routeAllowed, router])
 
     const handleLogout = async () => {
         await logout()
         router.push("/auth/login")
     }
 
-    if (isLoading) {
+    if (isLoading || !routeAllowed) {
         return <div className="flex min-h-screen items-center justify-center">Проверка доступа…</div>
     }
     if (!user || !capabilities) return null
