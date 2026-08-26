@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -16,6 +17,8 @@ from app.models.module import Module
 from app.models.progress import Progress
 from app.models.purchase import Purchase
 from app.models.user import User
+from app.models.analytics_event import AnalyticsEvent
+from app.models.outbox import OutboxMessage
 from app.services.auth_service import AuthService
 from app.services.certificate_service import CertificateService
 
@@ -27,36 +30,6 @@ def certificate_storage(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path
     """Points upload_dir()/public_upload_url() at a tmp directory for every test."""
     monkeypatch.setattr(settings, "UPLOAD_STORAGE_DIR", str(tmp_path))
     return tmp_path
-
-
-@pytest.fixture(autouse=True)
-def mock_send_certificate(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
-    """Captures CertificateService's best-effort congratulations email calls."""
-    calls: list[dict] = []
-
-    async def fake_send_certificate(
-        email: str,
-        student_name: str,
-        course_title: str,
-        certificate_number: str,
-        verify_url: str,
-        pdf_bytes: bytes,
-    ) -> None:
-        calls.append(
-            {
-                "email": email,
-                "student_name": student_name,
-                "course_title": course_title,
-                "certificate_number": certificate_number,
-                "verify_url": verify_url,
-                "pdf_bytes": pdf_bytes,
-            }
-        )
-
-    monkeypatch.setattr(
-        "app.services.certificate_service.EmailService.send_certificate", fake_send_certificate
-    )
-    return calls
 
 
 async def _create_authenticated_student(
@@ -183,7 +156,7 @@ async def test_claim_without_purchase_returns_403(client: AsyncClient, db: Async
 
 @pytest.mark.asyncio
 async def test_claim_happy_path_issues_certificate(
-    client: AsyncClient, db: AsyncSession, tmp_path: Path, mock_send_certificate: list[dict]
+    client: AsyncClient, db: AsyncSession, tmp_path: Path
 ):
     course, lessons = await _setup_course(db, lesson_count=2)
     user, headers = await _create_authenticated_student(db, "graduate@example.com")
@@ -218,13 +191,21 @@ async def test_claim_happy_path_issues_certificate(
     await db.refresh(user)
     assert user.full_name == "Anna Ivanova"
 
-    assert len(mock_send_certificate) == 1
-    sent = mock_send_certificate[0]
-    assert sent["email"] == "graduate@example.com"
-    assert sent["student_name"] == "Anna Ivanova"
-    assert sent["course_title"] == course.title
-    assert sent["certificate_number"] == data["certificate_number"]
-    assert sent["pdf_bytes"][:4] == b"%PDF"
+    message = await db.scalar(
+        select(OutboxMessage).where(OutboxMessage.kind == "certificate_issued")
+    )
+    assert message is not None
+    assert message.recipient == "graduate@example.com"
+    assert message.payload["student_name"] == "Anna Ivanova"
+    assert message.payload["certificate_number"] == data["certificate_number"]
+    event = await db.scalar(
+        select(AnalyticsEvent).where(
+            AnalyticsEvent.event_name == "certificate_issued",
+            AnalyticsEvent.user_id == user.id,
+        )
+    )
+    assert event is not None
+    assert event.course_id == course.id
 
 
 # ---------------------------------------------------------------------------

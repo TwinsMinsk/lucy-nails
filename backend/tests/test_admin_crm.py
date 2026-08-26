@@ -120,6 +120,7 @@ async def test_orders_are_snapshot_based_and_paginated(
     await db.flush()
     order = Order(
         course_id=course.id,
+        course_title=course.title,
         tariff="self",
         customer_email="buyer@example.com",
         amount_kopecks=777700,

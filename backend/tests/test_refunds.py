@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_password_hash
@@ -10,6 +11,7 @@ from app.models.entitlement import Entitlement
 from app.models.purchase import Purchase
 from app.models.refund import RefundRequest
 from app.models.user import User
+from app.models.analytics_event import AnalyticsEvent
 
 
 @pytest.mark.asyncio
@@ -101,6 +103,14 @@ async def test_admin_refund_workflow_revokes_access_without_rewriting_purchase(
     await db.refresh(entitlement)
     assert purchase.payment_status == "success"
     assert entitlement.status == "revoked"
+    refund_event = await db.scalar(
+        select(AnalyticsEvent).where(
+            AnalyticsEvent.event_name == "refund_processed",
+            AnalyticsEvent.user_id == student.id,
+        )
+    )
+    assert refund_event is not None
+    assert refund_event.course_id == course.id
 
     list_response = await client.get("/api/admin/refunds", headers=headers)
     assert list_response.status_code == 200

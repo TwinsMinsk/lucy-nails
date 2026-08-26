@@ -19,6 +19,7 @@ from app.models.rbac import Permission, Role, UserRoleAssignment
 from app.models.audit_log import AuditLog
 from app.models.auth_security import AuthSession, MfaCredential
 from app.models.crm import StudentNote, StudentTag, StudentTagAssignment
+from app.models.analytics_event import AnalyticsEvent
 
 __all__ = [
     "User",
@@ -44,4 +45,5 @@ __all__ = [
     "StudentNote",
     "StudentTag",
     "StudentTagAssignment",
+    "AnalyticsEvent",
 ]

@@ -48,7 +48,7 @@ async def deliver_outbox_message(message: OutboxMessage) -> None:
             message.payload["course_title"],
         )
         return
-    if message.kind == "certificate_reissue":
+    if message.kind in {"certificate_issued", "certificate_reissue"}:
         await EmailService.send_certificate_link(
             message.recipient,
             message.payload["student_name"],

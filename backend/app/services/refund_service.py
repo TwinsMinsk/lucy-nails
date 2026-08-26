@@ -11,6 +11,7 @@ from app.models.entitlement import Entitlement
 from app.models.purchase import Purchase
 from app.models.refund import RefundRequest
 from app.services.access_service import AccessService
+from app.services.analytics_service import AnalyticsService
 
 
 class RefundError(ValueError):
@@ -72,6 +73,7 @@ class RefundService:
         provider_reference: str | None,
         note: str | None,
     ) -> RefundRequest:
+        previous_status = refund.status
         if refund.status in {"processed", "rejected"} and refund.status != status:
             raise RefundError("Completed refund requests cannot be reopened")
         allowed = {
@@ -96,6 +98,7 @@ class RefundService:
             refund.processed_at = datetime.utcnow()
 
         if status == "processed":
+            purchase = await db.get(Purchase, refund.purchase_id)
             entitlement_result = await db.execute(
                 select(Entitlement).where(
                     Entitlement.source_purchase_id == refund.purchase_id,
@@ -109,6 +112,16 @@ class RefundService:
                     entitlement,
                     reason=f"Refund processed: {refund.reason}",
                 )
+            if previous_status != "processed" and purchase is not None:
+                await AnalyticsService.record_event(
+                    db,
+                    event_id=f"refund_processed:{refund.id}",
+                    event_name="refund_processed",
+                    source="server",
+                    user_id=purchase.user_id,
+                    order_id=purchase.order_id,
+                    course_id=purchase.course_id,
+                    properties={},
+                )
         await db.flush()
         return refund
-

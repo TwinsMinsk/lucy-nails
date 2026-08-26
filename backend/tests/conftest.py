@@ -94,7 +94,7 @@ async def db() -> AsyncGenerator[AsyncSession, None]:
                 "TRUNCATE TABLE student_tag_assignments, student_tags, student_notes, "
                 "auth_sessions, mfa_credentials, audit_logs, "
                 "user_role_assignments, role_permissions, permissions, roles, "
-                "delivery_attempts, outbox_messages, refund_requests, payment_events, entitlements, orders, "
+                "analytics_events, delivery_attempts, outbox_messages, refund_requests, payment_events, entitlements, orders, "
                 "progress, purchases, certificates, lessons, modules, "
                 "courses, users RESTART IDENTITY CASCADE"
             )

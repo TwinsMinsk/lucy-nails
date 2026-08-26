@@ -18,6 +18,7 @@ from app.services.kinescope_service import (
     KinescopeNotConfiguredError,
     kinescope_service,
 )
+from app.services.analytics_service import AnalyticsService
 
 
 router = APIRouter()
@@ -171,6 +172,18 @@ async def get_lesson_play_url(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Video playback is not configured. Contact support.",
         ) from None
+
+    await AnalyticsService.record_event(
+        db,
+        event_id=f"lesson_started:{current_user.id}:{lesson.id}",
+        event_name="lesson_started",
+        source="server",
+        user_id=current_user.id,
+        course_id=lesson.module.course_id,
+        lesson_id=lesson.id,
+        properties={},
+    )
+    await db.commit()
     
     return VideoPlayResponse(
         video_url=video_url,

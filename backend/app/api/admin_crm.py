@@ -655,8 +655,7 @@ async def list_orders(
     total = await db.scalar(select(func.count(Order.id)).where(*conditions))
     rows = (
         await db.execute(
-            select(Order, Course.title, Purchase.id)
-            .join(Course, Course.id == Order.course_id)
+            select(Order, Purchase.id)
             .outerjoin(Purchase, Purchase.order_id == Order.id)
             .where(*conditions)
             .order_by(Order.created_at.desc())
@@ -671,7 +670,7 @@ async def list_orders(
                 customer_email=order.customer_email,
                 customer_phone=order.customer_phone,
                 course_id=order.course_id,
-                course_title=course_title,
+                course_title=order.course_title,
                 tariff=order.tariff,
                 amount_kopecks=order.amount_kopecks,
                 currency=order.currency,
@@ -682,7 +681,7 @@ async def list_orders(
                 created_at=order.created_at,
                 updated_at=order.updated_at,
             )
-            for order, course_title, purchase_id in rows
+            for order, purchase_id in rows
         ],
         total=int(total or 0),
         limit=limit,

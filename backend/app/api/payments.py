@@ -13,7 +13,7 @@ from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, EmailStr, TypeAdapter, ValidationError
+from pydantic import BaseModel, EmailStr, Field, TypeAdapter, ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +37,7 @@ from app.services.payment_event_service import (
     new_payment_event,
     record_terminal_payment_event,
 )
+from app.services.analytics_service import AnalyticsService
 
 logger = logging.getLogger(__name__)
 
@@ -157,14 +158,19 @@ async def _create_checkout_order(
     customer_phone: str | None,
     *,
     user_id: UUID | None = None,
+    attribution: dict[str, Any] | None = None,
 ) -> tuple[Order, str]:
     if tariff not in ("self", "support"):
         raise HTTPException(status_code=400, detail="Invalid tariff")
     status_token = secrets.token_urlsafe(32)
     price_rub = course.price_self if tariff == "self" else course.price_support
+    attribution = attribution or {}
+    first_touch = attribution.get("first_touch") or {}
+    last_touch = attribution.get("last_touch") or {}
     order = Order(
         user_id=user_id,
         course_id=course.id,
+        course_title=course.title,
         tariff=tariff,
         customer_email=customer_email,
         customer_phone=customer_phone,
@@ -173,9 +179,45 @@ async def _create_checkout_order(
         access_days=course.access_days,
         status="pending",
         status_token_hash=_hash_status_token(status_token),
+        first_utm_source=first_touch.get("utm_source"),
+        first_utm_medium=first_touch.get("utm_medium"),
+        first_utm_campaign=first_touch.get("utm_campaign"),
+        first_utm_content=first_touch.get("utm_content"),
+        first_utm_term=first_touch.get("utm_term"),
+        last_utm_source=last_touch.get("utm_source"),
+        last_utm_medium=last_touch.get("utm_medium"),
+        last_utm_campaign=last_touch.get("utm_campaign"),
+        last_utm_content=last_touch.get("utm_content"),
+        last_utm_term=last_touch.get("utm_term"),
     )
     db.add(order)
     await db.flush()
+    event_values = {
+        "anonymous_id": attribution.get("anonymous_id"),
+        "user_id": user_id,
+        "order_id": order.id,
+        "course_id": course.id,
+        "utm_source": first_touch.get("utm_source"),
+        "utm_medium": first_touch.get("utm_medium"),
+        "utm_campaign": first_touch.get("utm_campaign"),
+        "utm_content": first_touch.get("utm_content"),
+        "utm_term": first_touch.get("utm_term"),
+        "properties": {"tariff": tariff},
+    }
+    await AnalyticsService.record_event(
+        db,
+        event_id=f"checkout_started:{order.id}",
+        event_name="checkout_started",
+        source="server",
+        **event_values,
+    )
+    await AnalyticsService.record_event(
+        db,
+        event_id=f"payment_redirect:{order.id}",
+        event_name="payment_redirect",
+        source="server",
+        **event_values,
+    )
     return order, status_token
 
 
@@ -393,6 +435,22 @@ async def _record_purchase_once(
         if order is not None:
             order.status = "paid"
             order.paid_at = paid_at
+        await AnalyticsService.record_event(
+            db,
+            event_id=f"purchase_confirmed:{payment_key}",
+            event_name="purchase_confirmed",
+            source="server",
+            anonymous_id=None,
+            user_id=user.id,
+            order_id=order.id if order else None,
+            course_id=course.id,
+            utm_source=order.first_utm_source if order else None,
+            utm_medium=order.first_utm_medium if order else None,
+            utm_campaign=order.first_utm_campaign if order else None,
+            utm_content=order.first_utm_content if order else None,
+            utm_term=order.first_utm_term if order else None,
+            properties={"tariff": tariff},
+        )
         payment_event.processing_status = "processed"
         payment_event.processed_at = datetime.utcnow()
         await db.commit()
@@ -512,11 +570,26 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
+class AttributionTouch(BaseModel):
+    utm_source: str | None = Field(default=None, max_length=255)
+    utm_medium: str | None = Field(default=None, max_length=255)
+    utm_campaign: str | None = Field(default=None, max_length=255)
+    utm_content: str | None = Field(default=None, max_length=255)
+    utm_term: str | None = Field(default=None, max_length=255)
+
+
+class CheckoutAttribution(BaseModel):
+    anonymous_id: str | None = Field(default=None, min_length=8, max_length=128)
+    first_touch: AttributionTouch | None = None
+    last_touch: AttributionTouch | None = None
+
+
 class PaymentLinkRequest(BaseModel):
     course_id: str
     tariff: str  # "self" | "support"
     customer_email: str | None = None
     customer_phone: str | None = None
+    attribution: CheckoutAttribution | None = None
 
 
 class GuestPaymentLinkRequest(BaseModel):
@@ -524,6 +597,7 @@ class GuestPaymentLinkRequest(BaseModel):
     tariff: Literal["self", "support"]
     customer_email: EmailStr
     customer_phone: str | None = None
+    attribution: CheckoutAttribution | None = None
 
 
 @router.post(
@@ -542,7 +616,12 @@ async def get_guest_payment_link(
         email_normalized = str(data.customer_email).strip().lower()
         phone = _normalize_phone(data.customer_phone)
         order, status_token = await _create_checkout_order(
-            db, course, data.tariff, email_normalized, phone
+            db,
+            course,
+            data.tariff,
+            email_normalized,
+            phone,
+            attribution=data.attribution.model_dump() if data.attribution else None,
         )
         await db.commit()
 
@@ -573,7 +652,13 @@ async def get_payment_link(
         course = await _resolve_course_for_checkout(db, data.course_id)
         phone = _normalize_phone(data.customer_phone or current_user.phone)
         order, status_token = await _create_checkout_order(
-            db, course, data.tariff, current_user.email, phone, user_id=current_user.id
+            db,
+            course,
+            data.tariff,
+            current_user.email,
+            phone,
+            user_id=current_user.id,
+            attribution=data.attribution.model_dump() if data.attribution else None,
         )
         await db.commit()
 

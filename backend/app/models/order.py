@@ -21,6 +21,7 @@ class Order(Base):
     course_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("courses.id", ondelete="RESTRICT"), nullable=False, index=True
     )
+    course_title: Mapped[str] = mapped_column(String(255), nullable=False)
     tariff: Mapped[str] = mapped_column(String(20), nullable=False)
     customer_email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
     customer_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -29,6 +30,16 @@ class Order(Base):
     access_days: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
     status_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    first_utm_source: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    first_utm_medium: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    first_utm_campaign: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    first_utm_content: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    first_utm_term: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_utm_source: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    last_utm_medium: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_utm_campaign: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_utm_content: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_utm_term: Mapped[str | None] = mapped_column(String(255), nullable=True)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
