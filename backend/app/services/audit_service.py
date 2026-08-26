@@ -31,4 +31,3 @@ def append_audit_log(
     )
     db.add(entry)
     return entry
-

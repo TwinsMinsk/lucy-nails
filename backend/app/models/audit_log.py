@@ -26,4 +26,3 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(nullable=False, default=datetime.utcnow, index=True)
 
     actor: Mapped["User | None"] = relationship(foreign_keys=[actor_user_id])
-

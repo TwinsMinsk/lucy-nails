@@ -67,4 +67,3 @@ class UserRoleAssignment(Base):
     )
     role: Mapped[Role] = relationship(back_populates="assignments")
     assigned_by: Mapped["User | None"] = relationship(foreign_keys=[assigned_by_id])
-

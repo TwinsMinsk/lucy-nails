@@ -35,4 +35,3 @@ class PaymentEvent(Base):
 
     order: Mapped["Order | None"] = relationship(back_populates="payment_events")
     purchase: Mapped["Purchase | None"] = relationship(back_populates="payment_events")
-

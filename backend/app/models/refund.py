@@ -36,4 +36,3 @@ class RefundRequest(Base):
     purchase: Mapped["Purchase"] = relationship(back_populates="refund_requests")
     created_by: Mapped["User"] = relationship(foreign_keys=[created_by_id])
     processed_by: Mapped["User | None"] = relationship(foreign_keys=[processed_by_id])
-
