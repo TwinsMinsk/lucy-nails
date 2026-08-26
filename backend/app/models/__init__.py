@@ -13,6 +13,8 @@ from app.models.gallery import GalleryItem
 from app.models.order import Order
 from app.models.outbox import DeliveryAttempt, OutboxMessage
 from app.models.entitlement import Entitlement
+from app.models.payment_event import PaymentEvent
+from app.models.refund import RefundRequest
 
 __all__ = [
     "User",
@@ -27,4 +29,6 @@ __all__ = [
     "OutboxMessage",
     "DeliveryAttempt",
     "Entitlement",
+    "PaymentEvent",
+    "RefundRequest",
 ]

@@ -37,8 +37,10 @@ TestingSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, expi
 # dependency override in the `client` fixture cannot redirect them. Point their
 # session factory at the test database as well.
 import app.api.payments as _payments_module  # noqa: E402
+import app.services.payment_event_service as _payment_event_module  # noqa: E402
 
 _payments_module.async_session_maker = TestingSessionLocal
+_payment_event_module.async_session_maker = TestingSessionLocal
 
 
 @pytest.fixture(scope="session")
@@ -89,7 +91,7 @@ async def db() -> AsyncGenerator[AsyncSession, None]:
         # Порядок удаления важен из-за FK
         await session.execute(
             text(
-                "TRUNCATE TABLE delivery_attempts, outbox_messages, entitlements, orders, "
+                "TRUNCATE TABLE delivery_attempts, outbox_messages, refund_requests, payment_events, entitlements, orders, "
                 "progress, purchases, certificates, lessons, modules, "
                 "courses, users RESTART IDENTITY CASCADE"
             )

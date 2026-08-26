@@ -38,4 +38,4 @@ class Order(Base):
     user: Mapped["User | None"] = relationship(back_populates="orders")
     course: Mapped["Course"] = relationship(back_populates="orders")
     purchase: Mapped["Purchase | None"] = relationship(back_populates="order", uselist=False)
-
+    payment_events: Mapped[list["PaymentEvent"]] = relationship(back_populates="order")

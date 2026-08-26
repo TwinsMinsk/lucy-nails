@@ -50,6 +50,7 @@ async def create_purchase(
         customer_email=current_user.email,
         customer_phone=current_user.phone,
         order_id=f"order|{order.id}",
+        status_token=status_token,
     )
     return PaymentStartResponse(
         payment_url=url,

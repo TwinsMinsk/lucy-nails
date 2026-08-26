@@ -13,6 +13,7 @@ from app.core.config import Settings
 from app.core.security import get_password_hash
 from app.models.course import Course
 from app.models.entitlement import Entitlement
+from app.models.payment_event import PaymentEvent
 from app.models.purchase import Purchase
 from app.models.user import User
 from app.services.prodamus_service import _make_signature
@@ -204,6 +205,8 @@ async def test_prodamus_webhook_keeps_repeat_payments_idempotent(
     purchases = purchases_result.scalars().all()
     assert [purchase.payment_id for purchase in purchases] == ["payment-one", "payment-two"]
     assert [purchase.tariff for purchase in purchases] == ["self", "support"]
+    event_count = await db.scalar(select(func.count(PaymentEvent.id)))
+    assert event_count == 2
 
 
 @pytest.mark.asyncio
@@ -232,6 +235,11 @@ async def test_prodamus_webhook_rejects_non_success_status(client: AsyncClient, 
     response = await client.post("/api/payments/webhook", json=payload, headers=headers)
 
     assert response.status_code == 422
+    event = (await db.execute(select(PaymentEvent))).scalar_one()
+    assert event.processing_status == "ignored"
+    assert event.error_code == "payment_not_successful"
+    assert "customer_email" not in event.sanitized_payload
+    assert "failed-webhook@example.com" not in str(event.sanitized_payload)
 
 
 @pytest.mark.asyncio
@@ -595,9 +603,14 @@ async def test_guest_payment_link_returns_url(client: AsyncClient, db: AsyncSess
     )
 
     assert response.status_code == 200
-    url = response.json()["url"]
+    response_data = response.json()
+    url = response_data["url"]
     assert "signature=" in url
     assert ("guest%40example.com" in url) or ("guest@example.com" in url)
+    success_url = parse_qs(urlparse(url).query)["urlSuccess"][0]
+    success_query = parse_qs(urlparse(success_url).query)
+    assert success_query["order_id"] == [response_data["order_id"]]
+    assert success_query["token"] == [response_data["status_token"]]
 
 
 @pytest.mark.asyncio
@@ -756,6 +769,9 @@ async def test_webhook_amount_mismatch_rejected(client: AsyncClient, db: AsyncSe
 
     count = await db.execute(select(func.count(Purchase.id)))
     assert count.scalar_one() == 0
+    event = (await db.execute(select(PaymentEvent))).scalar_one()
+    assert event.processing_status == "rejected"
+    assert event.error_code == "amount_mismatch"
 
 
 @pytest.mark.asyncio

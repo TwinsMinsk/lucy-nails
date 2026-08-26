@@ -45,6 +45,8 @@ class Purchase(Base):
     entitlement: Mapped["Entitlement | None"] = relationship(
         back_populates="source_purchase", uselist=False
     )
+    payment_events: Mapped[list["PaymentEvent"]] = relationship(back_populates="purchase")
+    refund_requests: Mapped[list["RefundRequest"]] = relationship(back_populates="purchase")
     
     def __repr__(self) -> str:
         return f"<Purchase {self.id} ({self.tariff}, {self.payment_status})>"

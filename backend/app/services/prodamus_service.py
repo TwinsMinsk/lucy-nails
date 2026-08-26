@@ -64,6 +64,7 @@ class ProdamusService:
         order_id: str | None = None,
         customer_email: str | None = None,
         customer_phone: str | None = None,
+        success_url: str | None = None,
     ) -> str:
         """
         Генерирует прямую ссылку на оплату (GET-параметры + подпись).
@@ -89,7 +90,7 @@ class ProdamusService:
             "products[0][price]": product["price"],
             "products[0][quantity]": product["quantity"],
             "products[0][type]": product["type"],
-            "urlSuccess": f"{settings.FRONTEND_URL.rstrip('/')}/payment-success",
+            "urlSuccess": success_url or f"{settings.FRONTEND_URL.rstrip('/')}/payment-success",
             "urlReturn": f"{settings.FRONTEND_URL.rstrip('/')}/#pricing",
             "urlNotification": f"{backend_url}/api/payments/webhook",
             # callbackType=json — вебхуки будут приходить в JSON

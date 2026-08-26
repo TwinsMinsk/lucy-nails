@@ -9,6 +9,7 @@ import secrets
 from datetime import datetime, timedelta
 from email.utils import parseaddr
 from typing import Any, Literal
+from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -25,10 +26,17 @@ from app.core.security import create_account_activation_token, get_password_hash
 from app.models.course import Course
 from app.models.order import Order
 from app.models.purchase import Purchase
+from app.models.payment_event import PaymentEvent
 from app.models.user import User
 from app.services.outbox_service import enqueue_outbox_message
 from app.services.prodamus_service import ProdamusService
 from app.services.access_service import AccessService
+from app.services.payment_event_service import (
+    PaymentEventData,
+    build_payment_event_data,
+    new_payment_event,
+    record_terminal_payment_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -217,12 +225,17 @@ def _checkout_link_for_course(
     customer_email: str | None = None,
     customer_phone: str | None = None,
     order_id: str | None = None,
+    status_token: str | None = None,
 ) -> str:
     if tariff not in ("self", "support"):
         raise HTTPException(status_code=400, detail="Invalid tariff")
     price = float(course.price_self if tariff == "self" else course.price_support)
     course_name = f"{course.title} — {'Самостоятельный' if tariff == 'self' else 'С поддержкой'}"
     order_id = order_id or _build_prodamus_order_id(course.id, tariff)
+    success_url = None
+    if status_token:
+        success_query = urlencode({"order_id": order_id, "token": status_token})
+        success_url = f"{settings.FRONTEND_URL.rstrip('/')}/payment-success?{success_query}"
     return ProdamusService.generate_payment_link(
         course_name=course_name,
         price=price,
@@ -230,6 +243,7 @@ def _checkout_link_for_course(
         order_id=order_id,
         customer_email=customer_email,
         customer_phone=customer_phone,
+        success_url=success_url,
     )
 
 
@@ -243,6 +257,7 @@ async def _record_purchase_once(
     course_id_uuid: UUID | None,
     tariff: str | None,
     payload: dict[str, Any],
+    event_data: PaymentEventData,
     order_uuid: UUID | None = None,
 ) -> str:
     """One attempt at recording the purchase in its own transaction.
@@ -252,8 +267,23 @@ async def _record_purchase_once(
     """
     webhook_email = _normalize_email(payload.get("customer_email"))
     async with async_session_maker() as db:
+        existing_event = await db.scalar(
+            select(PaymentEvent.id).where(PaymentEvent.event_hash == event_data.event_hash)
+        )
+        if existing_event is not None:
+            return webhook_email
+
+        payment_event = new_payment_event(event_data, order_id=order_uuid)
+        db.add(payment_event)
+        await db.flush()
+
         existing_pay = await db.execute(select(Purchase).where(Purchase.payment_id == payment_key))
-        if existing_pay.scalars().first():
+        existing_purchase = existing_pay.scalars().first()
+        if existing_purchase:
+            payment_event.purchase_id = existing_purchase.id
+            payment_event.processing_status = "duplicate"
+            payment_event.processed_at = datetime.utcnow()
+            await db.commit()
             return webhook_email
 
         order: Order | None = None
@@ -329,6 +359,7 @@ async def _record_purchase_once(
         )
         db.add(purchase)
         await db.flush()
+        payment_event.purchase_id = purchase.id
         db.add(AccessService.create_purchase_entitlement(purchase))
         dedupe_hash = hashlib.sha256(payment_key.encode("utf-8")).hexdigest()
         if is_new_user:
@@ -362,6 +393,8 @@ async def _record_purchase_once(
         if order is not None:
             order.status = "paid"
             order.paid_at = paid_at
+        payment_event.processing_status = "processed"
+        payment_event.processed_at = datetime.utcnow()
         await db.commit()
         return customer_email
 
@@ -395,7 +428,14 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
         logger.warning("Prodamus webhook: invalid signature")
         raise HTTPException(status_code=400, detail="Invalid signature")
 
+    event_data = build_payment_event_data(payload)
     if not _is_success_payment_payload(payload):
+        await record_terminal_payment_event(
+            event_data,
+            processing_status="ignored",
+            error_code="payment_not_successful",
+            error_detail="Signed webhook did not contain a successful payment status",
+        )
         logger.warning("Prodamus webhook: non-success payment payload")
         raise HTTPException(status_code=422, detail="Payment is not successful")
 
@@ -403,12 +443,28 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
     order_uuid = _parse_persisted_order_id(order_id_raw)
     parsed = parse_checkout_order_id(order_id_raw) if order_uuid is None else None
     if order_uuid is None and not parsed:
+        await record_terminal_payment_event(
+            event_data,
+            processing_status="rejected",
+            error_code="invalid_order_id",
+            error_detail="Order reference has an unsupported format",
+        )
         logger.error("Prodamus webhook: invalid order_id=%s", order_id_raw)
         raise HTTPException(status_code=422, detail="Invalid order_id")
 
     course_id_uuid, tariff = parsed if parsed else (None, None)
     payment_key = _resolve_payment_key(payload.get("order_num"), order_id_raw)
-    customer_email = _normalize_email(payload.get("customer_email"))
+    try:
+        customer_email = _normalize_email(payload.get("customer_email"))
+    except HTTPException as exc:
+        await record_terminal_payment_event(
+            event_data,
+            processing_status="rejected",
+            error_code="invalid_customer_email",
+            error_detail=str(exc.detail),
+            order_id=order_uuid,
+        )
+        raise
 
     # Record the purchase, retrying once. A concurrent first-time buyer can hit a
     # users.email unique collision (two payments, same brand-new email): the racing
@@ -418,9 +474,19 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
     for attempt in range(2):
         try:
             customer_email = await _record_purchase_once(
-                payment_key, course_id_uuid, tariff, payload, order_uuid
+                payment_key, course_id_uuid, tariff, payload, event_data, order_uuid
             )
             break
+        except HTTPException as exc:
+            error_code = str(exc.detail).lower().replace(" ", "_")[:64]
+            await record_terminal_payment_event(
+                event_data,
+                processing_status="rejected",
+                error_code=error_code,
+                error_detail=str(exc.detail),
+                order_id=order_uuid,
+            )
+            raise
         except IntegrityError:
             if attempt == 0:
                 continue
@@ -486,6 +552,7 @@ async def get_guest_payment_link(
         customer_email=email_normalized,
         customer_phone=phone,
         order_id=f"order|{order.id}",
+        status_token=status_token,
     )
     return {"url": link, "order_id": f"order|{order.id}", "status_token": status_token}
 
@@ -516,6 +583,7 @@ async def get_payment_link(
         customer_email=current_user.email,
         customer_phone=phone,
         order_id=f"order|{order.id}",
+        status_token=status_token,
     )
     return {"url": link, "order_id": f"order|{order.id}", "status_token": status_token}
 
