@@ -13,7 +13,7 @@
 - [x] Полный pytest на PostgreSQL 15: 144 passed, 1 skipped.
 - [x] Alembic имеет одну head `1b8c9d0e1f2a`; latest downgrade/upgrade проходит.
 - [x] Frontend ESLint, Vitest, Next production build.
-- [x] Playwright: guest checkout и public/login в Chromium + mobile WebKit.
+- [x] Playwright: guest checkout, public/login и content-manager RBAC в Chromium + mobile WebKit (6 passed).
 - [x] `pip-audit --strict -r backend/requirements.lock`: нет известных уязвимостей.
 - [x] `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities.
 - [x] Git diff не содержит секретов, `.env`, backup dump, test result или тяжёлых media.

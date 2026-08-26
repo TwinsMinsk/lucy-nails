@@ -54,7 +54,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         const checkAccess = async () => {
             try {
                 const [userData, capabilityData] = await Promise.all([getMe(), adminGetCapabilities()])
-                if (userData.role !== "admin") {
+                if (capabilityData.roles.length === 0 || capabilityData.permissions.length === 0) {
                     router.replace("/dashboard")
                     return
                 }

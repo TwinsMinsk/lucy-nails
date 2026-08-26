@@ -7,7 +7,7 @@
 
 ## 1. Executive summary
 
-В коде построен production-grade фундамент commerce, access, RBAC/MFA, CRM, аналитики, Telegram и эксплуатации. Локальные автоматические gates зелёные: 144 backend tests, 4 frontend unit tests, 4 cross-browser E2E, единственная Alembic head, чистые runtime dependency audits и успешный локальный restore drill.
+В коде построен production-grade фундамент commerce, access, RBAC/MFA, CRM, аналитики, Telegram и эксплуатации. Локальные автоматические gates зелёные: 144 backend tests, 4 frontend unit tests, 6 cross-browser E2E, единственная Alembic head, чистые runtime dependency audits и успешный локальный restore drill.
 
 Запуск пока нельзя одобрить: релизная ветка не слита и не развёрнута, нет изолированного staging, не выполнен новый реальный платёж с возвратом, не проверены вручную все 11 уроков на физических iOS/Android, не настроено внешнее backup-хранилище и нет юридического sign-off. Это внешние, но обязательные P0/P1; автоматическими тестами их честно заменить нельзя.
 
@@ -50,7 +50,7 @@
 | Vitest | 2 files, 4 tests passed | ✅ |
 | ESLint | exit 0 | ✅ |
 | Next production build | exit 0 | ✅ |
-| Playwright Chromium + mobile WebKit | 4 passed; найден и исправлен status-token race | ✅ |
+| Playwright Chromium + mobile WebKit | 6 passed; исправлены status-token race и legacy-role admin guard | ✅ |
 | `npm audit --omit=dev --audit-level=high` | 0 vulnerabilities | ✅ |
 | `pip-audit --strict -r backend/requirements.lock` | no known vulnerabilities | ✅ |
 | Docker backup/restore drill | 81 928 B; SHA-256 `74fc2ca2...af0bb`; 28 tables; correct head | ✅ локально |

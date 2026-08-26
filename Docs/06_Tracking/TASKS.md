@@ -40,7 +40,7 @@
 
 - [x] Python 3.11 lock-файлы; обновлены уязвимые Next/FastAPI/Starlette/JWT dependencies.
 - [x] CI: Ruff, pip-audit, PostgreSQL pytest, Alembic single head + round-trip, ESLint, Vitest, npm audit, build, Playwright.
-- [x] Cross-browser guest checkout E2E в desktop Chromium и mobile WebKit.
+- [x] Cross-browser guest checkout и content-manager RBAC E2E в desktop Chromium и mobile WebKit.
 - [x] `compose.dev.yml` для PostgreSQL 15 + Redis 7.
 - [x] Backup/restore tooling с checksum, S3 encryption, retention и owner alert.
 - [x] Локальный restore drill: 28 таблиц, head `1b8c9d0e1f2a`, checksum подтверждён.
