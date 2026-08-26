@@ -86,3 +86,20 @@ def verify_account_activation_token(token: str) -> dict[str, Any] | None:
     if payload.get("type") != "activation":
         return None
     return payload
+
+
+def create_mfa_setup_token(user_id: Any, token_version: int = 0) -> str:
+    """Create a short-lived password-authenticated token for initial MFA setup."""
+    expire = datetime.utcnow() + timedelta(minutes=settings.MFA_SETUP_TOKEN_EXPIRE_MINUTES)
+    payload = {"sub": str(user_id), "ver": token_version, "exp": expire, "type": "mfa_setup"}
+    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def verify_mfa_setup_token(token: str) -> dict[str, Any] | None:
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+    except JWTError:
+        return None
+    if payload.get("type") != "mfa_setup":
+        return None
+    return payload

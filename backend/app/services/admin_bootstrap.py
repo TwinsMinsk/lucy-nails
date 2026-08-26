@@ -4,7 +4,22 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_password_hash
+from app.models.rbac import Role, UserRoleAssignment
 from app.models.user import User
+
+
+async def _assign_owner_if_rbac_is_seeded(db: AsyncSession, user: User) -> None:
+    owner_role = await db.scalar(select(Role).where(Role.name == "owner"))
+    if owner_role is None:
+        return
+    existing = await db.scalar(
+        select(UserRoleAssignment.id).where(
+            UserRoleAssignment.user_id == user.id,
+            UserRoleAssignment.role_id == owner_role.id,
+        )
+    )
+    if existing is None:
+        db.add(UserRoleAssignment(user_id=user.id, role_id=owner_role.id))
 
 
 async def ensure_admin_user(db: AsyncSession, email: str, password: str) -> User:
@@ -26,11 +41,13 @@ async def ensure_admin_user(db: AsyncSession, email: str, password: str) -> User
         )
         db.add(user)
         await db.flush()
+        await _assign_owner_if_rbac_is_seeded(db, user)
         await db.refresh(user)
         return user
 
     user.role = "admin"
     user.password_hash = get_password_hash(password)
+    await _assign_owner_if_rbac_is_seeded(db, user)
     await db.flush()
     await db.refresh(user)
     return user

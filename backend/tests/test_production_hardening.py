@@ -12,6 +12,7 @@ def _valid_prod(**overrides):
         ENVIRONMENT="production",
         DEBUG=False,
         JWT_SECRET_KEY="production-secret-that-is-32-chars-min",
+        MFA_ENCRYPTION_KEY="distinct-mfa-encryption-key-32-chars-min",
         KINESCOPE_API_KEY="kinescope-key",
         KINESCOPE_JWT_PRIVATE_KEY_PEM="dummy-pem",
         KINESCOPE_JWK_KID="kid-test",
@@ -79,6 +80,13 @@ def test_production_config_accepts_resend_api_key():
     settings = _valid_prod(RESEND_API_KEY="re_test_key")
 
     assert settings.RESEND_API_KEY == "re_test_key"
+
+
+def test_production_config_requires_distinct_mfa_encryption_key():
+    with pytest.raises(ValidationError) as exc_info:
+        _valid_prod(MFA_ENCRYPTION_KEY="")
+
+    assert "MFA_ENCRYPTION_KEY must be at least 32 characters" in str(exc_info.value)
 
 
 def test_production_config_allows_smtp_disabled_for_registered_checkout_only():

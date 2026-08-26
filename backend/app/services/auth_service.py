@@ -81,7 +81,11 @@ class AuthService:
         return user
     
     @staticmethod
-    def create_tokens(user_id: UUID, token_version: int = 0) -> Token:
+    def create_tokens(
+        user_id: UUID,
+        token_version: int = 0,
+        session_id: UUID | None = None,
+    ) -> Token:
         """
         Создание JWT токенов для пользователя.
 
@@ -93,6 +97,8 @@ class AuthService:
             Токены (access + refresh)
         """
         payload = {"sub": str(user_id), "ver": token_version}
+        if session_id is not None:
+            payload["sid"] = str(session_id)
         access_token = create_access_token(payload)
         refresh_token = create_refresh_token(payload)
 

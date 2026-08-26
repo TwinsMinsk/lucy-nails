@@ -72,6 +72,20 @@ async def get_current_user(
     # tokens minted before it (mismatched or missing "ver") are rejected.
     if payload.get("ver") != user.token_version:
         raise credentials_exception
+    session_id = payload.get("sid")
+    if session_id:
+        from app.services.session_service import SessionService
+
+        try:
+            parsed_session_id = UUID(session_id)
+        except (TypeError, ValueError):
+            raise credentials_exception
+        auth_session = await SessionService.get_active(db, parsed_session_id, user.id)
+        if auth_session is None:
+            raise credentials_exception
+        request.state.auth_session_id = parsed_session_id
+    else:
+        request.state.auth_session_id = None
     return user
 
 

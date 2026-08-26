@@ -22,6 +22,9 @@ class UserLogin(BaseModel):
     password: str = Field(..., description="Пароль")
 
 
+    mfa_code: str | None = Field(None, min_length=6, max_length=32)
+
+
 class ChangePasswordRequest(BaseModel):
     """Смена пароля залогиненным пользователем."""
 

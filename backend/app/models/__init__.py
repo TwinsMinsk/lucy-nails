@@ -17,6 +17,7 @@ from app.models.payment_event import PaymentEvent
 from app.models.refund import RefundRequest
 from app.models.rbac import Permission, Role, UserRoleAssignment
 from app.models.audit_log import AuditLog
+from app.models.auth_security import AuthSession, MfaCredential
 
 __all__ = [
     "User",
@@ -37,4 +38,6 @@ __all__ = [
     "Role",
     "UserRoleAssignment",
     "AuditLog",
+    "AuthSession",
+    "MfaCredential",
 ]

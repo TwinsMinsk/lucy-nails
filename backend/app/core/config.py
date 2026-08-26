@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     # Short-lived token emailed for the forgot-password flow.
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
     ACCOUNT_ACTIVATION_TOKEN_EXPIRE_HOURS: int = 24
+    MFA_SETUP_TOKEN_EXPIRE_MINUTES: int = 10
+    # Dedicated pepper/encryption material for TOTP secrets and backup codes.
+    # Development falls back to JWT_SECRET_KEY; production requires a distinct key.
+    MFA_ENCRYPTION_KEY: str = ""
     # Parent domain for auth/CSRF cookies. Empty = host-only cookies (single-host dev).
     # Set to e.g. "lucysmirnova.ru" so cookies are readable by frontend on a sibling
     # subdomain (lucysmirnova.ru reading cookies set by api.lucysmirnova.ru).
@@ -166,6 +170,10 @@ class Settings(BaseSettings):
             errors.append("JWT_SECRET_KEY must be changed in production")
         elif len(self.JWT_SECRET_KEY) < 32:
             errors.append("JWT_SECRET_KEY must be at least 32 characters in production")
+        if len(self.MFA_ENCRYPTION_KEY) < 32:
+            errors.append("MFA_ENCRYPTION_KEY must be at least 32 characters in production")
+        elif self.MFA_ENCRYPTION_KEY == self.JWT_SECRET_KEY:
+            errors.append("MFA_ENCRYPTION_KEY must be different from JWT_SECRET_KEY")
         if not self.KINESCOPE_API_KEY:
             errors.append("KINESCOPE_API_KEY is required in production")
         # DRM signing backend must be configured, otherwise get_embed_url would

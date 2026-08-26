@@ -142,6 +142,8 @@ pygments==2.21.0
     # via rich
 pyjwt==2.13.0
     # via -r backend/requirements.txt
+pyotp==2.9.0
+    # via -r backend/requirements.txt
 python-dotenv==1.2.2
     # via
     #   -r backend/requirements.txt

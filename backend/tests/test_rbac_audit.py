@@ -8,6 +8,7 @@ from app.models.audit_log import AuditLog
 from app.models.course import Course
 from app.models.rbac import Permission, Role, UserRoleAssignment
 from app.models.user import User
+from app.services.auth_service import AuthService
 
 
 async def _staff_user(
@@ -140,7 +141,8 @@ async def test_cannot_remove_last_owner(client: AsyncClient, db: AsyncSession):
         role_name="owner",
         permissions=["system.manage_roles"],
     )
-    headers = await _bearer(client, owner)
+    token = AuthService.create_tokens(owner.id, owner.token_version).access_token
+    headers = {"Authorization": f"Bearer {token}"}
 
     response = await client.put(
         f"/api/admin/team/users/{owner.id}/roles",
