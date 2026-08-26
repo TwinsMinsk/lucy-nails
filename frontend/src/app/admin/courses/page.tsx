@@ -65,6 +65,7 @@ export default function AdminCoursesPage() {
         cover_image_url: "",
         price_self: 5000,
         price_support: 20000,
+        access_days: 30,
         is_published: false,
     });
 
@@ -91,6 +92,7 @@ export default function AdminCoursesPage() {
             cover_image_url: "",
             price_self: 5000,
             price_support: 20000,
+            access_days: 30,
             is_published: false,
         });
         setEditingCourse(null);
@@ -109,6 +111,7 @@ export default function AdminCoursesPage() {
             cover_image_url: course.cover_image_url || "",
             price_self: course.price_self,
             price_support: course.price_support,
+            access_days: course.access_days,
             is_published: course.is_published,
         });
         setIsDialogOpen(true);
@@ -299,6 +302,24 @@ export default function AdminCoursesPage() {
                                             onChange={(e) => setFormData({ ...formData, price_support: parseInt(e.target.value) || 0 })}
                                         />
                                     </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label htmlFor="access_days">Срок доступа (дней)</Label>
+                                    <Input
+                                        id="access_days"
+                                        type="number"
+                                        min={1}
+                                        max={3650}
+                                        value={formData.access_days}
+                                        onChange={(event) => setFormData({
+                                            ...formData,
+                                            access_days: Math.max(1, parseInt(event.target.value) || 1),
+                                        })}
+                                    />
+                                    <p className="text-xs text-text-secondary">
+                                        Этот срок фиксируется в заказе при начале оплаты.
+                                    </p>
                                 </div>
 
                                 <div className="flex items-center justify-between p-3 bg-primary/5 rounded-lg">

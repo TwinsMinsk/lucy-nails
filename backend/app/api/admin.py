@@ -12,7 +12,6 @@ from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import require_admin
 from app.models.user import User
@@ -20,7 +19,9 @@ from app.models.course import Course
 from app.models.module import Module
 from app.models.lesson import Lesson
 from app.models.purchase import Purchase
+from app.models.entitlement import Entitlement
 from app.schemas.auth import UserResponse
+from app.services.access_service import AccessService
 
 
 router = APIRouter()
@@ -33,13 +34,26 @@ class GrantAccessRequest(BaseModel):
     user_id: UUID
     course_id: UUID
     tariff: Literal["self", "support"] = "self"
+    access_days: int | None = Field(default=None, ge=1, le=3650)
+    reason: str = Field(..., min_length=5, max_length=1000)
 
 
 class GrantAccessResponse(BaseModel):
     """Схема ответа на выдачу доступа."""
     message: str
-    purchase_id: UUID
+    entitlement_id: UUID
     expires_at: datetime
+
+
+class RevokeEntitlementRequest(BaseModel):
+    entitlement_id: UUID
+    reason: str = Field(..., min_length=5, max_length=1000)
+
+
+class RevokeEntitlementResponse(BaseModel):
+    message: str
+    entitlement_id: UUID
+    status: str
 
 
 class RevokeAccessRequest(BaseModel):
@@ -63,6 +77,7 @@ class CourseCreateRequest(BaseModel):
     price_self: int = Field(default=5000, ge=0)
     price_support: int = Field(default=20000, ge=0)
     is_published: bool = False
+    access_days: int = Field(default=30, ge=1, le=3650)
 
 
 class CourseUpdateRequest(BaseModel):
@@ -73,6 +88,7 @@ class CourseUpdateRequest(BaseModel):
     price_self: Optional[int] = Field(None, ge=0)
     price_support: Optional[int] = Field(None, ge=0)
     is_published: Optional[bool] = None
+    access_days: Optional[int] = Field(None, ge=1, le=3650)
 
 
 class CourseResponse(BaseModel):
@@ -84,6 +100,7 @@ class CourseResponse(BaseModel):
     price_self: int
     price_support: int
     is_published: bool
+    access_days: int
     created_at: datetime
     modules_count: int = 0
     lessons_count: int = 0
@@ -261,6 +278,7 @@ async def get_all_courses(
             price_self=course.price_self,
             price_support=course.price_support,
             is_published=course.is_published,
+            access_days=course.access_days,
             created_at=course.created_at,
             modules_count=modules_count,
             lessons_count=lessons_count
@@ -284,6 +302,7 @@ async def create_course(
         price_self=data.price_self,
         price_support=data.price_support,
         is_published=data.is_published,
+        access_days=data.access_days,
         created_at=datetime.utcnow()
     )
     
@@ -299,6 +318,7 @@ async def create_course(
         price_self=new_course.price_self,
         price_support=new_course.price_support,
         is_published=new_course.is_published,
+        access_days=new_course.access_days,
         created_at=new_course.created_at,
         modules_count=0,
         lessons_count=0
@@ -332,6 +352,7 @@ async def get_course(
         price_self=course.price_self,
         price_support=course.price_support,
         is_published=course.is_published,
+        access_days=course.access_days,
         created_at=course.created_at,
         modules_count=modules_count,
         lessons_count=lessons_count
@@ -374,6 +395,7 @@ async def update_course(
         price_self=course.price_self,
         price_support=course.price_support,
         is_published=course.is_published,
+        access_days=course.access_days,
         created_at=course.created_at,
         modules_count=modules_count,
         lessons_count=lessons_count
@@ -755,58 +777,43 @@ async def grant_course_access(
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
     
-    # Проверяем существующую покупку
-    purchase_query = select(Purchase).where(
-        and_(
-            Purchase.user_id == data.user_id,
-            Purchase.course_id == data.course_id
-        )
-    ).order_by(Purchase.expires_at.desc(), Purchase.created_at.desc())
-    purchase_result = await db.execute(purchase_query)
-    existing_purchase = purchase_result.scalars().first()
-    
-    paid_now = datetime.utcnow()
-    expires_at = paid_now + timedelta(days=settings.COURSE_ACCESS_DAYS)
+    # Manual access is deliberately separate from financial purchase history.
+    entitlement = await AccessService.grant_manual_access(
+        db,
+        user_id=data.user_id,
+        course_id=data.course_id,
+        tariff=data.tariff,
+        access_days=data.access_days or course.access_days,
+        granted_by_id=admin.id,
+        reason=data.reason,
+    )
+    await db.commit()
+    await db.refresh(entitlement)
 
-    if existing_purchase:
-        existing_purchase.expires_at = expires_at
-        existing_purchase.payment_status = "success"
-        existing_purchase.tariff = data.tariff
-        existing_purchase.paid_at = paid_now
+    return GrantAccessResponse(
+        message="Access granted successfully",
+        entitlement_id=entitlement.id,
+        expires_at=entitlement.expires_at,
+    )
 
-        await db.commit()
-        await db.refresh(existing_purchase)
-        
-        return GrantAccessResponse(
-            message="Access extended successfully",
-            purchase_id=existing_purchase.id,
-            expires_at=existing_purchase.expires_at
-        )
-    else:
-        price = course.price_support if data.tariff == "support" else course.price_self
-        
-        new_purchase = Purchase(
-            id=uuid4(),
-            user_id=data.user_id,
-            course_id=data.course_id,
-            tariff=data.tariff,
-            amount_kopecks=price * 100,
-            payment_id=f"admin_grant_{uuid4().hex[:12]}",
-            payment_status="success",
-            paid_at=paid_now,
-            expires_at=expires_at,
-            created_at=datetime.utcnow(),
-        )
-        
-        db.add(new_purchase)
-        await db.commit()
-        await db.refresh(new_purchase)
-        
-        return GrantAccessResponse(
-            message="Access granted successfully",
-            purchase_id=new_purchase.id,
-            expires_at=new_purchase.expires_at
-        )
+
+@router.post("/revoke-entitlement", response_model=RevokeEntitlementResponse)
+async def revoke_entitlement(
+    data: RevokeEntitlementRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    entitlement = await db.get(Entitlement, data.entitlement_id)
+    if entitlement is None:
+        raise HTTPException(status_code=404, detail="Entitlement not found")
+    await AccessService.revoke_entitlement(db, entitlement, reason=data.reason)
+    await db.commit()
+    await db.refresh(entitlement)
+    return RevokeEntitlementResponse(
+        message="Access revoked",
+        entitlement_id=entitlement.id,
+        status=entitlement.status,
+    )
 
 
 @router.post("/revoke-access", response_model=RevokeAccessResponse)
@@ -830,6 +837,14 @@ async def revoke_course_access(
 
     purchase.payment_status = "failed"
     purchase.expires_at = datetime.utcnow()
+    entitlement_result = await db.execute(
+        select(Entitlement).where(Entitlement.source_purchase_id == purchase.id)
+    )
+    entitlement = entitlement_result.scalar_one_or_none()
+    if entitlement is not None:
+        await AccessService.revoke_entitlement(
+            db, entitlement, reason="Payment revoked by administrator"
+        )
     await db.commit()
     await db.refresh(purchase)
 

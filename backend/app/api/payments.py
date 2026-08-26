@@ -28,6 +28,7 @@ from app.models.purchase import Purchase
 from app.models.user import User
 from app.services.outbox_service import enqueue_outbox_message
 from app.services.prodamus_service import ProdamusService
+from app.services.access_service import AccessService
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +162,7 @@ async def _create_checkout_order(
         customer_phone=customer_phone,
         amount_kopecks=int(price_rub) * 100,
         currency="RUB",
-        access_days=settings.COURSE_ACCESS_DAYS,
+        access_days=course.access_days,
         status="pending",
         status_token_hash=_hash_status_token(status_token),
     )
@@ -327,6 +328,8 @@ async def _record_purchase_once(
             expires_at=expires_at,
         )
         db.add(purchase)
+        await db.flush()
+        db.add(AccessService.create_purchase_entitlement(purchase))
         dedupe_hash = hashlib.sha256(payment_key.encode("utf-8")).hexdigest()
         if is_new_user:
             activation_token = create_account_activation_token(user.id, user.token_version)

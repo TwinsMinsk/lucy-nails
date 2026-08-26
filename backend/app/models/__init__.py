@@ -12,6 +12,7 @@ from app.models.certificate import Certificate
 from app.models.gallery import GalleryItem
 from app.models.order import Order
 from app.models.outbox import DeliveryAttempt, OutboxMessage
+from app.models.entitlement import Entitlement
 
 __all__ = [
     "User",
@@ -25,4 +26,5 @@ __all__ = [
     "Order",
     "OutboxMessage",
     "DeliveryAttempt",
+    "Entitlement",
 ]

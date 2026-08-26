@@ -42,6 +42,9 @@ class Purchase(Base):
     user: Mapped["User"] = relationship(back_populates="purchases")
     course: Mapped["Course"] = relationship(back_populates="purchases")
     order: Mapped["Order | None"] = relationship(back_populates="purchase")
+    entitlement: Mapped["Entitlement | None"] = relationship(
+        back_populates="source_purchase", uselist=False
+    )
     
     def __repr__(self) -> str:
         return f"<Purchase {self.id} ({self.tariff}, {self.payment_status})>"

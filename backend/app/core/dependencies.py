@@ -2,7 +2,6 @@
 FastAPI Dependencies для аутентификации и авторизации.
 """
 
-from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -108,20 +107,14 @@ async def require_course_access(
     Raises:
         HTTPException: 403 если нет доступа
     """
-    from app.models.purchase import Purchase
-    
-    result = await db.execute(
-        select(Purchase).where(
-            Purchase.user_id == current_user.id,
-            Purchase.course_id == course_id,
-            Purchase.payment_status == "success",
-            Purchase.expires_at > datetime.utcnow()
-        )
-    )
-    purchase = result.scalar_one_or_none()
-    if not purchase:
+    from app.services.access_service import AccessService
+
+    entitlement = await AccessService.get_active_entitlement(db, current_user.id, course_id)
+    if entitlement is None and not await AccessService.has_active_access(
+        db, current_user.id, course_id
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Course access required"
         )
-    return purchase
+    return entitlement

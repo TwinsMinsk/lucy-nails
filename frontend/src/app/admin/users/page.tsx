@@ -31,6 +31,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 export default function AdminUsersPage() {
     const [users, setUsers] = useState<UserResponse[]>([]);
@@ -39,6 +42,8 @@ export default function AdminUsersPage() {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [selectedUser, setSelectedUser] = useState<UserResponse | null>(null);
     const [selectedCourseId, setSelectedCourseId] = useState<string>("");
+    const [accessDays, setAccessDays] = useState(30);
+    const [grantReason, setGrantReason] = useState("");
     const [isGranting, setIsGranting] = useState(false);
 
     useEffect(() => {
@@ -66,6 +71,8 @@ export default function AdminUsersPage() {
     const handleOpenDialog = (user: UserResponse) => {
         setSelectedUser(user);
         setSelectedCourseId("");
+        setAccessDays(30);
+        setGrantReason("");
         setIsDialogOpen(true);
     };
 
@@ -76,14 +83,26 @@ export default function AdminUsersPage() {
             });
             return;
         }
+        if (grantReason.trim().length < 5) {
+            toast.error("Ошибка", {
+                description: "Укажите причину выдачи доступа (минимум 5 символов)",
+            });
+            return;
+        }
 
         setIsGranting(true);
 
         try {
-            await adminGrantAccess(selectedUser.id, selectedCourseId);
+            await adminGrantAccess(
+                selectedUser.id,
+                selectedCourseId,
+                "self",
+                grantReason.trim(),
+                accessDays,
+            );
 
             toast.success("Доступ выдан!", {
-                description: `Пользователь ${selectedUser.email} получил доступ к курсу на 365 дней`
+                description: `Пользователь ${selectedUser.email} получил доступ к курсу на ${accessDays} дней`
             });
 
             setIsDialogOpen(false);
@@ -200,7 +219,11 @@ export default function AdminUsersPage() {
                                                                     </label>
                                                                     <Select
                                                                         value={selectedCourseId}
-                                                                        onValueChange={setSelectedCourseId}
+                                                                        onValueChange={(courseId) => {
+                                                                            setSelectedCourseId(courseId);
+                                                                            const selected = courses.find((course) => course.id === courseId);
+                                                                            setAccessDays(selected?.access_days ?? 30);
+                                                                        }}
                                                                     >
                                                                         <SelectTrigger>
                                                                             <SelectValue placeholder="Выберите курс..." />
@@ -215,10 +238,33 @@ export default function AdminUsersPage() {
                                                                     </Select>
                                                                 </div>
 
+                                                                <div className="space-y-2">
+                                                                    <Label htmlFor="access-days">Срок доступа, дней</Label>
+                                                                    <Input
+                                                                        id="access-days"
+                                                                        type="number"
+                                                                        min={1}
+                                                                        max={3650}
+                                                                        value={accessDays}
+                                                                        onChange={(event) => setAccessDays(Math.max(1, Number(event.target.value) || 1))}
+                                                                    />
+                                                                </div>
+
+                                                                <div className="space-y-2">
+                                                                    <Label htmlFor="grant-reason">Причина выдачи</Label>
+                                                                    <Textarea
+                                                                        id="grant-reason"
+                                                                        value={grantReason}
+                                                                        onChange={(event) => setGrantReason(event.target.value)}
+                                                                        placeholder="Например: участник тестовой группы"
+                                                                        maxLength={1000}
+                                                                    />
+                                                                </div>
+
                                                                 <div className="text-sm text-text-secondary bg-primary/5 p-3 rounded-lg">
                                                                     <p className="font-medium text-text-primary mb-1">Условия:</p>
                                                                     <ul className="space-y-1 list-disc list-inside">
-                                                                        <li>Доступ: 365 дней</li>
+                                                                        <li>Доступ: {accessDays} дней</li>
                                                                         <li>Тариф: Self (самостоятельный)</li>
                                                                         <li>Если доступ уже есть - срок будет продлён</li>
                                                                     </ul>
@@ -235,7 +281,7 @@ export default function AdminUsersPage() {
                                                                 </Button>
                                                                 <Button
                                                                     onClick={handleGrantAccess}
-                                                                    disabled={!selectedCourseId || isGranting}
+                                                                    disabled={!selectedCourseId || grantReason.trim().length < 5 || isGranting}
                                                                     className="gap-2"
                                                                 >
                                                                     {isGranting && <Loader2 className="w-4 h-4 animate-spin" />}

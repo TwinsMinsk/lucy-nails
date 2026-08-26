@@ -40,6 +40,11 @@ class User(Base):
     orders: Mapped[list["Order"]] = relationship(back_populates="user")
     progress: Mapped[list["Progress"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     certificates: Mapped[list["Certificate"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    entitlements: Mapped[list["Entitlement"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        foreign_keys="Entitlement.user_id",
+    )
     
     def __repr__(self) -> str:
         return f"<User {self.email} ({self.role})>"

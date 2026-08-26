@@ -12,6 +12,7 @@ from app.api.payments import _build_prodamus_order_id, parse_checkout_order_id
 from app.core.config import Settings
 from app.core.security import get_password_hash
 from app.models.course import Course
+from app.models.entitlement import Entitlement
 from app.models.purchase import Purchase
 from app.models.user import User
 from app.services.prodamus_service import _make_signature
@@ -389,9 +390,135 @@ async def test_webhook_existing_user_queues_access_notification(
     outbox = outbox_result.mappings().one()
     assert outbox["kind"] == "access_granted"
 
-    purchase_result = await db.execute(select(Purchase).where(Purchase.payment_id == f"order_id:{order_id}"))
+    purchase_result = await db.execute(
+        select(Purchase).where(Purchase.payment_id == f"order_id:{order_id}")
+    )
     assert purchase_result.scalar_one_or_none() is not None
 
+
+@pytest.mark.asyncio
+async def test_successful_webhook_creates_purchase_entitlement(
+    client: AsyncClient,
+    db: AsyncSession,
+):
+    course = await _published_course(db, "Entitled Course")
+    await _create_user(db, "entitled-buyer@example.com")
+    await db.commit()
+
+    order_id = _build_prodamus_order_id(course.id, "support")
+    payload, headers = _signed_payload(
+        {
+            "order_id": order_id,
+            "customer_email": "entitled-buyer@example.com",
+            "sum": "10000",
+            "currency": "rub",
+            "payment_status": "success",
+        }
+    )
+
+    response = await client.post("/api/payments/webhook", json=payload, headers=headers)
+    assert response.status_code == 200, response.text
+
+    purchase = (
+        await db.execute(select(Purchase).where(Purchase.payment_id == f"order_id:{order_id}"))
+    ).scalar_one()
+    entitlement = (
+        await db.execute(
+            select(Entitlement).where(Entitlement.source_purchase_id == purchase.id)
+        )
+    ).scalar_one()
+    assert entitlement.user_id == purchase.user_id
+    assert entitlement.course_id == purchase.course_id
+    assert entitlement.source == "purchase"
+    assert entitlement.status == "active"
+    assert entitlement.tariff == "support"
+    assert entitlement.expires_at == purchase.expires_at
+
+
+@pytest.mark.asyncio
+async def test_admin_grant_creates_entitlement_without_fake_purchase(
+    client: AsyncClient,
+    db: AsyncSession,
+):
+    admin = User(
+        email="access-admin@example.com",
+        password_hash=get_password_hash("adminpass1"),
+        role="admin",
+    )
+    student = await _create_user(db, "manual-access@example.com")
+    course = await _published_course(db, "Manual Access Course")
+    course.access_days = 30
+    db.add(admin)
+    await db.commit()
+    await db.refresh(admin)
+    await db.refresh(student)
+
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": admin.email, "password": "adminpass1"},
+    )
+    token = login.json()["access_token"]
+    client.cookies.clear()
+
+    response = await client.post(
+        "/api/admin/grant-access",
+        json={
+            "user_id": str(student.id),
+            "course_id": str(course.id),
+            "tariff": "self",
+            "reason": "Доступ для участника тестовой группы",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["entitlement_id"]
+    assert "purchase_id" not in body
+
+    purchases_count = (
+        await db.execute(select(func.count(Purchase.id)).where(Purchase.user_id == student.id))
+    ).scalar_one()
+    assert purchases_count == 0
+
+    entitlement = await db.get(Entitlement, uuid.UUID(body["entitlement_id"]))
+    assert entitlement is not None
+    assert entitlement.source == "manual"
+    assert entitlement.granted_by_id == admin.id
+    assert entitlement.reason == "Доступ для участника тестовой группы"
+    assert timedelta(days=29, hours=23) < entitlement.expires_at - entitlement.starts_at <= timedelta(days=30)
+
+    student_login = await client.post(
+        "/api/auth/login",
+        json={"email": student.email, "password": "password123"},
+    )
+    student_token = student_login.json()["access_token"]
+    client.cookies.clear()
+    courses_response = await client.get(
+        "/api/purchases/my",
+        headers={"Authorization": f"Bearer {student_token}"},
+    )
+    assert courses_response.status_code == 200, courses_response.text
+    assert [item["id"] for item in courses_response.json()] == [str(course.id)]
+
+    revoke_response = await client.post(
+        "/api/admin/revoke-entitlement",
+        json={
+            "entitlement_id": body["entitlement_id"],
+            "reason": "Тестовый доступ завершён",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert revoke_response.status_code == 200, revoke_response.text
+    await db.refresh(entitlement)
+    assert entitlement.status == "revoked"
+    assert entitlement.reason == "Тестовый доступ завершён"
+
+    revoked_courses_response = await client.get(
+        "/api/purchases/my",
+        headers={"Authorization": f"Bearer {student_token}"},
+    )
+    assert revoked_courses_response.status_code == 200
+    assert revoked_courses_response.json() == []
 
 @pytest.mark.asyncio
 async def test_webhook_retry_does_not_duplicate_outbox_message(
@@ -507,6 +634,8 @@ async def test_checkout_order_keeps_original_price_when_course_price_changes(
 
     monkeypatch.setattr("app.services.email_service.EmailService.send_credentials", fake_send_credentials)
     course = await _published_course(db, "Immutable Checkout Price")
+    course.access_days = 45
+    await db.commit()
 
     checkout = await client.post(
         "/api/payments/guest-link",
@@ -529,6 +658,7 @@ async def test_checkout_order_keeps_original_price_when_course_price_changes(
     assert pending.json()["status"] == "pending"
 
     course.price_self = 7000
+    course.access_days = 5
     await db.commit()
 
     payload, headers = _signed_payload(
@@ -553,7 +683,9 @@ async def test_checkout_order_keeps_original_price_when_course_price_changes(
     purchase_result = await db.execute(
         select(Purchase).where(Purchase.user.has(email="snapshot-buyer@example.com"))
     )
-    assert purchase_result.scalar_one().amount_kopecks == 500000
+    purchase = purchase_result.scalar_one()
+    assert purchase.amount_kopecks == 500000
+    assert timedelta(days=44, hours=23) < purchase.expires_at - purchase.paid_at <= timedelta(days=45)
 
 
 @pytest.mark.asyncio

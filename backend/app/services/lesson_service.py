@@ -8,9 +8,9 @@ from sqlalchemy.orm import selectinload
 from app.models.lesson import Lesson
 from app.models.module import Module
 from app.models.progress import Progress
-from app.models.purchase import Purchase
 from app.models.user import User
 from app.schemas.progress import ProgressUpdate
+from app.services.access_service import AccessService
 
 
 class LessonService:
@@ -51,22 +51,8 @@ class LessonService:
         if user.role == "admin":
             return True
             
-        # Проверка покупки
         course_id = lesson.module.course_id
-        now = datetime.utcnow()
-        
-        query = select(Purchase).where(
-            and_(
-                Purchase.user_id == user.id,
-                Purchase.course_id == course_id,
-                Purchase.payment_status == "success",  # Используем 'success' согласно ENUM
-                Purchase.expires_at > now
-            )
-        ).order_by(Purchase.expires_at.desc(), Purchase.created_at.desc())
-        result = await db.execute(query)
-        purchase = result.scalars().first()
-        
-        return purchase is not None
+        return await AccessService.has_active_access(db, user.id, course_id)
 
     @staticmethod
     async def get_lesson_with_access(

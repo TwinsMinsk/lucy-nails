@@ -89,7 +89,7 @@ async def db() -> AsyncGenerator[AsyncSession, None]:
         # Порядок удаления важен из-за FK
         await session.execute(
             text(
-                "TRUNCATE TABLE delivery_attempts, outbox_messages, orders, "
+                "TRUNCATE TABLE delivery_attempts, outbox_messages, entitlements, orders, "
                 "progress, purchases, certificates, lessons, modules, "
                 "courses, users RESTART IDENTITY CASCADE"
             )

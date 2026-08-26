@@ -343,6 +343,7 @@ export interface CourseResponse {
     price_support: number;
     cover_image_url?: string | null;
     is_published: boolean;
+    access_days: number;
     duration_seconds?: number;
     created_at?: string;
 }
@@ -442,17 +443,20 @@ export interface AdminCourseResponse {
     price_self: number;
     price_support: number;
     is_published: boolean;
+    access_days: number;
 }
 
 export interface GrantAccessRequest {
     user_id: string;
     course_id: string;
     tariff?: "self" | "support";
+    access_days?: number;
+    reason: string;
 }
 
 export interface GrantAccessResponse {
     message: string;
-    purchase_id: string;
+    entitlement_id: string;
     expires_at: string;
 }
 
@@ -476,7 +480,9 @@ export const getAllCourses = async (): Promise<AdminCourseResponse[]> => {
 export const adminGrantAccess = async (
     userId: string,
     courseId: string,
-    tariff: "self" | "support" = "self"
+    tariff: "self" | "support" = "self",
+    reason: string,
+    accessDays?: number,
 ): Promise<GrantAccessResponse> => {
     return apiFetch<GrantAccessResponse>("/admin/grant-access", {
         method: "POST",
@@ -484,6 +490,8 @@ export const adminGrantAccess = async (
             user_id: userId,
             course_id: courseId,
             tariff,
+            reason,
+            access_days: accessDays,
         }),
     });
 };
@@ -523,6 +531,7 @@ export interface AdminCourseFullResponse {
     price_self: number;
     price_support: number;
     is_published: boolean;
+    access_days: number;
     created_at: string;
     modules_count: number;
     lessons_count: number;
@@ -602,6 +611,7 @@ export interface CourseCreateRequest {
     price_self?: number;
     price_support?: number;
     is_published?: boolean;
+    access_days?: number;
 }
 
 export interface CourseUpdateRequest {
@@ -611,6 +621,7 @@ export interface CourseUpdateRequest {
     price_self?: number;
     price_support?: number;
     is_published?: boolean;
+    access_days?: number;
 }
 
 export const adminGetCourses = async (): Promise<AdminCourseFullResponse[]> => {
