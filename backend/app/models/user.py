@@ -37,6 +37,7 @@ class User(Base):
     
     # Relationships
     purchases: Mapped[list["Purchase"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    orders: Mapped[list["Order"]] = relationship(back_populates="user")
     progress: Mapped[list["Progress"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     certificates: Mapped[list["Certificate"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     

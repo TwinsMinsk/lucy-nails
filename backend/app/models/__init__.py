@@ -10,6 +10,7 @@ from app.models.purchase import Purchase
 from app.models.progress import Progress
 from app.models.certificate import Certificate
 from app.models.gallery import GalleryItem
+from app.models.order import Order
 
 __all__ = [
     "User",
@@ -20,4 +21,5 @@ __all__ = [
     "Progress",
     "Certificate",
     "GalleryItem",
+    "Order",
 ]

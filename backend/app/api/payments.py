@@ -2,6 +2,8 @@
 Payments API: webhook Prodamus + генерация платёжной ссылки.
 """
 
+import hashlib
+import hmac
 import logging
 import secrets
 from datetime import datetime, timedelta
@@ -21,6 +23,7 @@ from app.core.dependencies import get_current_user
 from app.core.rate_limit import limiter
 from app.core.security import get_password_hash
 from app.models.course import Course
+from app.models.order import Order
 from app.models.purchase import Purchase
 from app.models.user import User
 from app.services.email_service import EmailService
@@ -82,6 +85,28 @@ def parse_checkout_order_id(order_id_raw: str) -> tuple[UUID, str] | None:
     return course_id, tariff
 
 
+def _parse_persisted_order_id(order_id_raw: str) -> UUID | None:
+    parts = order_id_raw.split("|")
+    if len(parts) != 2 or parts[0] != "order":
+        return None
+    try:
+        return UUID(parts[1])
+    except ValueError:
+        return None
+
+
+def _hash_status_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _ensure_checkout_enabled() -> None:
+    if not settings.CHECKOUT_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Checkout is temporarily unavailable",
+        )
+
+
 async def _get_or_create_user(
     db: AsyncSession,
     email: str,
@@ -113,6 +138,36 @@ async def _get_or_create_user(
 def _build_prodamus_order_id(course_id: UUID, tariff: str) -> str:
     nonce = secrets.token_hex(8)
     return f"course|{course_id}|{tariff}|{nonce}"
+
+
+async def _create_checkout_order(
+    db: AsyncSession,
+    course: Course,
+    tariff: str,
+    customer_email: str,
+    customer_phone: str | None,
+    *,
+    user_id: UUID | None = None,
+) -> tuple[Order, str]:
+    if tariff not in ("self", "support"):
+        raise HTTPException(status_code=400, detail="Invalid tariff")
+    status_token = secrets.token_urlsafe(32)
+    price_rub = course.price_self if tariff == "self" else course.price_support
+    order = Order(
+        user_id=user_id,
+        course_id=course.id,
+        tariff=tariff,
+        customer_email=customer_email,
+        customer_phone=customer_phone,
+        amount_kopecks=int(price_rub) * 100,
+        currency="RUB",
+        access_days=settings.COURSE_ACCESS_DAYS,
+        status="pending",
+        status_token_hash=_hash_status_token(status_token),
+    )
+    db.add(order)
+    await db.flush()
+    return order, status_token
 
 
 def _resolve_payment_key(order_num_raw: Any, order_id_raw: str) -> str:
@@ -160,12 +215,13 @@ def _checkout_link_for_course(
     *,
     customer_email: str | None = None,
     customer_phone: str | None = None,
+    order_id: str | None = None,
 ) -> str:
     if tariff not in ("self", "support"):
         raise HTTPException(status_code=400, detail="Invalid tariff")
     price = float(course.price_self if tariff == "self" else course.price_support)
     course_name = f"{course.title} — {'Самостоятельный' if tariff == 'self' else 'С поддержкой'}"
-    order_id = _build_prodamus_order_id(course.id, tariff)
+    order_id = order_id or _build_prodamus_order_id(course.id, tariff)
     return ProdamusService.generate_payment_link(
         course_name=course_name,
         price=price,
@@ -183,9 +239,10 @@ def _checkout_link_for_course(
 
 async def _record_purchase_once(
     payment_key: str,
-    course_id_uuid: UUID,
-    tariff: str,
+    course_id_uuid: UUID | None,
+    tariff: str | None,
     payload: dict[str, Any],
+    order_uuid: UUID | None = None,
 ) -> tuple[str, str | None]:
     """One attempt at recording the purchase in its own transaction.
 
@@ -193,18 +250,36 @@ async def _record_purchase_once(
     newly created user (to email credentials). Raises HTTPException on
     validation failure; IntegrityError propagates for the caller's retry.
     """
-    customer_email = _normalize_email(payload.get("customer_email"))
+    webhook_email = _normalize_email(payload.get("customer_email"))
     async with async_session_maker() as db:
         existing_pay = await db.execute(select(Purchase).where(Purchase.payment_id == payment_key))
         if existing_pay.scalars().first():
-            return customer_email, None
+            return webhook_email, None
+
+        order: Order | None = None
+        if order_uuid is not None:
+            order_result = await db.execute(
+                select(Order).where(Order.id == order_uuid).with_for_update()
+            )
+            order = order_result.scalar_one_or_none()
+            if order is None:
+                raise HTTPException(status_code=422, detail="Order not found")
+            if webhook_email != order.customer_email:
+                raise HTTPException(status_code=422, detail="Order customer mismatch")
+            course_id_uuid = order.course_id
+            tariff = order.tariff
+
+        if course_id_uuid is None or tariff is None:
+            raise HTTPException(status_code=422, detail="Invalid order_id")
+
+        customer_email = order.customer_email if order else webhook_email
 
         customer_phone = _normalize_phone(payload.get("customer_phone"))
 
         course_result = await db.execute(select(Course).where(Course.id == course_id_uuid))
         course = course_result.scalars().first()
-        if not course or not course.is_published:
-            logger.error("Prodamus webhook: course not found or unpublished %s", course_id_uuid)
+        if not course or (order is None and not course.is_published):
+            logger.error("Prodamus webhook: course unavailable %s", course_id_uuid)
             raise HTTPException(status_code=422, detail="Course not found")
 
         amount_str: str = str(payload.get("sum", "0")).replace(",", ".")
@@ -213,8 +288,11 @@ async def _record_purchase_once(
         except ValueError:
             paid_kopecks = 0
 
-        expected_rub = course.price_self if tariff == "self" else course.price_support
-        expected_kopecks = int(expected_rub) * 100
+        expected_kopecks = (
+            order.amount_kopecks
+            if order is not None
+            else int(course.price_self if tariff == "self" else course.price_support) * 100
+        )
         if abs(paid_kopecks - expected_kopecks) > 2:
             logger.error(
                 "Prodamus webhook: amount mismatch expected_kop=%s got_kop=%s",
@@ -234,11 +312,13 @@ async def _record_purchase_once(
             user.phone = customer_phone
 
         paid_at = datetime.utcnow()
-        expires_at = paid_at + timedelta(days=settings.COURSE_ACCESS_DAYS)
+        access_days = order.access_days if order is not None else settings.COURSE_ACCESS_DAYS
+        expires_at = paid_at + timedelta(days=access_days)
 
         purchase = Purchase(
             user_id=user.id,
             course_id=course.id,
+            order_id=order.id if order else None,
             tariff=tariff,
             amount_kopecks=paid_kopecks,
             payment_id=payment_key,
@@ -248,6 +328,9 @@ async def _record_purchase_once(
             expires_at=expires_at,
         )
         db.add(purchase)
+        if order is not None:
+            order.status = "paid"
+            order.paid_at = paid_at
         await db.commit()
         return customer_email, plain_password
 
@@ -286,12 +369,13 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
         raise HTTPException(status_code=422, detail="Payment is not successful")
 
     order_id_raw = str(payload.get("order_id", "")).strip()
-    parsed = parse_checkout_order_id(order_id_raw)
-    if not parsed:
+    order_uuid = _parse_persisted_order_id(order_id_raw)
+    parsed = parse_checkout_order_id(order_id_raw) if order_uuid is None else None
+    if order_uuid is None and not parsed:
         logger.error("Prodamus webhook: invalid order_id=%s", order_id_raw)
         raise HTTPException(status_code=422, detail="Invalid order_id")
 
-    course_id_uuid, tariff = parsed
+    course_id_uuid, tariff = parsed if parsed else (None, None)
     payment_key = _resolve_payment_key(payload.get("order_num"), order_id_raw)
     customer_email = _normalize_email(payload.get("customer_email"))
     plain_password_for_email: str | None = None
@@ -304,7 +388,7 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
     for attempt in range(2):
         try:
             customer_email, plain_password_for_email = await _record_purchase_once(
-                payment_key, course_id_uuid, tariff, payload
+                payment_key, course_id_uuid, tariff, payload, order_uuid
             )
             break
         except IntegrityError:
@@ -362,18 +446,24 @@ async def get_guest_payment_link(
     data: GuestPaymentLinkRequest,
 ) -> dict[str, str]:
     """Гостевая оплата: после webhook создаётся аккаунт и отправляется пароль на email."""
+    _ensure_checkout_enabled()
     async with async_session_maker() as db:
         course = await _resolve_course_for_checkout(db, data.course_id)
+        email_normalized = str(data.customer_email).strip().lower()
+        phone = _normalize_phone(data.customer_phone)
+        order, status_token = await _create_checkout_order(
+            db, course, data.tariff, email_normalized, phone
+        )
+        await db.commit()
 
-    email_normalized = str(data.customer_email).strip().lower()
-    phone = _normalize_phone(data.customer_phone)
     link = _checkout_link_for_course(
         course,
         data.tariff,
         customer_email=email_normalized,
         customer_phone=phone,
+        order_id=f"order|{order.id}",
     )
-    return {"url": link}
+    return {"url": link, "order_id": f"order|{order.id}", "status_token": status_token}
 
 
 @router.post(
@@ -387,13 +477,34 @@ async def get_payment_link(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, str]:
     """Возвращает ссылку на оплату для выбранного тарифа авторизованного пользователя."""
+    _ensure_checkout_enabled()
     async with async_session_maker() as db:
         course = await _resolve_course_for_checkout(db, data.course_id)
+        phone = _normalize_phone(data.customer_phone or current_user.phone)
+        order, status_token = await _create_checkout_order(
+            db, course, data.tariff, current_user.email, phone, user_id=current_user.id
+        )
+        await db.commit()
 
     link = _checkout_link_for_course(
         course,
         data.tariff,
         customer_email=current_user.email,
-        customer_phone=_normalize_phone(data.customer_phone or current_user.phone),
+        customer_phone=phone,
+        order_id=f"order|{order.id}",
     )
-    return {"url": link}
+    return {"url": link, "order_id": f"order|{order.id}", "status_token": status_token}
+
+
+@router.get("/orders/{order_id}/status")
+async def get_order_status(order_id: str, token: str) -> dict[str, str]:
+    order_uuid = _parse_persisted_order_id(order_id)
+    if order_uuid is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    async with async_session_maker() as db:
+        result = await db.execute(select(Order).where(Order.id == order_uuid))
+        order = result.scalar_one_or_none()
+    supplied_hash = _hash_status_token(token)
+    if order is None or not hmac.compare_digest(order.status_token_hash, supplied_hash):
+        raise HTTPException(status_code=404, detail="Order not found")
+    return {"status": order.status}

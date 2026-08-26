@@ -29,6 +29,10 @@ class PaymentStartResponse(BaseModel):
     tariff: str = Field(..., description="Тариф")
 
 
+    order_id: str
+    status_token: str
+
+
 class PurchaseResponse(BaseModel):
     """Схема ответа с данными покупки."""
     

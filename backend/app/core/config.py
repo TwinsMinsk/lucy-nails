@@ -138,6 +138,9 @@ class Settings(BaseSettings):
     # Сколько дней доступа к курсу после успешной оплаты (production v1)
     COURSE_ACCESS_DAYS: int = 30
 
+    # Emergency switch. Webhooks remain enabled so in-flight payments can finish.
+    CHECKOUT_ENABLED: bool = True
+
     # Список разрешённых Origin для CORS (через запятую). Пусто — только FRONTEND_URL.
     CORS_ORIGINS: str = ""
 

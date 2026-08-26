@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.payments import _build_prodamus_order_id, parse_checkout_order_id
+from app.core.config import Settings
 from app.core.security import get_password_hash, verify_password
 from app.models.course import Course
 from app.models.purchase import Purchase
@@ -419,6 +420,89 @@ async def test_guest_payment_link_returns_url(client: AsyncClient, db: AsyncSess
     url = response.json()["url"]
     assert "signature=" in url
     assert ("guest%40example.com" in url) or ("guest@example.com" in url)
+
+
+@pytest.mark.asyncio
+async def test_guest_checkout_is_blocked_by_kill_switch(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    course = await _published_course(db, "Disabled Checkout Course")
+    monkeypatch.setenv("CHECKOUT_ENABLED", "false")
+    monkeypatch.setattr("app.api.payments.settings", Settings())
+
+    response = await client.post(
+        "/api/payments/guest-link",
+        json={
+            "course_id": str(course.id),
+            "tariff": "self",
+            "customer_email": "disabled-checkout@example.com",
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Checkout is temporarily unavailable"
+
+
+@pytest.mark.asyncio
+async def test_checkout_order_keeps_original_price_when_course_price_changes(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def fake_send_credentials(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", fake_send_credentials)
+    course = await _published_course(db, "Immutable Checkout Price")
+
+    checkout = await client.post(
+        "/api/payments/guest-link",
+        json={
+            "course_id": str(course.id),
+            "tariff": "self",
+            "customer_email": "snapshot-buyer@example.com",
+        },
+    )
+    assert checkout.status_code == 200
+    checkout_data = checkout.json()
+    order_id = checkout_data["order_id"]
+    status_token = checkout_data["status_token"]
+
+    pending = await client.get(
+        f"/api/payments/orders/{order_id}/status",
+        params={"token": status_token},
+    )
+    assert pending.status_code == 200
+    assert pending.json()["status"] == "pending"
+
+    course.price_self = 7000
+    await db.commit()
+
+    payload, headers = _signed_payload(
+        {
+            "order_id": order_id,
+            "customer_email": "snapshot-buyer@example.com",
+            "sum": "5000",
+            "currency": "rub",
+            "payment_status": "success",
+        }
+    )
+    webhook = await client.post("/api/payments/webhook", json=payload, headers=headers)
+
+    assert webhook.status_code == 200
+    paid = await client.get(
+        f"/api/payments/orders/{order_id}/status",
+        params={"token": status_token},
+    )
+    assert paid.status_code == 200
+    assert paid.json()["status"] == "paid"
+
+    purchase_result = await db.execute(
+        select(Purchase).where(Purchase.user.has(email="snapshot-buyer@example.com"))
+    )
+    assert purchase_result.scalar_one().amount_kopecks == 500000
 
 
 @pytest.mark.asyncio

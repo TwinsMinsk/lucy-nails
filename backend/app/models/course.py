@@ -39,6 +39,7 @@ class Course(Base):
     # Relationships
     modules: Mapped[list["Module"]] = relationship(back_populates="course", cascade="all, delete-orphan", order_by="Module.order_index")
     purchases: Mapped[list["Purchase"]] = relationship(back_populates="course", cascade="all, delete-orphan")
+    orders: Mapped[list["Order"]] = relationship(back_populates="course")
     certificates: Mapped[list["Certificate"]] = relationship(back_populates="course", cascade="all, delete-orphan")
     
     def __repr__(self) -> str:
