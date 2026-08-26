@@ -15,7 +15,9 @@ const formatDate = (date: string | null | undefined) => (
 );
 
 const isActive = (purchase: AdminPurchaseResponse) =>
-    purchase.payment_status === "success" && new Date(purchase.expires_at) > new Date();
+    purchase.access_status === "active"
+    && Boolean(purchase.access_expires_at)
+    && new Date(purchase.access_expires_at as string) > new Date();
 
 export default function AdminPurchasesPage() {
     const [purchases, setPurchases] = useState<AdminPurchaseResponse[]>([]);
@@ -50,7 +52,7 @@ export default function AdminPurchasesPage() {
             setPurchases((prev) =>
                 prev.map((p) =>
                     p.id === purchase.id
-                        ? { ...p, payment_status: result.payment_status as AdminPurchaseResponse["payment_status"], expires_at: new Date().toISOString() }
+                        ? { ...p, access_status: result.access_status }
                         : p
                 )
             );
@@ -69,7 +71,7 @@ export default function AdminPurchasesPage() {
             <div>
                 <h1 className="text-3xl font-bold mb-2">Управление покупками</h1>
                 <p className="text-text-secondary">
-                    Последние 200 записей: оплаты Prodamus, ручные выдачи доступа и сроки окончания.
+                    Последние 200 финансовых покупок Prodamus и связанное состояние доступа.
                 </p>
             </div>
 
@@ -94,6 +96,7 @@ export default function AdminPurchasesPage() {
                                         <th className="py-3 pr-4 font-medium">Тариф</th>
                                         <th className="py-3 pr-4 font-medium">Сумма</th>
                                         <th className="py-3 pr-4 font-medium">Статус</th>
+                                        <th className="py-3 pr-4 font-medium">Доступ</th>
                                         <th className="py-3 pr-4 font-medium">ID платежа</th>
                                         <th className="py-3 pr-4 font-medium">Оплачено</th>
                                         <th className="py-3 pr-4 font-medium">Доступ до</th>
@@ -119,11 +122,16 @@ export default function AdminPurchasesPage() {
                                                     {purchase.payment_status}
                                                 </Badge>
                                             </td>
+                                            <td className="py-3 pr-4">
+                                                <Badge variant={purchase.access_status === "active" ? "default" : "secondary"}>
+                                                    {purchase.access_status}
+                                                </Badge>
+                                            </td>
                                             <td className="max-w-52 truncate py-3 pr-4 font-mono text-xs text-text-secondary" title={purchase.payment_id || undefined}>
                                                 {purchase.payment_id || "—"}
                                             </td>
                                             <td className="py-3 pr-4">{formatDate(purchase.paid_at)}</td>
-                                            <td className="py-3 pr-4">{formatDate(purchase.expires_at)}</td>
+                                            <td className="py-3 pr-4">{formatDate(purchase.access_expires_at)}</td>
                                             <td className="py-3 pr-4 text-right">
                                                 {isActive(purchase) ? (
                                                     <Button

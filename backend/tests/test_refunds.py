@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.security import get_password_hash
@@ -328,3 +328,163 @@ async def test_concurrent_refund_allocation_cannot_exceed_purchase(
     results = await asyncio.gather(allocate(300000), allocate(300000))
 
     assert sorted(results) == ["created", "rejected"]
+
+
+@pytest.mark.asyncio
+async def test_concurrent_terminal_refund_updates_cannot_overwrite_processed_state(
+    db: AsyncSession,
+):
+    admin = User(
+        email="refund-transition-admin@example.com",
+        password_hash=get_password_hash("adminpass1"),
+        role="admin",
+    )
+    student = User(
+        email="refund-transition-student@example.com",
+        password_hash=get_password_hash("studentpass1"),
+        role="student",
+    )
+    course = Course(
+        title="Refund Transition",
+        price_self=5000,
+        price_support=10000,
+        is_published=True,
+    )
+    db.add_all([admin, student, course])
+    await db.flush()
+    now = datetime.utcnow()
+    purchase = Purchase(
+        user_id=student.id,
+        course_id=course.id,
+        tariff="self",
+        amount_kopecks=500000,
+        payment_id="refund-transition-payment",
+        payment_status="success",
+        paid_at=now,
+        expires_at=now + timedelta(days=30),
+    )
+    db.add(purchase)
+    await db.flush()
+    entitlement = Entitlement(
+        user_id=student.id,
+        course_id=course.id,
+        source_purchase_id=purchase.id,
+        source="purchase",
+        tariff="self",
+        status="active",
+        starts_at=now,
+        expires_at=purchase.expires_at,
+    )
+    refund = RefundRequest(
+        purchase_id=purchase.id,
+        amount_kopecks=500000,
+        reason="Concurrent terminal transition",
+        status="requested",
+        created_by_id=admin.id,
+    )
+    db.add_all([entitlement, refund])
+    await db.commit()
+
+    sessions = async_sessionmaker(bind=db.bind, class_=AsyncSession, expire_on_commit=False)
+    async with sessions() as first_db, sessions() as second_db:
+        first_refund = await first_db.get(RefundRequest, refund.id)
+        second_refund = await second_db.get(RefundRequest, refund.id)
+        assert first_refund is not None and second_refund is not None
+
+        await RefundService.update_refund(
+            first_db,
+            first_refund.id,
+            status="processed",
+            actor_id=admin.id,
+            provider_reference="provider-processed",
+            note=None,
+        )
+
+        async def reject_stale_copy() -> str:
+            try:
+                await RefundService.update_refund(
+                    second_db,
+                    second_refund.id,
+                    status="rejected",
+                    actor_id=admin.id,
+                    provider_reference=None,
+                    note="stale reject",
+                )
+                await second_db.commit()
+                return "updated"
+            except RefundError:
+                await second_db.rollback()
+                return "rejected"
+
+        stale_update = asyncio.create_task(reject_stale_copy())
+        await asyncio.sleep(0.05)
+        assert not stale_update.done()
+        await first_db.commit()
+        assert await stale_update == "rejected"
+
+    await db.refresh(refund)
+    await db.refresh(entitlement)
+    assert refund.status == "processed"
+    assert entitlement.status == "revoked"
+
+
+@pytest.mark.asyncio
+async def test_group_removal_waits_for_last_active_support_entitlement(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "TELEGRAM_SUPPORT_GROUP_ID", -1001234567890)
+    student = User(
+        email="multi-support@example.com",
+        password_hash=get_password_hash("studentpass1"),
+        role="student",
+        telegram_id=99112233,
+    )
+    first_course = Course(
+        title="Support One", price_self=5000, price_support=10000, is_published=True
+    )
+    second_course = Course(
+        title="Support Two", price_self=5000, price_support=10000, is_published=True
+    )
+    db.add_all([student, first_course, second_course])
+    await db.flush()
+    now = datetime.utcnow()
+    first = Entitlement(
+        user_id=student.id,
+        course_id=first_course.id,
+        source="manual",
+        tariff="support",
+        status="active",
+        starts_at=now,
+        expires_at=now + timedelta(days=30),
+    )
+    second = Entitlement(
+        user_id=student.id,
+        course_id=second_course.id,
+        source="manual",
+        tariff="support",
+        status="active",
+        starts_at=now,
+        expires_at=now + timedelta(days=30),
+    )
+    db.add_all([first, second])
+    await db.commit()
+
+    await AccessService.revoke_entitlement(db, first, reason="First support ended")
+    await db.commit()
+    removals = await db.scalar(
+        select(func.count(OutboxMessage.id)).where(
+            OutboxMessage.kind == "telegram_group_remove"
+        )
+    )
+    assert removals == 0
+
+    await AccessService.revoke_entitlement(db, second, reason="Last support ended")
+    await db.commit()
+    removals = await db.scalar(
+        select(func.count(OutboxMessage.id)).where(
+            OutboxMessage.kind == "telegram_group_remove"
+        )
+    )
+    assert removals == 1

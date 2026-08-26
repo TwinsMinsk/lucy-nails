@@ -54,7 +54,7 @@ class PublicAnalyticsEvent(BaseModel):
     event_name: PUBLIC_EVENT_NAMES
     source: Literal["web"]
     happened_at: datetime = Field(default_factory=datetime.utcnow)
-    anonymous_id: str = Field(..., min_length=8, max_length=128)
+    anonymous_id: UUID
     course_id: UUID | None = None
     utm_source: str | None = Field(default=None, max_length=255)
     utm_medium: str | None = Field(default=None, max_length=255)

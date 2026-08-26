@@ -2,6 +2,7 @@
 
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
+from uuid import UUID
 
 import httpx
 from sqlalchemy import and_, or_, select
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models.outbox import DeliveryAttempt, OutboxMessage
 from app.services.email_service import EmailService
+from app.services.support_access_service import has_active_support_entitlement
 
 
 TELEGRAM_API_TIMEOUT_SECONDS = 10.0
@@ -116,6 +118,25 @@ async def deliver_outbox_message(message: OutboxMessage) -> None:
     raise ValueError(f"Unsupported outbox kind: {message.kind}")
 
 
+async def _group_removal_is_obsolete(
+    db: AsyncSession,
+    message: OutboxMessage,
+) -> bool:
+    """Do not ban a member who regained or still has another support access."""
+    if message.kind != "telegram_group_remove":
+        return False
+    raw_user_id = message.payload.get("user_id")
+    if not raw_user_id:
+        # Legacy queued messages cannot be linked safely and keep their
+        # original delivery semantics.
+        return False
+    try:
+        user_id = UUID(str(raw_user_id))
+    except ValueError:
+        return False
+    return await has_active_support_entitlement(db, user_id)
+
+
 async def process_outbox_batch(
     db: AsyncSession,
     *,
@@ -155,8 +176,11 @@ async def process_outbox_batch(
     await db.commit()
 
     for message in messages:
+        skipped = False
         try:
-            await deliver(message)
+            skipped = await _group_removal_is_obsolete(db, message)
+            if not skipped:
+                await deliver(message)
         except Exception as exc:
             error = str(exc)[:2000]
             db.add(
@@ -180,7 +204,7 @@ async def process_outbox_batch(
                 DeliveryAttempt(
                     outbox_message_id=message.id,
                     attempt_number=message.attempts,
-                    status="sent",
+                    status="skipped" if skipped else "sent",
                 )
             )
             message.status = "sent"

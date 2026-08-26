@@ -9,6 +9,9 @@ from app.models.course import Course
 from app.models.entitlement import Entitlement
 from app.models.order import Order
 from app.models.outbox import OutboxMessage
+from app.models.payment_event import PaymentEvent
+from app.models.purchase import Purchase
+from app.models.refund import RefundRequest
 from app.models.rbac import Permission, Role, UserRoleAssignment
 from app.models.user import User
 
@@ -144,6 +147,112 @@ async def test_orders_are_snapshot_based_and_paginated(
 
 
 @pytest.mark.asyncio
+async def test_reconciliation_counts_real_webhook_and_missing_access_issues_only(
+    client: AsyncClient,
+    db: AsyncSession,
+):
+    headers = await _admin_headers(client, db)
+    course = Course(title="Reconciliation Course", price_self=5000, price_support=10000)
+    student = User(
+        email="reconciliation-student@example.com",
+        password_hash=get_password_hash("studentpass1"),
+        role="student",
+    )
+    db.add_all([course, student])
+    await db.flush()
+    now = datetime.utcnow()
+
+    current_missing = Purchase(
+        user_id=student.id,
+        course_id=course.id,
+        tariff="self",
+        amount_kopecks=500000,
+        payment_id="reconciliation-missing",
+        payment_status="success",
+        paid_at=now,
+        expires_at=now + timedelta(days=30),
+    )
+    naturally_expired = Purchase(
+        user_id=student.id,
+        course_id=course.id,
+        tariff="self",
+        amount_kopecks=500000,
+        payment_id="reconciliation-expired",
+        payment_status="success",
+        paid_at=now - timedelta(days=60),
+        expires_at=now - timedelta(days=30),
+    )
+    intentionally_revoked = Purchase(
+        user_id=student.id,
+        course_id=course.id,
+        tariff="support",
+        amount_kopecks=1000000,
+        payment_id="reconciliation-revoked",
+        payment_status="success",
+        paid_at=now,
+        expires_at=now + timedelta(days=30),
+    )
+    fully_refunded = Purchase(
+        user_id=student.id,
+        course_id=course.id,
+        tariff="self",
+        amount_kopecks=500000,
+        payment_id="reconciliation-refunded",
+        payment_status="success",
+        paid_at=now,
+        expires_at=now + timedelta(days=30),
+    )
+    db.add_all(
+        [current_missing, naturally_expired, intentionally_revoked, fully_refunded]
+    )
+    await db.flush()
+    db.add_all(
+        [
+            Entitlement(
+                user_id=student.id,
+                course_id=course.id,
+                source_purchase_id=intentionally_revoked.id,
+                source="purchase",
+                tariff="support",
+                status="revoked",
+                starts_at=now,
+                expires_at=intentionally_revoked.expires_at,
+                reason="Confirmed refund",
+                revoked_at=now,
+            ),
+            PaymentEvent(
+                event_hash="reconciliation-rejected-event",
+                event_type="success",
+                processing_status="rejected",
+                error_code="amount_mismatch",
+                sanitized_payload={},
+                received_at=now,
+                processed_at=now,
+            ),
+            RefundRequest(
+                purchase_id=fully_refunded.id,
+                amount_kopecks=fully_refunded.amount_kopecks,
+                reason="Full provider refund",
+                status="processed",
+                created_by_id=student.id,
+                processed_by_id=student.id,
+                processed_at=now,
+            ),
+        ]
+    )
+    await db.commit()
+
+    dashboard = await client.get("/api/admin/dashboard", headers=headers)
+    reconciliation = await client.get("/api/admin/reconciliation", headers=headers)
+
+    assert dashboard.status_code == 200, dashboard.text
+    assert dashboard.json()["payment_errors"] == 1
+    assert reconciliation.status_code == 200, reconciliation.text
+    assert reconciliation.json()["processed_payment_errors"] == 1
+    assert reconciliation.json()["successful_purchases_without_active_entitlement"] == 1
+
+
+@pytest.mark.asyncio
 async def test_analyst_order_access_masks_personal_data(
     client: AsyncClient,
     db: AsyncSession,
@@ -157,8 +266,13 @@ async def test_analyst_order_access_masks_personal_data(
     role.permissions = [
         Permission(name="commerce.read", description="Read commerce")
     ]
+    buyer = User(
+        email="private.buyer@example.com",
+        password_hash=get_password_hash("buyerpass1"),
+        role="student",
+    )
     course = Course(title="Masked Order Course", price_self=9000, price_support=15000)
-    db.add_all([analyst, role, course])
+    db.add_all([analyst, buyer, role, course])
     await db.flush()
     db.add(UserRoleAssignment(user_id=analyst.id, role_id=role.id))
     db.add(
@@ -173,6 +287,19 @@ async def test_analyst_order_access_masks_personal_data(
             access_days=30,
             status="pending",
             status_token_hash="masked-order-status-hash",
+        )
+    )
+    db.add(
+        Purchase(
+            user_id=buyer.id,
+            course_id=course.id,
+            tariff="self",
+            amount_kopecks=900000,
+            payment_id="masked-legacy-purchase",
+            payment_status="success",
+            customer_phone="+7 999 123-45-67",
+            paid_at=datetime.utcnow(),
+            expires_at=datetime.utcnow() + timedelta(days=30),
         )
     )
     await db.commit()
@@ -191,6 +318,15 @@ async def test_analyst_order_access_masks_personal_data(
     item = response.json()["items"][0]
     assert item["customer_email"] == "p***@example.com"
     assert item["customer_phone"] == "***4567"
+
+    legacy = await client.get(
+        "/api/admin/purchases",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+    )
+    assert legacy.status_code == 200, legacy.text
+    legacy_item = legacy.json()[0]
+    assert legacy_item["user_email"] == "p***@example.com"
+    assert legacy_item["customer_phone"] == "***4567"
 
 
 @pytest.mark.asyncio

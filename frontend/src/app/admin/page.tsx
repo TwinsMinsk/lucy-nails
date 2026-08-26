@@ -36,7 +36,7 @@ export default function AdminDashboardPage() {
 
     const issues = reconciliation ? [
         ["Заказы без ответа более 2 часов", reconciliation.stale_pending_orders],
-        ["Платежи без активного доступа", reconciliation.successful_purchases_without_active_entitlement],
+        ["Текущие платежи без созданного доступа", reconciliation.successful_purchases_without_active_entitlement],
         ["Ошибки обработки webhook", reconciliation.processed_payment_errors],
         ["Сообщения в dead letter", reconciliation.dead_letter_notifications],
     ] as const : []

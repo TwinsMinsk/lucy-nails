@@ -73,7 +73,7 @@ export default function AdminOrdersPage() {
     if (loading) return <div className="flex min-h-[50vh] items-center justify-center"><Loader2 className="h-7 w-7 animate-spin" /></div>
     const issueCards = reconciliation ? [
         ["Зависшие pending", reconciliation.stale_pending_orders],
-        ["Платежи без доступа", reconciliation.successful_purchases_without_active_entitlement],
+        ["Текущие платежи без созданного доступа", reconciliation.successful_purchases_without_active_entitlement],
         ["Ошибки webhook", reconciliation.processed_payment_errors],
         ["Dead letter", reconciliation.dead_letter_notifications],
     ] : []

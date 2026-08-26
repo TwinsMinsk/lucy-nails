@@ -81,6 +81,16 @@ async def test_public_event_is_deduplicated_and_contains_no_pii(
     )
     assert unknown_property.status_code == 422, unknown_property.text
 
+    pii_anonymous_id = await client.post(
+        "/api/analytics/events",
+        json={
+            **payload,
+            "event_id": str(uuid4()),
+            "anonymous_id": "student@example.com",
+        },
+    )
+    assert pii_anonymous_id.status_code == 422, pii_anonymous_id.text
+
 
 @pytest.mark.asyncio
 async def test_public_event_rejects_server_only_financial_event(client: AsyncClient):
@@ -148,3 +158,14 @@ async def test_checkout_snapshots_first_and_last_touch_and_emits_server_events(
     ).scalars().all()
     assert [event.event_name for event in events] == ["checkout_started", "payment_redirect"]
     assert all(event.anonymous_id == anonymous_id for event in events)
+
+    pii_identifier = await client.post(
+        "/api/payments/guest-link",
+        json={
+            "course_id": str(course.id),
+            "tariff": "self",
+            "customer_email": "safe-customer@example.com",
+            "attribution": {"anonymous_id": "tracking@example.com"},
+        },
+    )
+    assert pii_identifier.status_code == 422, pii_identifier.text

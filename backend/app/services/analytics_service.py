@@ -49,7 +49,7 @@ class AnalyticsService:
         event_name: str,
         source: str,
         happened_at: datetime | None = None,
-        anonymous_id: str | None = None,
+        anonymous_id: str | uuid.UUID | None = None,
         user_id: uuid.UUID | None = None,
         order_id: uuid.UUID | None = None,
         course_id: uuid.UUID | None = None,
@@ -62,6 +62,12 @@ class AnalyticsService:
         properties: dict[str, Any] | None = None,
     ) -> bool:
         """Persist an event once and return whether this call inserted it."""
+        normalized_anonymous_id: str | None = None
+        if anonymous_id is not None:
+            try:
+                normalized_anonymous_id = str(uuid.UUID(str(anonymous_id)))
+            except (ValueError, AttributeError) as error:
+                raise ValueError("Analytics anonymous_id must be a UUID") from error
         privacy_payload = {
             "utm_source": utm_source,
             "utm_medium": utm_medium,
@@ -80,7 +86,7 @@ class AnalyticsService:
                 event_name=event_name,
                 source=source,
                 happened_at=happened_at or datetime.utcnow(),
-                anonymous_id=anonymous_id,
+                anonymous_id=normalized_anonymous_id,
                 user_id=user_id,
                 order_id=order_id,
                 course_id=course_id,

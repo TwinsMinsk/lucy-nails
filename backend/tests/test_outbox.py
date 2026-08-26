@@ -1,6 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -8,7 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import app.services.outbox_service as outbox_service
 from app.core.config import settings
+from app.core.security import get_password_hash
+from app.models.course import Course
+from app.models.entitlement import Entitlement
 from app.models.outbox import DeliveryAttempt, OutboxMessage
+from app.models.user import User
 from app.services.outbox_service import enqueue_outbox_message
 import app.workers.outbox as outbox_worker
 
@@ -108,6 +112,58 @@ async def test_group_removal_keeps_member_banned(
     assert calls == [
         ("banChatMember", {"chat_id": "-100123", "user_id": "987654"})
     ]
+
+
+@pytest.mark.asyncio
+async def test_worker_skips_stale_group_removal_when_support_access_is_active(
+    db: AsyncSession,
+):
+    student = User(
+        email="outbox-support@example.com",
+        password_hash=get_password_hash("studentpass1"),
+        role="student",
+        telegram_id=445566,
+    )
+    course = Course(
+        title="Outbox Support", price_self=5000, price_support=10000, is_published=True
+    )
+    db.add_all([student, course])
+    await db.flush()
+    now = datetime.utcnow()
+    db.add(
+        Entitlement(
+            user_id=student.id,
+            course_id=course.id,
+            source="manual",
+            tariff="support",
+            status="active",
+            starts_at=now,
+            expires_at=now + timedelta(days=30),
+        )
+    )
+    message = enqueue_outbox_message(
+        db,
+        kind="telegram_group_remove",
+        channel="telegram",
+        recipient=str(student.telegram_id),
+        payload={"group_id": -100123, "user_id": str(student.id)},
+        dedupe_key="stale-support-removal",
+    )
+    await db.commit()
+
+    delivered: list[str] = []
+
+    async def capture_delivery(current: OutboxMessage) -> None:
+        delivered.append(current.recipient)
+
+    assert await outbox_service.process_outbox_batch(db, deliver=capture_delivery) == 1
+    await db.refresh(message)
+    attempt = await db.scalar(
+        select(DeliveryAttempt).where(DeliveryAttempt.outbox_message_id == message.id)
+    )
+    assert delivered == []
+    assert message.status == "sent"
+    assert attempt is not None and attempt.status == "skipped"
 
 
 @pytest.mark.asyncio

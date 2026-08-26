@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.core.dependencies import require_permission
+from app.core.dependencies import require_permission, user_has_permission
 from app.models.user import User
 from app.models.course import Course
 from app.models.module import Module
@@ -82,6 +82,8 @@ class RevokeAccessResponse(BaseModel):
     message: str
     purchase_id: UUID
     payment_status: str
+    entitlement_id: UUID
+    access_status: str
 
 
 # --- Course Schemas ---
@@ -249,6 +251,23 @@ class AdminPurchaseResponse(BaseModel):
     paid_at: Optional[datetime] = None
     created_at: datetime
     customer_phone: Optional[str] = None
+    entitlement_id: Optional[UUID] = None
+    access_status: str
+    access_expires_at: Optional[datetime] = None
+
+
+def _mask_email(value: str) -> str:
+    local, separator, domain = value.partition("@")
+    if not separator:
+        return "***"
+    return f"{local[:1]}***@{domain}"
+
+
+def _mask_phone(value: str | None) -> str | None:
+    if not value:
+        return None
+    digits = "".join(character for character in value if character.isdigit())
+    return f"***{digits[-4:]}" if digits else "***"
 
 
 # === User Endpoints ===
@@ -687,18 +706,33 @@ async def get_all_purchases(
         .options(
             selectinload(Purchase.user),
             selectinload(Purchase.course),
+            selectinload(Purchase.entitlement),
         )
         .order_by(Purchase.created_at.desc())
         .limit(200)
     )
     result = await db.execute(query)
     purchases = result.scalars().all()
+    can_read_pii = await user_has_permission(db, admin, "pii.read")
+    now = datetime.utcnow()
+
+    def access_status(purchase: Purchase) -> str:
+        entitlement = purchase.entitlement
+        if entitlement is None:
+            return "missing"
+        if entitlement.status == "active" and entitlement.expires_at <= now:
+            return "expired"
+        return entitlement.status
 
     return [
         AdminPurchaseResponse(
             id=purchase.id,
             payment_id=purchase.payment_id,
-            user_email=purchase.user.email if purchase.user else "",
+            user_email=(
+                purchase.user.email
+                if purchase.user and can_read_pii
+                else _mask_email(purchase.user.email) if purchase.user else ""
+            ),
             course_title=purchase.course.title if purchase.course else "",
             tariff=purchase.tariff,
             amount_kopecks=purchase.amount_kopecks,
@@ -706,7 +740,16 @@ async def get_all_purchases(
             expires_at=purchase.expires_at,
             paid_at=purchase.paid_at,
             created_at=purchase.created_at,
-            customer_phone=purchase.customer_phone,
+            customer_phone=(
+                purchase.customer_phone
+                if can_read_pii
+                else _mask_phone(purchase.customer_phone)
+            ),
+            entitlement_id=purchase.entitlement.id if purchase.entitlement else None,
+            access_status=access_status(purchase),
+            access_expires_at=(
+                purchase.entitlement.expires_at if purchase.entitlement else None
+            ),
         )
         for purchase in purchases
     ]
@@ -992,12 +1035,7 @@ async def revoke_course_access(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("refunds.manage")),
 ):
-    """Отозвать доступ по покупке (возврат/chargeback).
-
-    Гасит конкретную покупку: payment_status=failed + expires_at=now.
-    check_access гейтит по success + expires_at>now, так что доступ пропадает
-    мгновенно.
-    """
+    """Отозвать связанный Entitlement, не изменяя финансовую историю Purchase."""
     purchase_result = await db.execute(
         select(Purchase)
         .where(Purchase.id == data.purchase_id)
@@ -1042,4 +1080,6 @@ async def revoke_course_access(
         message="Access revoked",
         purchase_id=purchase.id,
         payment_status=purchase.payment_status,
+        entitlement_id=entitlement.id,
+        access_status=entitlement.status,
     )

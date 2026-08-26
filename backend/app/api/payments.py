@@ -542,6 +542,15 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
 
     provider_order_id_raw = str(payload.get("order_id", "")).strip()
     merchant_reference_raw = str(payload.get("order_num", "")).strip()
+    if not provider_order_id_raw:
+        await record_terminal_payment_event(
+            event_data,
+            processing_status="rejected",
+            error_code="missing_provider_order_id",
+            error_detail="Prodamus callback did not contain order_id",
+        )
+        logger.error("Prodamus webhook: missing provider order_id")
+        raise HTTPException(status_code=422, detail="Missing provider order id")
     order_reference_raw = merchant_reference_raw
     order_uuid = _parse_persisted_order_id(order_reference_raw)
     parsed = parse_checkout_order_id(order_reference_raw) if order_uuid is None else None
@@ -645,7 +654,7 @@ class AttributionTouch(BaseModel):
 
 
 class CheckoutAttribution(BaseModel):
-    anonymous_id: str | None = Field(default=None, min_length=8, max_length=128)
+    anonymous_id: UUID | None = None
     first_touch: AttributionTouch | None = None
     last_touch: AttributionTouch | None = None
 

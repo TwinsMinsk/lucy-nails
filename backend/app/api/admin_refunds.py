@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import require_permission
-from app.models.refund import RefundRequest
 from app.models.user import User
 from app.services.audit_service import append_audit_log
 from app.services.refund_service import RefundError, RefundService
@@ -51,7 +50,11 @@ class RefundResponse(BaseModel):
 
 
 def _refund_http_error(error: RefundError) -> HTTPException:
-    code = status.HTTP_404_NOT_FOUND if str(error) == "Purchase not found" else status.HTTP_422_UNPROCESSABLE_CONTENT
+    code = (
+        status.HTTP_404_NOT_FOUND
+        if str(error) in {"Purchase not found", "Refund request not found"}
+        else status.HTTP_422_UNPROCESSABLE_CONTENT
+    )
     return HTTPException(status_code=code, detail=str(error))
 
 
@@ -107,18 +110,10 @@ async def update_refund(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("refunds.manage")),
 ):
-    refund = await db.get(RefundRequest, refund_id)
-    if refund is None:
-        raise HTTPException(status_code=404, detail="Refund request not found")
-    old_value = {
-        "status": refund.status,
-        "provider_reference": refund.provider_reference,
-        "note": refund.note,
-    }
     try:
-        await RefundService.update_refund(
+        refund, old_value = await RefundService.update_refund(
             db,
-            refund,
+            refund_id,
             status=data.status,
             actor_id=admin.id,
             provider_reference=data.provider_reference,

@@ -70,13 +70,26 @@ class RefundService:
     @staticmethod
     async def update_refund(
         db: AsyncSession,
-        refund: RefundRequest,
+        refund_id: UUID,
         *,
         status: str,
         actor_id: UUID,
         provider_reference: str | None,
         note: str | None,
-    ) -> RefundRequest:
+    ) -> tuple[RefundRequest, dict[str, str | None]]:
+        refund = await db.scalar(
+            select(RefundRequest)
+            .where(RefundRequest.id == refund_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if refund is None:
+            raise RefundError("Refund request not found")
+        old_value = {
+            "status": refund.status,
+            "provider_reference": refund.provider_reference,
+            "note": refund.note,
+        }
         previous_status = refund.status
         if refund.status in {"processed", "rejected"} and refund.status != status:
             raise RefundError("Completed refund requests cannot be reopened")
@@ -140,4 +153,4 @@ class RefundService:
                     properties={},
                 )
         await db.flush()
-        return refund
+        return refund, old_value

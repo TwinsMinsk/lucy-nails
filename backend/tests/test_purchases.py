@@ -625,6 +625,40 @@ async def test_webhook_retry_does_not_duplicate_outbox_message(
 
 
 @pytest.mark.asyncio
+async def test_prodamus_webhook_rejects_missing_provider_order_id(
+    client: AsyncClient,
+    db: AsyncSession,
+):
+    course = await _published_course(db, "Missing Provider ID")
+    await _create_user(db, "missing-provider@example.com")
+    await db.commit()
+
+    responses = []
+    for tariff, amount in (("self", "5000"), ("support", "10000")):
+        payload, headers = _signed_payload(
+            {
+                "order_num": _build_prodamus_order_id(course.id, tariff),
+                "customer_email": "missing-provider@example.com",
+                "sum": amount,
+                "currency": "rub",
+                "payment_status": "success",
+            }
+        )
+        responses.append(
+            await client.post("/api/payments/webhook", json=payload, headers=headers)
+        )
+
+    assert [response.status_code for response in responses] == [422, 422]
+    assert await db.scalar(select(func.count(Purchase.id))) == 0
+    events = (
+        await db.execute(select(PaymentEvent).order_by(PaymentEvent.received_at))
+    ).scalars().all()
+    assert len(events) == 2
+    assert all(event.processing_status == "rejected" for event in events)
+    assert all(event.error_code == "missing_provider_order_id" for event in events)
+
+
+@pytest.mark.asyncio
 async def test_guest_payment_link_returns_url(client: AsyncClient, db: AsyncSession):
     course = Course(
         title="Guest Link Course",
@@ -1020,6 +1054,8 @@ async def test_admin_revoke_access(client: AsyncClient, db: AsyncSession):
         },
     )
     assert r.status_code == 200, r.text
+    assert r.json()["payment_status"] == "success"
+    assert r.json()["access_status"] == "revoked"
 
     await db.refresh(purchase)
     assert purchase.payment_status == "success"
@@ -1035,3 +1071,13 @@ async def test_admin_revoke_access(client: AsyncClient, db: AsyncSession):
     assert audit is not None
     assert audit.reason == "Confirmed chargeback in provider cabinet"
     assert audit.correlation_id == "legacy-revoke-test"
+
+    purchases = await client.get(
+        "/api/admin/purchases",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert purchases.status_code == 200, purchases.text
+    item = next(row for row in purchases.json() if row["id"] == str(purchase.id))
+    assert item["payment_status"] == "success"
+    assert item["access_status"] == "revoked"
+    assert item["entitlement_id"] == str(entitlement.id)

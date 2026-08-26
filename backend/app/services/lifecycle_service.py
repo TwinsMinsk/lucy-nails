@@ -13,6 +13,7 @@ from app.models.outbox import OutboxMessage
 from app.models.payment_event import PaymentEvent
 from app.models.user import User
 from app.services.analytics_service import AnalyticsService
+from app.services.access_service import AccessService
 from app.services.outbox_service import enqueue_outbox_message
 
 
@@ -79,18 +80,13 @@ class LifecycleService:
                         },
                         dedupe_key=f"entitlement:{entitlement.id}:expired:telegram",
                     )
-                    if (
-                        entitlement.tariff == "support"
-                        and settings.TELEGRAM_SUPPORT_GROUP_ID is not None
-                    ):
-                        scheduled += await cls._enqueue_once(
+                    scheduled += int(
+                        await AccessService.enqueue_support_group_removal(
                             db,
-                            kind="telegram_group_remove",
-                            channel="telegram",
-                            recipient=str(user.telegram_id),
-                            payload={"group_id": settings.TELEGRAM_SUPPORT_GROUP_ID},
-                            dedupe_key=f"entitlement:{entitlement.id}:group-remove",
+                            entitlement,
+                            dedupe_suffix="group-remove:expired",
                         )
+                    )
                 await AnalyticsService.record_event(
                     db,
                     event_id=f"access_expired:{entitlement.id}",

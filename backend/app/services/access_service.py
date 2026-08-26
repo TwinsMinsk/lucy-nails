@@ -16,6 +16,7 @@ from app.models.outbox import OutboxMessage
 from app.models.user import User
 from app.core.config import settings
 from app.services.outbox_service import enqueue_outbox_message
+from app.services.support_access_service import has_active_support_entitlement
 
 
 @dataclass(frozen=True)
@@ -115,42 +116,66 @@ class AccessService:
         *,
         kind: str,
         dedupe_suffix: str,
-    ) -> None:
+    ) -> bool:
         if (
             entitlement.tariff != "support"
             or not settings.TELEGRAM_BOT_TOKEN
             or settings.TELEGRAM_SUPPORT_GROUP_ID is None
         ):
-            return
+            return False
+        if kind == "telegram_group_remove" and await has_active_support_entitlement(
+            db,
+            entitlement.user_id,
+            exclude_entitlement_id=entitlement.id,
+        ):
+            return False
         telegram_id = await db.scalar(
             select(User.telegram_id).where(User.id == entitlement.user_id)
         )
         if telegram_id is None:
-            return
+            return False
         dedupe_key = f"entitlement:{entitlement.id}:{dedupe_suffix}"
         if await db.scalar(
             select(OutboxMessage.id).where(OutboxMessage.dedupe_key == dedupe_key)
         ) is not None:
-            return
+            return False
         enqueue_outbox_message(
             db,
             kind=kind,
             channel="telegram",
             recipient=str(telegram_id),
-            payload={"group_id": settings.TELEGRAM_SUPPORT_GROUP_ID},
+            payload={
+                "group_id": settings.TELEGRAM_SUPPORT_GROUP_ID,
+                "user_id": str(entitlement.user_id),
+            },
             dedupe_key=dedupe_key,
         )
+        return True
 
     @staticmethod
     async def enqueue_support_group_restore(
         db: AsyncSession,
         entitlement: Entitlement,
-    ) -> None:
-        await AccessService._enqueue_support_group_action(
+    ) -> bool:
+        return await AccessService._enqueue_support_group_action(
             db,
             entitlement,
             kind="telegram_group_restore",
             dedupe_suffix="group-restore",
+        )
+
+    @staticmethod
+    async def enqueue_support_group_removal(
+        db: AsyncSession,
+        entitlement: Entitlement,
+        *,
+        dedupe_suffix: str,
+    ) -> bool:
+        return await AccessService._enqueue_support_group_action(
+            db,
+            entitlement,
+            kind="telegram_group_remove",
+            dedupe_suffix=dedupe_suffix,
         )
 
     @staticmethod
@@ -193,10 +218,9 @@ class AccessService:
         entitlement.status = "revoked"
         entitlement.revoked_at = datetime.utcnow()
         entitlement.reason = reason.strip()
-        await AccessService._enqueue_support_group_action(
+        await AccessService.enqueue_support_group_removal(
             db,
             entitlement,
-            kind="telegram_group_remove",
             dedupe_suffix="group-remove:revoked",
         )
         await db.flush()
@@ -231,10 +255,9 @@ class AccessService:
             raise ValueError("Only active access can be suspended")
         entitlement.status = "suspended"
         entitlement.reason = reason.strip()
-        await AccessService._enqueue_support_group_action(
+        await AccessService.enqueue_support_group_removal(
             db,
             entitlement,
-            kind="telegram_group_remove",
             dedupe_suffix="group-remove:suspended",
         )
         await db.flush()

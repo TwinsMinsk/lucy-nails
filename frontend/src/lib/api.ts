@@ -590,6 +590,8 @@ export interface RevokeAccessResponse {
     message: string;
     purchase_id: string;
     payment_status: string;
+    entitlement_id: string;
+    access_status: "active" | "suspended" | "revoked" | "expired" | "missing";
 }
 
 /**
@@ -691,6 +693,9 @@ export interface AdminPurchaseResponse {
     paid_at?: string | null;
     created_at: string;
     customer_phone?: string | null;
+    entitlement_id?: string | null;
+    access_status: "active" | "suspended" | "revoked" | "expired" | "missing";
+    access_expires_at?: string | null;
 }
 
 // --- Course CRUD ---

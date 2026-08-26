@@ -284,7 +284,9 @@ async def dashboard(
     )
     pending_orders = await db.scalar(select(func.count(Order.id)).where(Order.status == "pending"))
     payment_errors = await db.scalar(
-        select(func.count(PaymentEvent.id)).where(PaymentEvent.processing_status == "error")
+        select(func.count(PaymentEvent.id)).where(
+            PaymentEvent.processing_status == "rejected"
+        )
     )
     dead_letters = await db.scalar(
         select(func.count(OutboxMessage.id)).where(OutboxMessage.status == "dead_letter")
@@ -807,16 +809,27 @@ async def reconciliation(
         )
     )
     payment_errors = await db.scalar(
-        select(func.count(PaymentEvent.id)).where(PaymentEvent.processing_status == "error")
+        select(func.count(PaymentEvent.id)).where(
+            PaymentEvent.processing_status == "rejected"
+        )
+    )
+    processed_refund_total = (
+        select(func.coalesce(func.sum(RefundRequest.amount_kopecks), 0))
+        .where(
+            RefundRequest.purchase_id == Purchase.id,
+            RefundRequest.status == "processed",
+        )
+        .correlate(Purchase)
+        .scalar_subquery()
     )
     without_access = await db.scalar(
         select(func.count(Purchase.id)).where(
             Purchase.payment_status == "success",
+            Purchase.expires_at > now,
+            processed_refund_total < Purchase.amount_kopecks,
             ~select(Entitlement.id)
             .where(
                 Entitlement.source_purchase_id == Purchase.id,
-                Entitlement.status == "active",
-                Entitlement.expires_at > now,
             )
             .exists(),
         )
