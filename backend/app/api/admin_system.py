@@ -79,6 +79,18 @@ class CheckoutToggleRequest(BaseModel):
     reason: str = Field(..., min_length=5, max_length=1000)
 
 
+async def ensure_owner_removal_preserves_owner(db: AsyncSession) -> None:
+    """Serialize and validate removal of an owner assignment."""
+    await db.execute(select(func.pg_advisory_xact_lock(761941013)))
+    owners_count = await db.scalar(
+        select(func.count(UserRoleAssignment.id))
+        .join(Role, Role.id == UserRoleAssignment.role_id)
+        .where(Role.name == "owner")
+    )
+    if int(owners_count or 0) <= 1:
+        raise HTTPException(status_code=422, detail="Cannot remove the last owner")
+
+
 class CheckoutToggleResponse(BaseModel):
     checkout_enabled: bool
 
@@ -213,13 +225,7 @@ async def update_team_roles(
     )
     old_names = sorted(old_result.scalars().all())
     if "owner" in old_names and "owner" not in requested_names:
-        owners_count = await db.scalar(
-            select(func.count(UserRoleAssignment.id))
-            .join(Role, Role.id == UserRoleAssignment.role_id)
-            .where(Role.name == "owner")
-        )
-        if int(owners_count or 0) <= 1:
-            raise HTTPException(status_code=422, detail="Cannot remove the last owner")
+        await ensure_owner_removal_preserves_owner(db)
 
     await db.execute(delete(UserRoleAssignment).where(UserRoleAssignment.user_id == user_id))
     for role in roles:

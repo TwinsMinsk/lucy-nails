@@ -37,7 +37,11 @@ class RefundService:
         reason: str,
         created_by_id: UUID,
     ) -> RefundRequest:
-        purchase = await db.get(Purchase, purchase_id)
+        purchase = await db.scalar(
+            select(Purchase)
+            .where(Purchase.id == purchase_id)
+            .with_for_update()
+        )
         if purchase is None:
             raise RefundError("Purchase not found")
         if purchase.payment_status != "success":
@@ -98,20 +102,32 @@ class RefundService:
             refund.processed_at = datetime.utcnow()
 
         if status == "processed":
-            purchase = await db.get(Purchase, refund.purchase_id)
-            entitlement_result = await db.execute(
-                select(Entitlement).where(
-                    Entitlement.source_purchase_id == refund.purchase_id,
-                    Entitlement.status == "active",
+            purchase = await db.scalar(
+                select(Purchase)
+                .where(Purchase.id == refund.purchase_id)
+                .with_for_update()
+            )
+            await db.flush()
+            processed_total = await db.scalar(
+                select(func.coalesce(func.sum(RefundRequest.amount_kopecks), 0)).where(
+                    RefundRequest.purchase_id == refund.purchase_id,
+                    RefundRequest.status == "processed",
                 )
             )
-            entitlement = entitlement_result.scalar_one_or_none()
-            if entitlement is not None:
-                await AccessService.revoke_entitlement(
-                    db,
-                    entitlement,
-                    reason=f"Refund processed: {refund.reason}",
+            if purchase is not None and int(processed_total or 0) >= purchase.amount_kopecks:
+                entitlement_result = await db.execute(
+                    select(Entitlement).where(
+                        Entitlement.source_purchase_id == refund.purchase_id,
+                        Entitlement.status == "active",
+                    )
                 )
+                entitlement = entitlement_result.scalar_one_or_none()
+                if entitlement is not None:
+                    await AccessService.revoke_entitlement(
+                        db,
+                        entitlement,
+                        reason=f"Refund processed: {refund.reason}",
+                    )
             if previous_status != "processed" and purchase is not None:
                 await AnalyticsService.record_event(
                     db,

@@ -10,12 +10,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.rate_limit import limiter
-from app.services.analytics_service import AnalyticsService
+from app.services.analytics_service import (
+    AnalyticsService,
+    contains_sensitive_analytics_value,
+)
 
 
 router = APIRouter()
 
 PUBLIC_EVENT_NAMES = Literal["landing_view", "cta_click"]
+PUBLIC_PROPERTY_KEYS = {
+    "landing_view": {"path", "variant"},
+    "cta_click": {"tariff", "location"},
+}
 FORBIDDEN_PROPERTY_FRAGMENTS = {
     "email",
     "phone",
@@ -59,10 +66,23 @@ class PublicAnalyticsEvent(BaseModel):
     @field_validator("properties")
     @classmethod
     def reject_pii_properties(cls, value: dict[str, Any]) -> dict[str, Any]:
-        if _contains_forbidden_property(value):
+        if _contains_forbidden_property(value) or contains_sensitive_analytics_value(value):
             raise ValueError("PII and payment data are not allowed in analytics events")
         if len(str(value)) > 4000:
             raise ValueError("Analytics properties are too large")
+        return value
+
+    @field_validator(
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+        "utm_content",
+        "utm_term",
+    )
+    @classmethod
+    def reject_pii_attribution(cls, value: str | None) -> str | None:
+        if contains_sensitive_analytics_value(value):
+            raise ValueError("PII is not allowed in analytics attribution")
         return value
 
     @model_validator(mode="after")
@@ -71,6 +91,25 @@ class PublicAnalyticsEvent(BaseModel):
         happened_at = self.happened_at.replace(tzinfo=None)
         if happened_at < now - timedelta(days=7) or happened_at > now + timedelta(minutes=5):
             raise ValueError("Event timestamp is outside the accepted window")
+        allowed_keys = PUBLIC_PROPERTY_KEYS[self.event_name]
+        unknown_keys = set(self.properties) - allowed_keys
+        if unknown_keys:
+            raise ValueError("Unsupported analytics properties for this event")
+        if self.event_name == "landing_view":
+            path = self.properties.get("path")
+            if path is not None and (
+                not isinstance(path, str)
+                or not path.startswith("/")
+                or "?" in path
+                or len(path) > 512
+            ):
+                raise ValueError("Invalid landing path")
+        if self.event_name == "cta_click":
+            if self.properties.get("tariff") not in (None, "self", "support"):
+                raise ValueError("Invalid checkout tariff")
+            location = self.properties.get("location")
+            if location is not None and location not in {"pricing", "hero", "navigation"}:
+                raise ValueError("Invalid CTA location")
         return self
 
 

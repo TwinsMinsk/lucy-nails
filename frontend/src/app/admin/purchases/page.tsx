@@ -44,7 +44,9 @@ export default function AdminPurchasesPage() {
         }
         setRevokingId(purchase.id);
         try {
-            const result = await adminRevokeAccess(purchase.id);
+            const reason = window.prompt("Укажите причину отзыва доступа")?.trim();
+            if (!reason || reason.length < 5) return;
+            const result = await adminRevokeAccess(purchase.id, reason);
             setPurchases((prev) =>
                 prev.map((p) =>
                     p.id === purchase.id

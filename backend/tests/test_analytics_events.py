@@ -51,6 +51,36 @@ async def test_public_event_is_deduplicated_and_contains_no_pii(
     )
     assert pii.status_code == 422, pii.text
 
+    disguised_pii = await client.post(
+        "/api/analytics/events",
+        json={
+            **payload,
+            "event_id": str(uuid4()),
+            "properties": {"label": "student@example.com"},
+        },
+    )
+    assert disguised_pii.status_code == 422, disguised_pii.text
+
+    pii_utm = await client.post(
+        "/api/analytics/events",
+        json={
+            **payload,
+            "event_id": str(uuid4()),
+            "utm_campaign": "+7 999 123-45-67",
+        },
+    )
+    assert pii_utm.status_code == 422, pii_utm.text
+
+    unknown_property = await client.post(
+        "/api/analytics/events",
+        json={
+            **payload,
+            "event_id": str(uuid4()),
+            "properties": {"unexpected": "value"},
+        },
+    )
+    assert unknown_property.status_code == 422, unknown_property.text
+
 
 @pytest.mark.asyncio
 async def test_public_event_rejects_server_only_financial_event(client: AsyncClient):

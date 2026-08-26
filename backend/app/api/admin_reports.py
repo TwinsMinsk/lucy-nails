@@ -191,16 +191,73 @@ async def report_funnel(
     _, _, start, end = _date_bounds(date_from, date_to)
     rows = (
         await db.execute(
-            select(AnalyticsEvent.event_name, func.count(AnalyticsEvent.id))
-            .where(
+            select(
+                AnalyticsEvent.event_name,
+                AnalyticsEvent.happened_at,
+                AnalyticsEvent.anonymous_id,
+                AnalyticsEvent.user_id,
+                AnalyticsEvent.order_id,
+            ).where(
                 AnalyticsEvent.event_name.in_([item[0] for item in FUNNEL]),
                 AnalyticsEvent.happened_at >= start,
                 AnalyticsEvent.happened_at < end,
             )
-            .group_by(AnalyticsEvent.event_name)
         )
     ).all()
-    counts = {name: int(count) for name, count in rows}
+
+    # Join anonymous, user, and order identifiers through bridge events such as
+    # checkout_started. Then count distinct entities that reached every stage
+    # in order; repeated clicks and orphan purchases cannot inflate conversion.
+    parents: dict[str, str] = {}
+
+    def find(item: str) -> str:
+        parents.setdefault(item, item)
+        while parents[item] != item:
+            parents[item] = parents[parents[item]]
+            item = parents[item]
+        return item
+
+    def union(left: str, right: str) -> None:
+        left_root = find(left)
+        right_root = find(right)
+        if left_root != right_root:
+            parents[right_root] = left_root
+
+    identified_rows: list[tuple[str, datetime, str]] = []
+    for event_name, happened_at, anonymous_id, user_id, order_id in rows:
+        identifiers = [
+            value
+            for value in (
+                f"anonymous:{anonymous_id}" if anonymous_id else None,
+                f"user:{user_id}" if user_id else None,
+                f"order:{order_id}" if order_id else None,
+            )
+            if value is not None
+        ]
+        if not identifiers:
+            continue
+        for identifier in identifiers[1:]:
+            union(identifiers[0], identifier)
+        identified_rows.append((event_name, happened_at, identifiers[0]))
+
+    entity_stages: dict[str, dict[str, datetime]] = {}
+    for event_name, happened_at, identifier in identified_rows:
+        stages_for_entity = entity_stages.setdefault(find(identifier), {})
+        previous_time = stages_for_entity.get(event_name)
+        if previous_time is None or happened_at < previous_time:
+            stages_for_entity[event_name] = happened_at
+
+    counts = {event_name: 0 for event_name, _ in FUNNEL}
+    for reached in entity_stages.values():
+        previous_time: datetime | None = None
+        for event_name, _ in FUNNEL:
+            happened_at = reached.get(event_name)
+            if happened_at is None or (
+                previous_time is not None and happened_at < previous_time
+            ):
+                break
+            counts[event_name] += 1
+            previous_time = happened_at
     stages = []
     previous = None
     for event_name, label in FUNNEL:

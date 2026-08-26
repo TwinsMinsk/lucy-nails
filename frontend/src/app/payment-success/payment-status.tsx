@@ -60,8 +60,8 @@ export function PaymentStatus() {
         const result = (await response.json()) as { status: string };
         if (result.status === "paid") {
           setState("paid");
-          sendYandexGoal("purchase");
           window.history.replaceState({}, "", "/payment-success");
+          sendYandexGoal("purchase");
           return;
         }
         setState("pending");

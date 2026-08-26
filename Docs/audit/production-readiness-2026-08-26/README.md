@@ -7,7 +7,7 @@
 
 ## 1. Executive summary
 
-В коде построен production-grade фундамент commerce, access, RBAC/MFA, CRM, аналитики, Telegram и эксплуатации. Локальные автоматические gates зелёные: 144 backend tests, 4 frontend unit tests, 6 cross-browser E2E, единственная Alembic head, чистые runtime dependency audits и успешный локальный restore drill.
+В коде построен production-grade фундамент commerce, access, RBAC/MFA, CRM, аналитики, Telegram и эксплуатации. Локальные автоматические gates зелёные: 159 backend tests, 5 frontend unit tests, 6 cross-browser E2E, единственная Alembic head, чистые runtime dependency audits и успешный локальный restore drill.
 
 Запуск пока нельзя одобрить: релизная ветка не слита и не развёрнута, нет изолированного staging, не выполнен новый реальный платёж с возвратом, не проверены вручную все 11 уроков на физических iOS/Android, не настроено внешнее backup-хранилище и нет юридического sign-off. Это внешние, но обязательные P0/P1; автоматическими тестами их честно заменить нельзя.
 
@@ -19,8 +19,8 @@
 | Курс | [`course API`](https://api.lucysmirnova.ru/api/courses/db11a7f7-8dfa-437b-b9da-69c641140300): 11 модулей, 11 уроков, 17 136 секунд, 5 900/11 900 ₽ |
 | Лендинг | [`landing API`](https://api.lucysmirnova.ru/api/landing): 11 техник, около 5 часов, 30 дней |
 | Remote baseline | `origin/master` = `99e5854` — сертификаты |
-| Релизная ветка | 18 feature/security/ops commits поверх baseline; runtime/content baseline `5bafb89` до документационного коммита |
-| Схема | PostgreSQL 15, 28 таблиц, единственная Alembic head `1b8c9d0e1f2a` |
+| Релизная ветка | 22 feature/security/ops commits поверх baseline после закрытия независимого review; runtime/content baseline `5bafb89` до документационного коммита |
+| Схема | PostgreSQL 15, 28 таблиц, единственная Alembic head `4e9d0e1f2a3b` |
 
 Состояние production API подтверждает текущий продаваемый контент, но не доказывает, что новая релизная ветка развёрнута. Новые возможности ниже подтверждены кодом и локальными тестами, а не живой production-средой.
 
@@ -45,9 +45,9 @@
 | Проверка | Результат | Статус |
 |---|---|---|
 | `ruff check backend/app backend/tests scripts/ops` | all checks passed | ✅ |
-| `pytest backend/tests` на PostgreSQL 15 | 144 passed, 1 skipped, 50 deprecation warnings; 176.13 s | ✅ с P2 debt |
-| Alembic heads + latest downgrade/upgrade | одна head `1b8c9d0e1f2a`; round-trip успешен | ✅ |
-| Vitest | 2 files, 4 tests passed | ✅ |
+| `pytest backend/tests` на PostgreSQL 15 | 159 passed, 1 skipped, 50 deprecation warnings; 154.98 s | ✅ с P2 debt |
+| Alembic heads + latest downgrade/upgrade | одна head `4e9d0e1f2a3b`; round-trip успешен | ✅ |
+| Vitest | 3 files, 5 tests passed | ✅ |
 | ESLint | exit 0 | ✅ |
 | Next production build | exit 0 | ✅ |
 | Playwright Chromium + mobile WebKit | 6 passed; исправлены status-token race и legacy-role admin guard | ✅ |

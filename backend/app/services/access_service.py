@@ -12,6 +12,10 @@ from app.models.course import Course
 from app.models.entitlement import Entitlement
 from app.models.module import Module
 from app.models.purchase import Purchase
+from app.models.outbox import OutboxMessage
+from app.models.user import User
+from app.core.config import settings
+from app.services.outbox_service import enqueue_outbox_message
 
 
 @dataclass(frozen=True)
@@ -105,6 +109,51 @@ class AccessService:
         )
 
     @staticmethod
+    async def _enqueue_support_group_action(
+        db: AsyncSession,
+        entitlement: Entitlement,
+        *,
+        kind: str,
+        dedupe_suffix: str,
+    ) -> None:
+        if (
+            entitlement.tariff != "support"
+            or not settings.TELEGRAM_BOT_TOKEN
+            or settings.TELEGRAM_SUPPORT_GROUP_ID is None
+        ):
+            return
+        telegram_id = await db.scalar(
+            select(User.telegram_id).where(User.id == entitlement.user_id)
+        )
+        if telegram_id is None:
+            return
+        dedupe_key = f"entitlement:{entitlement.id}:{dedupe_suffix}"
+        if await db.scalar(
+            select(OutboxMessage.id).where(OutboxMessage.dedupe_key == dedupe_key)
+        ) is not None:
+            return
+        enqueue_outbox_message(
+            db,
+            kind=kind,
+            channel="telegram",
+            recipient=str(telegram_id),
+            payload={"group_id": settings.TELEGRAM_SUPPORT_GROUP_ID},
+            dedupe_key=dedupe_key,
+        )
+
+    @staticmethod
+    async def enqueue_support_group_restore(
+        db: AsyncSession,
+        entitlement: Entitlement,
+    ) -> None:
+        await AccessService._enqueue_support_group_action(
+            db,
+            entitlement,
+            kind="telegram_group_restore",
+            dedupe_suffix="group-restore",
+        )
+
+    @staticmethod
     async def grant_manual_access(
         db: AsyncSession,
         *,
@@ -131,6 +180,7 @@ class AccessService:
         )
         db.add(entitlement)
         await db.flush()
+        await AccessService.enqueue_support_group_restore(db, entitlement)
         return entitlement
 
     @staticmethod
@@ -143,6 +193,72 @@ class AccessService:
         entitlement.status = "revoked"
         entitlement.revoked_at = datetime.utcnow()
         entitlement.reason = reason.strip()
+        await AccessService._enqueue_support_group_action(
+            db,
+            entitlement,
+            kind="telegram_group_remove",
+            dedupe_suffix="group-remove:revoked",
+        )
+        await db.flush()
+
+    @staticmethod
+    async def extend_entitlement(
+        db: AsyncSession,
+        entitlement: Entitlement,
+        *,
+        days: int,
+        reason: str,
+    ) -> None:
+        if entitlement.status == "revoked":
+            raise ValueError("Revoked access cannot be extended")
+        now = datetime.utcnow()
+        entitlement.expires_at = max(now, entitlement.expires_at) + timedelta(days=days)
+        if entitlement.status == "expired":
+            entitlement.status = "active"
+            entitlement.revoked_at = None
+            await AccessService.enqueue_support_group_restore(db, entitlement)
+        entitlement.reason = reason.strip()
+        await db.flush()
+
+    @staticmethod
+    async def suspend_entitlement(
+        db: AsyncSession,
+        entitlement: Entitlement,
+        *,
+        reason: str,
+    ) -> None:
+        if entitlement.status != "active":
+            raise ValueError("Only active access can be suspended")
+        entitlement.status = "suspended"
+        entitlement.reason = reason.strip()
+        await AccessService._enqueue_support_group_action(
+            db,
+            entitlement,
+            kind="telegram_group_remove",
+            dedupe_suffix="group-remove:suspended",
+        )
+        await db.flush()
+
+    @staticmethod
+    async def restore_entitlement(
+        db: AsyncSession,
+        entitlement: Entitlement,
+        *,
+        reason: str,
+    ) -> None:
+        if entitlement.status != "suspended":
+            raise ValueError("Only suspended access can be restored")
+        if entitlement.expires_at <= datetime.utcnow():
+            raise ValueError("Extend expired access before restoring it")
+        entitlement.status = "active"
+        entitlement.reason = reason.strip()
+        entitlement.revoked_at = None
+        await AccessService._enqueue_support_group_action(
+            db,
+            entitlement,
+            kind="telegram_group_restore",
+            dedupe_suffix="group-restore:resumed",
+        )
         await db.flush()
 
     @staticmethod

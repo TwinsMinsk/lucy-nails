@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.core.dependencies import require_permission
+from app.core.dependencies import require_permission, user_has_permission
 from app.models.certificate import Certificate
 from app.models.course import Course
 from app.models.crm import StudentNote, StudentTag, StudentTagAssignment
@@ -27,6 +27,20 @@ from app.services.runtime_settings_service import RuntimeSettingsService
 
 
 router = APIRouter()
+
+
+def _mask_email(value: str) -> str:
+    local, separator, domain = value.partition("@")
+    if not separator:
+        return "***"
+    return f"{local[:1]}***@{domain}"
+
+
+def _mask_phone(value: str | None) -> str | None:
+    if not value:
+        return None
+    digits = "".join(character for character in value if character.isdigit())
+    return f"***{digits[-4:]}" if digits else "***"
 
 
 class DashboardResponse(BaseModel):
@@ -648,6 +662,7 @@ async def list_orders(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("commerce.read")),
 ):
+    can_read_pii = await user_has_permission(db, admin, "pii.read")
     conditions = []
     if search:
         conditions.append(Order.customer_email.ilike(f"%{search.strip()}%"))
@@ -668,8 +683,16 @@ async def list_orders(
         items=[
             OrderListItem(
                 id=order.id,
-                customer_email=order.customer_email,
-                customer_phone=order.customer_phone,
+                customer_email=(
+                    order.customer_email
+                    if can_read_pii
+                    else _mask_email(order.customer_email)
+                ),
+                customer_phone=(
+                    order.customer_phone
+                    if can_read_pii
+                    else _mask_phone(order.customer_phone)
+                ),
                 course_id=order.course_id,
                 course_title=order.course_title,
                 tariff=order.tariff,

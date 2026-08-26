@@ -12,7 +12,14 @@ from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, EmailStr, Field, TypeAdapter, ValidationError
+from pydantic import (
+    BaseModel,
+    EmailStr,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+)
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,6 +45,7 @@ from app.services.payment_event_service import (
     record_terminal_payment_event,
 )
 from app.services.analytics_service import AnalyticsService
+from app.services.analytics_service import contains_sensitive_analytics_value
 
 logger = logging.getLogger(__name__)
 
@@ -415,7 +423,10 @@ async def _record_purchase_once(
         db.add(purchase)
         await db.flush()
         payment_event.purchase_id = purchase.id
-        db.add(AccessService.create_purchase_entitlement(purchase))
+        entitlement = AccessService.create_purchase_entitlement(purchase)
+        db.add(entitlement)
+        await db.flush()
+        await AccessService.enqueue_support_group_restore(db, entitlement)
         dedupe_hash = hashlib.sha256(payment_key.encode("utf-8")).hexdigest()
         if is_new_user:
             activation_token = create_account_activation_token(user.id, user.token_version)
@@ -624,6 +635,13 @@ class AttributionTouch(BaseModel):
     utm_campaign: str | None = Field(default=None, max_length=255)
     utm_content: str | None = Field(default=None, max_length=255)
     utm_term: str | None = Field(default=None, max_length=255)
+
+    @field_validator("*", mode="after")
+    @classmethod
+    def reject_personal_attribution(cls, value: str | None) -> str | None:
+        if contains_sensitive_analytics_value(value):
+            raise ValueError("Attribution must not contain personal data")
+        return value
 
 
 class CheckoutAttribution(BaseModel):

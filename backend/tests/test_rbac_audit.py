@@ -1,8 +1,12 @@
-import pytest
-from httpx import AsyncClient
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+import asyncio
 
+import pytest
+from fastapi import HTTPException
+from httpx import AsyncClient
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.api.admin_system import ensure_owner_removal_preserves_owner
 from app.core.security import get_password_hash
 from app.models.audit_log import AuditLog
 from app.models.course import Course
@@ -161,3 +165,58 @@ async def test_cannot_remove_last_owner(client: AsyncClient, db: AsyncSession):
 
     assert response.status_code == 422
     assert response.json()["detail"] == "Cannot remove the last owner"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_owner_removal_preserves_one_owner(
+    db: AsyncSession,
+):
+    permission = Permission(name="system.manage_roles", description="Manage roles")
+    owner_role = Role(name="owner", description="Owner", is_system=True)
+    owner_role.permissions = [permission]
+    first = User(
+        email="first-owner@example.com",
+        password_hash=get_password_hash("ownerpass1"),
+        role="admin",
+    )
+    second = User(
+        email="second-owner@example.com",
+        password_hash=get_password_hash("ownerpass2"),
+        role="admin",
+    )
+    db.add_all([owner_role, first, second])
+    await db.flush()
+    db.add_all(
+        [
+            UserRoleAssignment(user_id=first.id, role_id=owner_role.id),
+            UserRoleAssignment(user_id=second.id, role_id=owner_role.id),
+        ]
+    )
+    await db.commit()
+    sessions = async_sessionmaker(bind=db.bind, class_=AsyncSession, expire_on_commit=False)
+
+    async def remove(target: User) -> int:
+        async with sessions() as worker_db:
+            try:
+                await ensure_owner_removal_preserves_owner(worker_db)
+                await worker_db.execute(
+                    delete(UserRoleAssignment).where(
+                        UserRoleAssignment.user_id == target.id,
+                        UserRoleAssignment.role_id == owner_role.id,
+                    )
+                )
+                await worker_db.commit()
+                return 200
+            except HTTPException as exc:
+                await worker_db.rollback()
+                return exc.status_code
+
+    responses = await asyncio.gather(remove(first), remove(second))
+
+    assert sorted(responses) == [200, 422]
+    remaining = await db.scalar(
+        select(func.count(UserRoleAssignment.id))
+        .join(Role, Role.id == UserRoleAssignment.role_id)
+        .where(Role.name == "owner")
+    )
+    assert remaining == 1

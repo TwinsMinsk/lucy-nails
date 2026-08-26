@@ -10,8 +10,8 @@
 
 - [x] Ветка основана на `origin/master` с сертификатами.
 - [x] `ruff check backend/app backend/tests scripts/ops`.
-- [x] Полный pytest на PostgreSQL 15: 144 passed, 1 skipped.
-- [x] Alembic имеет одну head `1b8c9d0e1f2a`; latest downgrade/upgrade проходит.
+- [x] Полный pytest на PostgreSQL 15: 159 passed, 1 skipped.
+- [x] Alembic имеет одну head `4e9d0e1f2a3b`; latest downgrade/upgrade проходит.
 - [x] Frontend ESLint, Vitest, Next production build.
 - [x] Playwright: guest checkout, public/login и content-manager RBAC в Chromium + mobile WebKit (6 passed).
 - [x] `pip-audit --strict -r backend/requirements.lock`: нет известных уязвимостей.
@@ -34,6 +34,7 @@
 - [ ] `ENVIRONMENT=production`, `DEBUG=false`, Python 3.11 и Node 20+.
 - [ ] Уникальны JWT, MFA encryption, Prodamus, Kinescope, email, Telegram, DB, Redis и S3 secrets.
 - [ ] `FRONTEND_URL`, `BACKEND_URL`, `CORS_ORIGINS`, `TRUSTED_HOSTS`, `COOKIE_DOMAIN` точны и HTTPS-only.
+- [ ] `FORWARDED_ALLOW_IPS` содержит только подтверждённые адреса edge-proxy, не `*`; spoofed forwarding headers не обходят rate limit.
 - [ ] `REDIS_URL` общий для API replicas; distributed rate limit проверен.
 - [ ] Web, outbox worker и Telegram bot запущены как отдельные процессы и имеют restart policy.
 - [ ] Owner Telegram chat получает тестовый integration alert.

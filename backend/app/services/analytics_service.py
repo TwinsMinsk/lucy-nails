@@ -1,6 +1,7 @@
 """Idempotent persistence for first-party events."""
 
 import uuid
+import re
 from datetime import datetime
 from typing import Any
 
@@ -8,6 +9,35 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.analytics_event import AnalyticsEvent
+
+
+EMAIL_PATTERN = re.compile(
+    r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b",
+    re.IGNORECASE,
+)
+PHONE_PATTERN = re.compile(r"(?:\+?\d[\s().-]*){10,}")
+SENSITIVE_VALUE_FRAGMENTS = ("email=", "phone=", "token=", "password=")
+
+
+def contains_sensitive_analytics_value(value: Any) -> bool:
+    """Detect contact data and secret-like values anywhere in event input."""
+    if isinstance(value, dict):
+        return any(
+            contains_sensitive_analytics_value(key)
+            or contains_sensitive_analytics_value(nested)
+            for key, nested in value.items()
+        )
+    if isinstance(value, (list, tuple, set)):
+        return any(contains_sensitive_analytics_value(item) for item in value)
+    if not isinstance(value, str):
+        return False
+    normalized = value.strip()
+    lowered = normalized.lower()
+    return bool(
+        EMAIL_PATTERN.search(normalized)
+        or PHONE_PATTERN.search(normalized)
+        or any(fragment in lowered for fragment in SENSITIVE_VALUE_FRAGMENTS)
+    )
 
 
 class AnalyticsService:
@@ -32,6 +62,16 @@ class AnalyticsService:
         properties: dict[str, Any] | None = None,
     ) -> bool:
         """Persist an event once and return whether this call inserted it."""
+        privacy_payload = {
+            "utm_source": utm_source,
+            "utm_medium": utm_medium,
+            "utm_campaign": utm_campaign,
+            "utm_content": utm_content,
+            "utm_term": utm_term,
+            "properties": properties or {},
+        }
+        if contains_sensitive_analytics_value(privacy_payload):
+            raise ValueError("Analytics events must not contain personal or secret data")
         statement = (
             insert(AnalyticsEvent)
             .values(

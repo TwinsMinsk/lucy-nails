@@ -25,14 +25,7 @@ export async function trackPublicEvent(
     }
 }
 
-declare global {
-    interface Window {
-        ym?: (...args: unknown[]) => void
-    }
-}
-
 export function sendYandexGoal(goal: "checkout" | "purchase"): void {
-    const counterId = Number(process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID)
-    if (!counterId || typeof window === "undefined" || typeof window.ym !== "function") return
-    window.ym(counterId, "reachGoal", goal)
+    if (typeof window === "undefined") return
+    window.dispatchEvent(new CustomEvent("lucy-metrika-goal", { detail: { goal } }))
 }

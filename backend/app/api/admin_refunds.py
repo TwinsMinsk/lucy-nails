@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.core.dependencies import require_permission
 from app.models.refund import RefundRequest
 from app.models.user import User
+from app.services.audit_service import append_audit_log
 from app.services.refund_service import RefundError, RefundService
 
 
@@ -28,6 +29,7 @@ class RefundUpdate(BaseModel):
     status: Literal["requested", "submitted", "processed", "rejected"]
     provider_reference: str | None = Field(default=None, max_length=255)
     note: str | None = Field(default=None, max_length=2000)
+    reason: str = Field(..., min_length=5, max_length=2000)
 
 
 class RefundResponse(BaseModel):
@@ -64,6 +66,7 @@ async def list_refunds(
 @router.post("/refunds", response_model=RefundResponse, status_code=status.HTTP_201_CREATED)
 async def create_refund(
     data: RefundCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("refunds.manage")),
 ):
@@ -77,6 +80,20 @@ async def create_refund(
         )
     except RefundError as error:
         raise _refund_http_error(error) from error
+    append_audit_log(
+        db,
+        actor_user_id=admin.id,
+        action="refund.create",
+        object_type="refund_request",
+        object_id=str(refund.id),
+        reason=data.reason,
+        correlation_id=request.state.correlation_id,
+        new_value={
+            "purchase_id": str(data.purchase_id),
+            "amount_kopecks": data.amount_kopecks,
+            "status": refund.status,
+        },
+    )
     await db.commit()
     await db.refresh(refund)
     return refund
@@ -86,12 +103,18 @@ async def create_refund(
 async def update_refund(
     refund_id: UUID,
     data: RefundUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("refunds.manage")),
 ):
     refund = await db.get(RefundRequest, refund_id)
     if refund is None:
         raise HTTPException(status_code=404, detail="Refund request not found")
+    old_value = {
+        "status": refund.status,
+        "provider_reference": refund.provider_reference,
+        "note": refund.note,
+    }
     try:
         await RefundService.update_refund(
             db,
@@ -103,6 +126,21 @@ async def update_refund(
         )
     except RefundError as error:
         raise _refund_http_error(error) from error
+    append_audit_log(
+        db,
+        actor_user_id=admin.id,
+        action="refund.status.update",
+        object_type="refund_request",
+        object_id=str(refund.id),
+        reason=data.reason,
+        correlation_id=request.state.correlation_id,
+        old_value=old_value,
+        new_value={
+            "status": refund.status,
+            "provider_reference": refund.provider_reference,
+            "note": refund.note,
+        },
+    )
     await db.commit()
     await db.refresh(refund)
     return refund

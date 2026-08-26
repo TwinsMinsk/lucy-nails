@@ -31,9 +31,10 @@ async def send_telegram_message(recipient: str, text: str) -> None:
 
 
 async def remove_telegram_group_member(group_id: str, user_id: str) -> None:
-    # Ban + immediate unban removes the current membership but lets the student
-    # join again after a future support entitlement is granted.
     await _telegram_request("banChatMember", {"chat_id": group_id, "user_id": user_id})
+
+
+async def restore_telegram_group_member(group_id: str, user_id: str) -> None:
     await _telegram_request(
         "unbanChatMember",
         {"chat_id": group_id, "user_id": user_id, "only_if_banned": True},
@@ -65,6 +66,10 @@ async def deliver_outbox_message(message: OutboxMessage) -> None:
     if message.channel == "telegram":
         if message.kind == "telegram_group_remove":
             await remove_telegram_group_member(
+                str(message.payload["group_id"]), message.recipient
+            )
+        elif message.kind == "telegram_group_restore":
+            await restore_telegram_group_member(
                 str(message.payload["group_id"]), message.recipient
             )
         else:

@@ -45,15 +45,18 @@ class SessionService:
         db: AsyncSession,
         session_id: UUID,
         user_id: UUID,
+        *,
+        for_update: bool = False,
     ) -> AuthSession | None:
-        return await db.scalar(
-            select(AuthSession).where(
+        query = select(AuthSession).where(
                 AuthSession.id == session_id,
                 AuthSession.user_id == user_id,
                 AuthSession.revoked_at.is_(None),
                 AuthSession.expires_at > datetime.utcnow(),
             )
-        )
+        if for_update:
+            query = query.with_for_update()
+        return await db.scalar(query)
 
     @staticmethod
     async def rotate(

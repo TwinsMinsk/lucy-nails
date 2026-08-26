@@ -9,6 +9,7 @@ from app.models.course import Course
 from app.models.entitlement import Entitlement
 from app.models.order import Order
 from app.models.outbox import OutboxMessage
+from app.models.rbac import Permission, Role, UserRoleAssignment
 from app.models.user import User
 
 
@@ -140,6 +141,56 @@ async def test_orders_are_snapshot_based_and_paginated(
     assert response.json()["total"] == 1
     assert response.json()["items"][0]["amount_kopecks"] == 777700
     assert response.json()["items"][0]["course_title"] == "Order Course"
+
+
+@pytest.mark.asyncio
+async def test_analyst_order_access_masks_personal_data(
+    client: AsyncClient,
+    db: AsyncSession,
+):
+    analyst = User(
+        email="masked-analyst@example.com",
+        password_hash=get_password_hash("analystpass1"),
+        role="student",
+    )
+    role = Role(name="analyst", description="Analyst", is_system=True)
+    role.permissions = [
+        Permission(name="commerce.read", description="Read commerce")
+    ]
+    course = Course(title="Masked Order Course", price_self=9000, price_support=15000)
+    db.add_all([analyst, role, course])
+    await db.flush()
+    db.add(UserRoleAssignment(user_id=analyst.id, role_id=role.id))
+    db.add(
+        Order(
+            course_id=course.id,
+            course_title=course.title,
+            tariff="self",
+            customer_email="private.buyer@example.com",
+            customer_phone="+7 999 123-45-67",
+            amount_kopecks=900000,
+            currency="RUB",
+            access_days=30,
+            status="pending",
+            status_token_hash="masked-order-status-hash",
+        )
+    )
+    await db.commit()
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": analyst.email, "password": "analystpass1"},
+    )
+    client.cookies.clear()
+
+    response = await client.get(
+        "/api/admin/orders",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+    )
+
+    assert response.status_code == 200, response.text
+    item = response.json()["items"][0]
+    assert item["customer_email"] == "p***@example.com"
+    assert item["customer_phone"] == "***4567"
 
 
 @pytest.mark.asyncio

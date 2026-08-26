@@ -57,9 +57,24 @@ class RevokeEntitlementResponse(BaseModel):
     status: str
 
 
+class EntitlementReasonRequest(BaseModel):
+    reason: str = Field(..., min_length=5, max_length=1000)
+
+
+class EntitlementExtendRequest(EntitlementReasonRequest):
+    days: int = Field(..., ge=1, le=3650)
+
+
+class EntitlementActionResponse(BaseModel):
+    entitlement_id: UUID
+    status: str
+    expires_at: datetime
+
+
 class RevokeAccessRequest(BaseModel):
     """Схема запроса на отзыв доступа (возврат/chargeback)."""
     purchase_id: UUID
+    reason: str = Field(..., min_length=5, max_length=1000)
 
 
 class RevokeAccessResponse(BaseModel):
@@ -847,9 +862,133 @@ async def revoke_entitlement(
     )
 
 
+async def _load_entitlement_for_action(
+    db: AsyncSession,
+    entitlement_id: UUID,
+) -> Entitlement:
+    entitlement = await db.scalar(
+        select(Entitlement)
+        .where(Entitlement.id == entitlement_id)
+        .with_for_update()
+    )
+    if entitlement is None:
+        raise HTTPException(status_code=404, detail="Entitlement not found")
+    return entitlement
+
+
+@router.post(
+    "/entitlements/{entitlement_id}/extend",
+    response_model=EntitlementActionResponse,
+)
+async def extend_entitlement(
+    entitlement_id: UUID,
+    data: EntitlementExtendRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_permission("access.manage")),
+):
+    entitlement = await _load_entitlement_for_action(db, entitlement_id)
+    old_value = {
+        "status": entitlement.status,
+        "expires_at": entitlement.expires_at.isoformat(),
+    }
+    try:
+        await AccessService.extend_entitlement(
+            db,
+            entitlement,
+            days=data.days,
+            reason=data.reason,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    append_audit_log(
+        db,
+        actor_user_id=admin.id,
+        action="entitlement.extend",
+        object_type="entitlement",
+        object_id=str(entitlement.id),
+        reason=data.reason,
+        correlation_id=request.state.correlation_id,
+        old_value=old_value,
+        new_value={
+            "status": entitlement.status,
+            "expires_at": entitlement.expires_at.isoformat(),
+            "days": data.days,
+        },
+    )
+    await db.commit()
+    return EntitlementActionResponse(
+        entitlement_id=entitlement.id,
+        status=entitlement.status,
+        expires_at=entitlement.expires_at,
+    )
+
+
+async def _change_entitlement_state(
+    *,
+    db: AsyncSession,
+    entitlement: Entitlement,
+    action: str,
+    reason: str,
+) -> None:
+    if action == "suspend":
+        await AccessService.suspend_entitlement(db, entitlement, reason=reason)
+    else:
+        await AccessService.restore_entitlement(db, entitlement, reason=reason)
+
+
+@router.post(
+    "/entitlements/{entitlement_id}/{action}",
+    response_model=EntitlementActionResponse,
+)
+async def change_entitlement_state(
+    entitlement_id: UUID,
+    action: Literal["suspend", "restore"],
+    data: EntitlementReasonRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_permission("access.manage")),
+):
+    entitlement = await _load_entitlement_for_action(db, entitlement_id)
+    old_value = {
+        "status": entitlement.status,
+        "expires_at": entitlement.expires_at.isoformat(),
+    }
+    try:
+        await _change_entitlement_state(
+            db=db,
+            entitlement=entitlement,
+            action=action,
+            reason=data.reason,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    append_audit_log(
+        db,
+        actor_user_id=admin.id,
+        action=f"entitlement.{action}",
+        object_type="entitlement",
+        object_id=str(entitlement.id),
+        reason=data.reason,
+        correlation_id=request.state.correlation_id,
+        old_value=old_value,
+        new_value={
+            "status": entitlement.status,
+            "expires_at": entitlement.expires_at.isoformat(),
+        },
+    )
+    await db.commit()
+    return EntitlementActionResponse(
+        entitlement_id=entitlement.id,
+        status=entitlement.status,
+        expires_at=entitlement.expires_at,
+    )
+
+
 @router.post("/revoke-access", response_model=RevokeAccessResponse)
 async def revoke_course_access(
     data: RevokeAccessRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("refunds.manage")),
 ):
@@ -860,22 +999,42 @@ async def revoke_course_access(
     мгновенно.
     """
     purchase_result = await db.execute(
-        select(Purchase).where(Purchase.id == data.purchase_id)
+        select(Purchase)
+        .where(Purchase.id == data.purchase_id)
+        .with_for_update()
     )
     purchase = purchase_result.scalar_one_or_none()
     if not purchase:
         raise HTTPException(status_code=404, detail="Purchase not found")
 
-    purchase.payment_status = "failed"
-    purchase.expires_at = datetime.utcnow()
     entitlement_result = await db.execute(
         select(Entitlement).where(Entitlement.source_purchase_id == purchase.id)
     )
     entitlement = entitlement_result.scalar_one_or_none()
-    if entitlement is not None:
-        await AccessService.revoke_entitlement(
-            db, entitlement, reason="Payment revoked by administrator"
-        )
+    if entitlement is None:
+        entitlement = AccessService.create_purchase_entitlement(purchase)
+        db.add(entitlement)
+        await db.flush()
+    old_value = {
+        "entitlement_status": entitlement.status,
+        "payment_status": purchase.payment_status,
+        "purchase_expires_at": purchase.expires_at.isoformat(),
+    }
+    await AccessService.revoke_entitlement(db, entitlement, reason=data.reason)
+    append_audit_log(
+        db,
+        actor_user_id=admin.id,
+        action="entitlement.revoke_by_purchase",
+        object_type="entitlement",
+        object_id=str(entitlement.id),
+        reason=data.reason,
+        correlation_id=request.state.correlation_id,
+        old_value=old_value,
+        new_value={
+            "entitlement_status": entitlement.status,
+            "payment_status": purchase.payment_status,
+        },
+    )
     await db.commit()
     await db.refresh(purchase)
 

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.payments import _build_prodamus_order_id, parse_checkout_order_id
 from app.core.config import Settings
 from app.core.security import get_password_hash
+from app.models.audit_log import AuditLog
 from app.models.course import Course
 from app.models.entitlement import Entitlement
 from app.models.payment_event import PaymentEvent
@@ -515,6 +516,42 @@ async def test_admin_grant_creates_entitlement_without_fake_purchase(
     assert courses_response.status_code == 200, courses_response.text
     assert [item["id"] for item in courses_response.json()] == [str(course.id)]
 
+    original_expiry = entitlement.expires_at
+    extend_response = await client.post(
+        f"/api/admin/entitlements/{entitlement.id}/extend",
+        json={"days": 7, "reason": "Approved course access extension"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert extend_response.status_code == 200, extend_response.text
+    await db.refresh(entitlement)
+    assert entitlement.expires_at >= original_expiry + timedelta(days=7)
+
+    suspend_response = await client.post(
+        f"/api/admin/entitlements/{entitlement.id}/suspend",
+        json={"reason": "Temporary suspension requested by student"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert suspend_response.status_code == 200, suspend_response.text
+    assert suspend_response.json()["status"] == "suspended"
+    suspended_courses = await client.get(
+        "/api/purchases/my",
+        headers={"Authorization": f"Bearer {student_token}"},
+    )
+    assert suspended_courses.json() == []
+
+    restore_response = await client.post(
+        f"/api/admin/entitlements/{entitlement.id}/restore",
+        json={"reason": "Temporary suspension completed"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert restore_response.status_code == 200, restore_response.text
+    assert restore_response.json()["status"] == "active"
+    restored_courses = await client.get(
+        "/api/purchases/my",
+        headers={"Authorization": f"Bearer {student_token}"},
+    )
+    assert [item["id"] for item in restored_courses.json()] == [str(course.id)]
+
     revoke_response = await client.post(
         "/api/admin/revoke-entitlement",
         json={
@@ -973,11 +1010,28 @@ async def test_admin_revoke_access(client: AsyncClient, db: AsyncSession):
 
     r = await client.post(
         "/api/admin/revoke-access",
-        json={"purchase_id": str(purchase.id)},
-        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "purchase_id": str(purchase.id),
+            "reason": "Confirmed chargeback in provider cabinet",
+        },
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Correlation-ID": "legacy-revoke-test",
+        },
     )
     assert r.status_code == 200, r.text
 
     await db.refresh(purchase)
-    assert purchase.payment_status == "failed"
-    assert purchase.expires_at <= datetime.utcnow()
+    assert purchase.payment_status == "success"
+    assert purchase.expires_at > datetime.utcnow()
+    entitlement = await db.scalar(
+        select(Entitlement).where(Entitlement.source_purchase_id == purchase.id)
+    )
+    assert entitlement is not None
+    assert entitlement.status == "revoked"
+    audit = await db.scalar(
+        select(AuditLog).where(AuditLog.action == "entitlement.revoke_by_purchase")
+    )
+    assert audit is not None
+    assert audit.reason == "Confirmed chargeback in provider cabinet"
+    assert audit.correlation_id == "legacy-revoke-test"

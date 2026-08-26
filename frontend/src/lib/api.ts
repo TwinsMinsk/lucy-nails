@@ -596,11 +596,12 @@ export interface RevokeAccessResponse {
  * Отозвать доступ по покупке (возврат/chargeback) — только для админов
  */
 export const adminRevokeAccess = async (
-    purchaseId: string
+    purchaseId: string,
+    reason: string,
 ): Promise<RevokeAccessResponse> => {
     return apiFetch<RevokeAccessResponse>("/admin/revoke-access", {
         method: "POST",
-        body: JSON.stringify({ purchase_id: purchaseId }),
+        body: JSON.stringify({ purchase_id: purchaseId, reason }),
     });
 };
 
@@ -1207,6 +1208,21 @@ export const adminRevokeEntitlement = (entitlementId: string, reason: string) =>
         body: JSON.stringify({ entitlement_id: entitlementId, reason }),
     });
 
+export const adminExtendEntitlement = (entitlementId: string, days: number, reason: string) =>
+    apiFetch<{ entitlement_id: string; status: string; expires_at: string }>(`/admin/entitlements/${entitlementId}/extend`, {
+        method: "POST",
+        body: JSON.stringify({ days, reason }),
+    });
+
+export const adminChangeEntitlementState = (
+    entitlementId: string,
+    action: "suspend" | "restore",
+    reason: string,
+) => apiFetch<{ entitlement_id: string; status: string; expires_at: string }>(`/admin/entitlements/${entitlementId}/${action}`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+});
+
 export const adminGetOrders = (params: {
     search?: string; status?: string; limit?: number; offset?: number;
 } = {}) => apiFetch<PageResponse<AdminOrder>>(`/admin/orders${queryString(params)}`);
@@ -1236,7 +1252,7 @@ export const adminCreateRefund = (data: {
 
 export const adminUpdateRefund = (
     refundId: string,
-    data: { status: AdminRefund["status"]; provider_reference?: string; note?: string },
+    data: { status: AdminRefund["status"]; provider_reference?: string; note?: string; reason: string },
 ) => apiFetch<AdminRefund>(`/admin/refunds/${refundId}`, { method: "PUT", body: JSON.stringify(data) });
 
 // --- File Upload ---

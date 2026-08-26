@@ -43,8 +43,16 @@ class MfaService:
         return role_name is not None
 
     @staticmethod
-    async def get_credential(db: AsyncSession, user_id: UUID) -> MfaCredential | None:
-        return await db.scalar(select(MfaCredential).where(MfaCredential.user_id == user_id))
+    async def get_credential(
+        db: AsyncSession,
+        user_id: UUID,
+        *,
+        for_update: bool = False,
+    ) -> MfaCredential | None:
+        query = select(MfaCredential).where(MfaCredential.user_id == user_id)
+        if for_update:
+            query = query.with_for_update()
+        return await db.scalar(query)
 
     @staticmethod
     async def get_or_create_setup(

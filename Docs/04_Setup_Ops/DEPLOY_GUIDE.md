@@ -86,6 +86,7 @@ git push -u origin main
 | `BACKEND_URL` | `https://<твой-backend-домен>.up.railway.app` |
 | `CORS_ORIGINS` | Production frontend origin, например `https://lucysmirnova.ru` |
 | `TRUSTED_HOSTS` | Домены backend без схемы, через запятую |
+| `FORWARDED_ALLOW_IPS` | Только CIDR/IP доверенного edge-proxy Railway; `*` и пустое значение запрещены в production |
 | `COOKIE_DOMAIN` | Общий parent domain для frontend/API cookies |
 | `TELEGRAM_BOT_TOKEN` | Обязательный production bot token |
 | `TELEGRAM_BOT_USERNAME` | Username production bot |

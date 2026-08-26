@@ -117,6 +117,28 @@ async def test_reports_use_confirmed_money_and_expose_csv(
         )
     db.add_all(
         [
+            AnalyticsEvent(
+                event_id="report-event-duplicate-cta",
+                event_name="cta_click",
+                source="web",
+                anonymous_id="report-visitor",
+                course_id=course.id,
+                happened_at=now - timedelta(hours=3, minutes=30),
+                properties={"tariff": "support", "location": "pricing"},
+            ),
+            AnalyticsEvent(
+                event_id="report-event-orphan-purchase",
+                event_name="purchase_confirmed",
+                source="server",
+                order_id=pending_order.id,
+                course_id=course.id,
+                happened_at=now,
+                properties={"tariff": "self"},
+            ),
+        ]
+    )
+    db.add_all(
+        [
             OutboxMessage(
                 kind="access_opened",
                 channel="email",

@@ -106,6 +106,34 @@ async def require_admin(
     return current_user
 
 
+async def user_has_permission(
+    db: AsyncSession,
+    user,
+    permission_name: str,
+) -> bool:
+    """Return one normalized permission, with a legacy-admin rollout fallback."""
+    from app.models.rbac import Permission, Role, UserRoleAssignment
+
+    permission = await db.scalar(
+        select(Permission.id)
+        .join(Permission.roles)
+        .join(Role.assignments)
+        .where(
+            UserRoleAssignment.user_id == user.id,
+            Permission.name == permission_name,
+        )
+        .limit(1)
+    )
+    if permission is not None:
+        return True
+    assignment_exists = await db.scalar(
+        select(UserRoleAssignment.id)
+        .where(UserRoleAssignment.user_id == user.id)
+        .limit(1)
+    )
+    return assignment_exists is None and user.role == "admin"
+
+
 def require_permission(permission_name: str) -> Callable:
     """Build a FastAPI dependency that enforces one normalized permission."""
 
@@ -113,29 +141,7 @@ def require_permission(permission_name: str) -> Callable:
         current_user=Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
     ):
-        from app.models.rbac import Permission, Role, UserRoleAssignment
-
-        permission = await db.scalar(
-            select(Permission.id)
-            .join(Permission.roles)
-            .join(Role.assignments)
-            .where(
-                UserRoleAssignment.user_id == current_user.id,
-                Permission.name == permission_name,
-            )
-            .limit(1)
-        )
-        if permission is not None:
-            return current_user
-
-        assignment_exists = await db.scalar(
-            select(UserRoleAssignment.id)
-            .where(UserRoleAssignment.user_id == current_user.id)
-            .limit(1)
-        )
-        # Temporary rollout compatibility: legacy admins created before the RBAC
-        # migration retain access only while they have no normalized assignment.
-        if assignment_exists is None and current_user.role == "admin":
+        if await user_has_permission(db, current_user, permission_name):
             return current_user
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

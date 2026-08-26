@@ -156,6 +156,9 @@ class Settings(BaseSettings):
 
     # Для production: список Host заголовков (через запятую), например api.example.com,localhost
     TRUSTED_HOSTS: str = ""
+    # Comma-separated proxy IPs/CIDRs trusted by Uvicorn. Never use "*" in
+    # production; otherwise clients can forge the rate-limit address.
+    FORWARDED_ALLOW_IPS: str = "127.0.0.1"
 
     # Persistent upload directory. Leave empty in production to disable local uploads.
     UPLOAD_STORAGE_DIR: str = ""
@@ -217,6 +220,8 @@ class Settings(BaseSettings):
             errors.append("BACKEND_URL must be public in production")
         if not self.TRUSTED_HOSTS:
             errors.append("TRUSTED_HOSTS is required in production")
+        if not self.FORWARDED_ALLOW_IPS or self.FORWARDED_ALLOW_IPS.strip() == "*":
+            errors.append("FORWARDED_ALLOW_IPS must list trusted proxy IPs/CIDRs in production")
         if not self.COOKIE_DOMAIN:
             errors.append("COOKIE_DOMAIN is required in production for sibling frontend/API hosts")
         if not self.REDIS_URL:

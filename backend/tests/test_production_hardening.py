@@ -1,7 +1,9 @@
 import pytest
 from pydantic import ValidationError
+from starlette.requests import Request
 
 from app.core.config import Settings
+from app.core.rate_limit import client_ip
 from app.main import app
 
 
@@ -132,6 +134,33 @@ def test_production_config_requires_shared_redis_rate_limit():
         _valid_prod(REDIS_URL="")
 
     assert "REDIS_URL is required in production" in str(exc_info.value)
+
+
+def test_production_config_rejects_trusting_every_forwarded_sender():
+    with pytest.raises(ValidationError) as exc_info:
+        _valid_prod(FORWARDED_ALLOW_IPS="*")
+
+    assert "FORWARDED_ALLOW_IPS must list trusted proxy" in str(exc_info.value)
+
+
+def test_rate_limit_key_ignores_untrusted_forwarding_headers():
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "headers": [
+                (b"x-forwarded-for", b"203.0.113.44"),
+                (b"cf-connecting-ip", b"198.51.100.20"),
+            ],
+            "client": ("192.0.2.10", 12345),
+            "server": ("test", 80),
+            "scheme": "http",
+            "query_string": b"",
+        }
+    )
+
+    assert client_ip(request) == "192.0.2.10"
 
 
 def test_production_config_requires_telegram_operations_channel():

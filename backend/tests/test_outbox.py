@@ -93,6 +93,24 @@ async def test_outbox_delivers_telegram_channel(
 
 
 @pytest.mark.asyncio
+async def test_group_removal_keeps_member_banned(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    calls: list[tuple[str, dict]] = []
+
+    async def capture(method: str, payload: dict) -> None:
+        calls.append((method, payload))
+
+    monkeypatch.setattr(outbox_service, "_telegram_request", capture)
+
+    await outbox_service.remove_telegram_group_member("-100123", "987654")
+
+    assert calls == [
+        ("banChatMember", {"chat_id": "-100123", "user_id": "987654"})
+    ]
+
+
+@pytest.mark.asyncio
 async def test_outbox_claims_entire_batch_before_external_delivery(db: AsyncSession):
     for index in range(2):
         enqueue_outbox_message(

@@ -1,25 +1,33 @@
+import asyncio
 from datetime import datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.security import get_password_hash
+from app.core.config import settings
 from app.models.course import Course
 from app.models.entitlement import Entitlement
 from app.models.purchase import Purchase
+from app.models.outbox import OutboxMessage
 from app.models.refund import RefundRequest
 from app.models.user import User
 from app.models.analytics_event import AnalyticsEvent
+from app.models.audit_log import AuditLog
 from app.services.access_service import AccessService
+from app.services.refund_service import RefundError, RefundService
 
 
 @pytest.mark.asyncio
 async def test_admin_refund_workflow_revokes_access_without_rewriting_purchase(
     client: AsyncClient,
     db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ):
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "TELEGRAM_SUPPORT_GROUP_ID", -1001234567890)
     admin = User(
         email="refund-admin@example.com",
         password_hash=get_password_hash("adminpass1"),
@@ -29,6 +37,7 @@ async def test_admin_refund_workflow_revokes_access_without_rewriting_purchase(
         email="refund-student@example.com",
         password_hash=get_password_hash("studentpass1"),
         role="student",
+        telegram_id=123456789,
     )
     course = Course(
         title="Refund Course",
@@ -42,7 +51,7 @@ async def test_admin_refund_workflow_revokes_access_without_rewriting_purchase(
     purchase = Purchase(
         user_id=student.id,
         course_id=course.id,
-        tariff="self",
+        tariff="support",
         amount_kopecks=500000,
         payment_id="refund-workflow-payment",
         payment_status="success",
@@ -56,7 +65,7 @@ async def test_admin_refund_workflow_revokes_access_without_rewriting_purchase(
         course_id=course.id,
         source_purchase_id=purchase.id,
         source="purchase",
-        tariff="self",
+        tariff="support",
         status="active",
         starts_at=paid_at,
         expires_at=purchase.expires_at,
@@ -93,6 +102,7 @@ async def test_admin_refund_workflow_revokes_access_without_rewriting_purchase(
         json={
             "status": "processed",
             "provider_reference": "prodamus-refund-123",
+            "reason": "Provider cabinet confirms full refund",
             "note": "Возврат подтверждён в кабинете Prodamus",
         },
         headers=headers,
@@ -104,6 +114,13 @@ async def test_admin_refund_workflow_revokes_access_without_rewriting_purchase(
     await db.refresh(entitlement)
     assert purchase.payment_status == "success"
     assert entitlement.status == "revoked"
+    removal = await db.scalar(
+        select(OutboxMessage).where(
+            OutboxMessage.kind == "telegram_group_remove",
+            OutboxMessage.recipient == "123456789",
+        )
+    )
+    assert removal is not None
     assert not await AccessService.has_active_access(db, student.id, course.id)
 
     student_login = await client.post(
@@ -125,6 +142,16 @@ async def test_admin_refund_workflow_revokes_access_without_rewriting_purchase(
     )
     assert refund_event is not None
     assert refund_event.course_id == course.id
+    audit_actions = set(
+        (
+            await db.execute(
+                select(AuditLog.action).where(AuditLog.object_id == refund_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert audit_actions == {"refund.create", "refund.status.update"}
 
     list_response = await client.get("/api/admin/refunds", headers=headers)
     assert list_response.status_code == 200
@@ -174,3 +201,130 @@ async def test_refund_cannot_exceed_purchase_amount(client: AsyncClient, db: Asy
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_partial_refund_keeps_access_until_full_amount_is_processed(
+    client: AsyncClient,
+    db: AsyncSession,
+):
+    admin = User(
+        email="partial-refund-admin@example.com",
+        password_hash=get_password_hash("adminpass1"),
+        role="admin",
+    )
+    student = User(
+        email="partial-refund-student@example.com",
+        password_hash=get_password_hash("studentpass1"),
+        role="student",
+    )
+    course = Course(title="Partial Refund", price_self=5000, price_support=10000, is_published=True)
+    db.add_all([admin, student, course])
+    await db.flush()
+    now = datetime.utcnow()
+    purchase = Purchase(
+        user_id=student.id,
+        course_id=course.id,
+        tariff="self",
+        amount_kopecks=500000,
+        payment_id="partial-refund-payment",
+        payment_status="success",
+        paid_at=now,
+        expires_at=now + timedelta(days=30),
+    )
+    db.add(purchase)
+    await db.flush()
+    entitlement = Entitlement(
+        user_id=student.id,
+        course_id=course.id,
+        source_purchase_id=purchase.id,
+        source="purchase",
+        tariff="self",
+        status="active",
+        starts_at=now,
+        expires_at=purchase.expires_at,
+    )
+    db.add(entitlement)
+    await db.commit()
+
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": admin.email, "password": "adminpass1"},
+    )
+    client.cookies.clear()
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    created = await client.post(
+        "/api/admin/refunds",
+        json={
+            "purchase_id": str(purchase.id),
+            "amount_kopecks": 100000,
+            "reason": "Partial goodwill refund",
+        },
+        headers=headers,
+    )
+    processed = await client.put(
+        f"/api/admin/refunds/{created.json()['id']}",
+        json={
+            "status": "processed",
+            "provider_reference": "partial-1000",
+            "reason": "Provider cabinet confirms partial refund",
+        },
+        headers=headers,
+    )
+    assert processed.status_code == 200, processed.text
+    await db.refresh(entitlement)
+    assert entitlement.status == "active"
+    assert await AccessService.has_active_access(db, student.id, course.id)
+
+
+@pytest.mark.asyncio
+async def test_concurrent_refund_allocation_cannot_exceed_purchase(
+    db: AsyncSession,
+):
+    admin = User(
+        email="concurrent-refund-admin@example.com",
+        password_hash=get_password_hash("adminpass1"),
+        role="admin",
+    )
+    student = User(
+        email="concurrent-refund-student@example.com",
+        password_hash=get_password_hash("studentpass1"),
+        role="student",
+    )
+    course = Course(title="Concurrent Refund", price_self=5000, price_support=10000, is_published=True)
+    db.add_all([admin, student, course])
+    await db.flush()
+    purchase = Purchase(
+        user_id=student.id,
+        course_id=course.id,
+        tariff="self",
+        amount_kopecks=500000,
+        payment_id="concurrent-refund-payment",
+        payment_status="success",
+        paid_at=datetime.utcnow(),
+        expires_at=datetime.utcnow() + timedelta(days=30),
+    )
+    db.add(purchase)
+    await db.commit()
+
+    sessions = async_sessionmaker(bind=db.bind, class_=AsyncSession, expire_on_commit=False)
+
+    async def allocate(amount: int) -> str:
+        async with sessions() as worker_db:
+            try:
+                await RefundService.create_refund(
+                    worker_db,
+                    purchase_id=purchase.id,
+                    amount_kopecks=amount,
+                    reason="Concurrent allocation test",
+                    created_by_id=admin.id,
+                )
+                await worker_db.commit()
+                return "created"
+            except RefundError:
+                await worker_db.rollback()
+                return "rejected"
+
+    results = await asyncio.gather(allocate(300000), allocate(300000))
+
+    assert sorted(results) == ["created", "rejected"]

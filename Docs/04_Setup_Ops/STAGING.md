@@ -26,6 +26,7 @@ Staging — отдельное окружение без production-данных
 - Отдельные Telegram bot, owner chat и support group.
 - Отдельные Kinescope API token и DRM credentials; можно использовать копии видео без персональных данных.
 - `FRONTEND_URL`, `BACKEND_URL`, `CORS_ORIGINS`, `TRUSTED_HOSTS`, `COOKIE_DOMAIN` указывают только staging-домены.
+- `FORWARDED_ALLOW_IPS` содержит только подтверждённые CIDR/IP edge-proxy; wildcard `*` запрещён. Проверить, что поддельные `X-Forwarded-For`/`CF-Connecting-IP` не меняют ключ rate limit.
 - `NEXT_PUBLIC_YANDEX_METRIKA_ID` пустой либо отдельный тестовый счётчик.
 
 ## Порядок развёртывания

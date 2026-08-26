@@ -196,7 +196,7 @@ async def login(
         )
 
     if await MfaService.requires_mfa(db, user.id):
-        credential = await MfaService.get_credential(db, user.id)
+        credential = await MfaService.get_credential(db, user.id, for_update=True)
         if credential is None or credential.enabled_at is None:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -284,7 +284,12 @@ async def refresh_token_endpoint(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid refresh token",
             )
-        auth_session = await SessionService.get_active(db, parsed_session_id, user.id)
+        auth_session = await SessionService.get_active(
+            db,
+            parsed_session_id,
+            user.id,
+            for_update=True,
+        )
         if auth_session is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

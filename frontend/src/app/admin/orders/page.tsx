@@ -64,7 +64,9 @@ export default function AdminOrdersPage() {
         const providerReference = target === "processed" ? window.prompt("Укажите номер/ссылку операции в Prodamus") || undefined : undefined
         if (target === "processed" && !providerReference) return
         if (!window.confirm(`Перевести возврат в статус «${target}»?`)) return
-        await adminUpdateRefund(refund.id, { status: target, provider_reference: providerReference })
+        const reason = window.prompt("Укажите причину изменения статуса возврата")?.trim()
+        if (!reason || reason.length < 5) return
+        await adminUpdateRefund(refund.id, { status: target, provider_reference: providerReference, reason })
         toast.success("Статус возврата обновлён"); await load()
     }
 
