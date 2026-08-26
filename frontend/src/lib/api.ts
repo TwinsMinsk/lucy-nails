@@ -794,6 +794,300 @@ export const adminGetPurchases = async (): Promise<AdminPurchaseResponse[]> => {
     return apiFetch<AdminPurchaseResponse[]>("/admin/purchases");
 };
 
+// --- Operational CRM ---
+
+export interface AdminDashboardResponse {
+    total_students: number;
+    active_entitlements: number;
+    gross_revenue_kopecks: number;
+    refunded_kopecks: number;
+    net_revenue_kopecks: number;
+    pending_orders: number;
+    payment_errors: number;
+    notification_dead_letters: number;
+    expiring_entitlements_7d: number;
+}
+
+export interface PageResponse<T> {
+    items: T[];
+    total: number;
+    limit: number;
+    offset: number;
+}
+
+export interface AdminStudentListItem {
+    id: string;
+    email: string;
+    full_name?: string | null;
+    phone?: string | null;
+    role: string;
+    created_at: string;
+    active_entitlements: number;
+}
+
+export interface AdminEntitlement {
+    id: string;
+    user_id?: string;
+    user_email?: string;
+    course_id: string;
+    course_title: string;
+    source: string;
+    tariff: string;
+    status: string;
+    starts_at: string;
+    expires_at: string;
+    reason?: string | null;
+    revoked_at?: string | null;
+}
+
+export interface AdminStudentDetail {
+    id: string;
+    email: string;
+    full_name?: string | null;
+    phone?: string | null;
+    role: string;
+    created_at: string;
+    telegram_id?: number | null;
+    telegram_username?: string | null;
+    completed_lessons: number;
+    tracked_lessons: number;
+    last_activity_at?: string | null;
+    purchases: AdminPurchaseResponse[];
+    entitlements: AdminEntitlement[];
+    certificates: Array<{
+        id: string;
+        course_id: string;
+        certificate_number: string;
+        student_name: string;
+        issued_at: string;
+    }>;
+    notes: Array<{ id: string; author_id: string; body: string; created_at: string }>;
+    tags: string[];
+}
+
+export interface AdminOrder {
+    id: string;
+    customer_email: string;
+    customer_phone?: string | null;
+    course_id: string;
+    course_title: string;
+    tariff: string;
+    amount_kopecks: number;
+    currency: string;
+    access_days: number;
+    status: string;
+    purchase_id?: string | null;
+    paid_at?: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface AdminNotification {
+    id: string;
+    kind: string;
+    channel: string;
+    recipient: string;
+    status: string;
+    attempts: number;
+    max_attempts: number;
+    next_attempt_at: string;
+    sent_at?: string | null;
+    last_error?: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface AdminPaymentEvent {
+    id: string;
+    external_event_id?: string | null;
+    order_reference?: string | null;
+    order_id?: string | null;
+    purchase_id?: string | null;
+    event_type: string;
+    processing_status: string;
+    amount_kopecks?: number | null;
+    currency?: string | null;
+    error_code?: string | null;
+    error_detail?: string | null;
+    received_at: string;
+    processed_at?: string | null;
+}
+
+export interface AdminReconciliation {
+    stale_pending_orders: number;
+    processed_payment_errors: number;
+    successful_purchases_without_active_entitlement: number;
+    dead_letter_notifications: number;
+}
+
+export interface AdminRefund {
+    id: string;
+    purchase_id: string;
+    amount_kopecks: number;
+    reason: string;
+    status: "requested" | "submitted" | "processed" | "rejected";
+    provider_reference?: string | null;
+    note?: string | null;
+    created_by_id: string;
+    processed_by_id?: string | null;
+    processed_at?: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface AdminCapabilities {
+    roles: string[];
+    permissions: string[];
+}
+
+export interface AdminRole {
+    id: string;
+    name: string;
+    description: string;
+    permissions: string[];
+}
+
+export interface AdminTeamUser {
+    id: string;
+    email: string;
+    full_name?: string | null;
+    roles: string[];
+    mfa_enabled: boolean;
+    active_sessions: number;
+}
+
+export interface AdminAuditLog {
+    id: string;
+    actor_user_id?: string | null;
+    action: string;
+    object_type: string;
+    object_id?: string | null;
+    old_value?: Record<string, unknown> | null;
+    new_value?: Record<string, unknown> | null;
+    reason?: string | null;
+    correlation_id: string;
+    created_at: string;
+}
+
+export interface AdminSystemStatus {
+    checkout_enabled: boolean;
+    environment: string;
+    integrations: Record<string, boolean>;
+    outbox_pending: number;
+    outbox_dead_letter: number;
+    last_payment_event_at?: string | null;
+}
+
+export interface AdminCertificate {
+    id: string;
+    user_id: string;
+    student_email: string;
+    course_id: string;
+    course_title: string;
+    certificate_number: string;
+    student_name: string;
+    pdf_url?: string | null;
+    png_url?: string | null;
+    status: string;
+    revoke_reason?: string | null;
+    revoked_at?: string | null;
+    issued_at: string;
+}
+
+const queryString = (params: Record<string, string | number | boolean | undefined | null>) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+    });
+    const suffix = query.toString();
+    return suffix ? `?${suffix}` : "";
+};
+
+export const adminGetDashboard = () => apiFetch<AdminDashboardResponse>("/admin/dashboard");
+export const adminGetCapabilities = () => apiFetch<AdminCapabilities>("/admin/team/me");
+export const adminGetRoles = () => apiFetch<AdminRole[]>("/admin/team/roles");
+export const adminGetTeamUsers = () => apiFetch<AdminTeamUser[]>("/admin/team/users");
+export const adminUpdateTeamRoles = (userId: string, roles: string[], reason: string) =>
+    apiFetch<{ user_id: string; roles: string[] }>(`/admin/team/users/${userId}/roles`, {
+        method: "PUT",
+        body: JSON.stringify({ roles, reason }),
+    });
+export const adminGetAuditLogs = (params: { limit?: number; offset?: number; action?: string } = {}) =>
+    apiFetch<AdminAuditLog[]>(`/admin/audit-logs${queryString(params)}`);
+export const adminGetSystemStatus = () => apiFetch<AdminSystemStatus>("/admin/system/status");
+export const adminGetCertificates = (params: {
+    search?: string; status?: string; limit?: number; offset?: number;
+} = {}) => apiFetch<PageResponse<AdminCertificate>>(`/admin/certificates${queryString(params)}`);
+export const adminReissueCertificate = (certificateId: string, reason: string) =>
+    apiFetch<AdminCertificate>(`/admin/certificates/${certificateId}/reissue`, {
+        method: "POST", body: JSON.stringify({ reason }),
+    });
+export const adminRevokeCertificate = (certificateId: string, reason: string) =>
+    apiFetch<AdminCertificate>(`/admin/certificates/${certificateId}/revoke`, {
+        method: "POST", body: JSON.stringify({ reason }),
+    });
+
+export const adminGetStudents = (params: {
+    search?: string; active_access?: boolean; limit?: number; offset?: number;
+} = {}) => apiFetch<PageResponse<AdminStudentListItem>>(`/admin/students${queryString(params)}`);
+
+export const adminGetStudent = (userId: string) =>
+    apiFetch<AdminStudentDetail>(`/admin/students/${userId}`);
+
+export const adminCreateStudentNote = (userId: string, body: string) =>
+    apiFetch(`/admin/students/${userId}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ body }),
+    });
+
+export const adminUpdateStudentTags = (userId: string, tags: string[], reason: string) =>
+    apiFetch<string[]>(`/admin/students/${userId}/tags`, {
+        method: "PUT",
+        body: JSON.stringify({ tags, reason }),
+    });
+
+export const adminGetEntitlements = (params: {
+    search?: string; status?: string; expiring_days?: number; limit?: number; offset?: number;
+} = {}) => apiFetch<PageResponse<AdminEntitlement>>(`/admin/entitlements${queryString(params)}`);
+
+export const adminRevokeEntitlement = (entitlementId: string, reason: string) =>
+    apiFetch<{ message: string; entitlement_id: string; status: string }>("/admin/revoke-entitlement", {
+        method: "POST",
+        body: JSON.stringify({ entitlement_id: entitlementId, reason }),
+    });
+
+export const adminGetOrders = (params: {
+    search?: string; status?: string; limit?: number; offset?: number;
+} = {}) => apiFetch<PageResponse<AdminOrder>>(`/admin/orders${queryString(params)}`);
+
+export const adminGetNotifications = (params: {
+    status?: string; channel?: string; limit?: number; offset?: number;
+} = {}) => apiFetch<PageResponse<AdminNotification>>(`/admin/notifications${queryString(params)}`);
+
+export const adminRetryNotification = (messageId: string, reason: string) =>
+    apiFetch<AdminNotification>(`/admin/notifications/${messageId}/retry`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+    });
+
+export const adminGetPaymentEvents = (params: {
+    status?: string; limit?: number; offset?: number;
+} = {}) => apiFetch<PageResponse<AdminPaymentEvent>>(`/admin/payment-events${queryString(params)}`);
+
+export const adminGetReconciliation = () =>
+    apiFetch<AdminReconciliation>("/admin/reconciliation");
+
+export const adminGetRefunds = () => apiFetch<AdminRefund[]>("/admin/refunds");
+
+export const adminCreateRefund = (data: {
+    purchase_id: string; amount_kopecks: number; reason: string;
+}) => apiFetch<AdminRefund>("/admin/refunds", { method: "POST", body: JSON.stringify(data) });
+
+export const adminUpdateRefund = (
+    refundId: string,
+    data: { status: AdminRefund["status"]; provider_reference?: string; note?: string },
+) => apiFetch<AdminRefund>(`/admin/refunds/${refundId}`, { method: "PUT", body: JSON.stringify(data) });
+
 // --- File Upload ---
 
 export const adminUploadFile = uploadFile;

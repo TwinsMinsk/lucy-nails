@@ -1,310 +1,192 @@
 "use client"
 
-import { useEffect, useState } from "react";
-import { Loader2, Users as UsersIcon, Key } from "lucide-react";
-import { getUsers, getAllCourses, adminGrantAccess, UserResponse, AdminCourseResponse } from "@/lib/api";
-import { toast } from "sonner";
+import { FormEvent, useEffect, useState } from "react"
+import { KeyRound, Loader2, Search, UserRound } from "lucide-react"
+import { toast } from "sonner"
+
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+    adminCreateStudentNote,
+    adminGetCourses,
+    adminGetStudent,
+    adminGetStudents,
+    adminGrantAccess,
+    adminUpdateStudentTags,
+    AdminCourseFullResponse,
+    AdminStudentDetail,
+    AdminStudentListItem,
+} from "@/lib/api"
+
+const date = (value?: string | null) => value ? new Date(value).toLocaleString("ru-RU") : "—"
 
 export default function AdminUsersPage() {
-    const [users, setUsers] = useState<UserResponse[]>([]);
-    const [courses, setCourses] = useState<AdminCourseResponse[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const [selectedUser, setSelectedUser] = useState<UserResponse | null>(null);
-    const [selectedCourseId, setSelectedCourseId] = useState<string>("");
-    const [accessDays, setAccessDays] = useState(30);
-    const [grantReason, setGrantReason] = useState("");
-    const [isGranting, setIsGranting] = useState(false);
+    const [items, setItems] = useState<AdminStudentListItem[]>([])
+    const [total, setTotal] = useState(0)
+    const [search, setSearch] = useState("")
+    const [loading, setLoading] = useState(true)
+    const [selected, setSelected] = useState<AdminStudentDetail | null>(null)
+    const [courses, setCourses] = useState<AdminCourseFullResponse[]>([])
+    const [note, setNote] = useState("")
+    const [tags, setTags] = useState("")
+    const [tagReason, setTagReason] = useState("")
+    const [grantCourse, setGrantCourse] = useState("")
+    const [grantDays, setGrantDays] = useState(30)
+    const [grantReason, setGrantReason] = useState("")
+    const [saving, setSaving] = useState(false)
+
+    const load = async (query = search) => {
+        setLoading(true)
+        try {
+            const response = await adminGetStudents({ search: query, limit: 100 })
+            setItems(response.items)
+            setTotal(response.total)
+        } catch (error) {
+            toast.error("Не удалось загрузить учеников", { description: error instanceof Error ? error.message : undefined })
+        } finally {
+            setLoading(false)
+        }
+    }
 
     useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const [usersData, coursesData] = await Promise.all([
-                    getUsers(),
-                    getAllCourses(),
-                ]);
-                setUsers(usersData);
-                setCourses(coursesData);
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : "Ошибка загрузки данных";
-                toast.error("Ошибка", {
-                    description: errorMessage,
-                });
-            } finally {
-                setIsLoading(false);
-            }
-        };
+        void Promise.all([load(""), adminGetCourses().then(setCourses)])
+        // Initial load only; search is submitted explicitly.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
-        fetchData();
-    }, []);
-
-    const handleOpenDialog = (user: UserResponse) => {
-        setSelectedUser(user);
-        setSelectedCourseId("");
-        setAccessDays(30);
-        setGrantReason("");
-        setIsDialogOpen(true);
-    };
-
-    const handleGrantAccess = async () => {
-        if (!selectedUser || !selectedCourseId) {
-            toast.error("Ошибка", {
-                description: "Выберите курс"
-            });
-            return;
-        }
-        if (grantReason.trim().length < 5) {
-            toast.error("Ошибка", {
-                description: "Укажите причину выдачи доступа (минимум 5 символов)",
-            });
-            return;
-        }
-
-        setIsGranting(true);
-
+    const openStudent = async (id: string) => {
         try {
-            await adminGrantAccess(
-                selectedUser.id,
-                selectedCourseId,
-                "self",
-                grantReason.trim(),
-                accessDays,
-            );
-
-            toast.success("Доступ выдан!", {
-                description: `Пользователь ${selectedUser.email} получил доступ к курсу на ${accessDays} дней`
-            });
-
-            setIsDialogOpen(false);
+            const detail = await adminGetStudent(id)
+            setSelected(detail)
+            setTags(detail.tags.join(", "))
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : "Ошибка выдачи доступа";
-            toast.error("Ошибка", {
-                description: errorMessage
-            });
-        } finally {
-            setIsGranting(false);
+            toast.error("Не удалось открыть карточку", { description: error instanceof Error ? error.message : undefined })
         }
-    };
+    }
 
-    const formatDate = (dateString: string) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString("ru-RU", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-        });
-    };
+    const refreshSelected = async () => {
+        if (selected) setSelected(await adminGetStudent(selected.id))
+    }
+
+    const saveNote = async () => {
+        if (!selected || note.trim().length < 2) return
+        setSaving(true)
+        try {
+            await adminCreateStudentNote(selected.id, note.trim())
+            setNote("")
+            await refreshSelected()
+            toast.success("Заметка добавлена")
+        } finally { setSaving(false) }
+    }
+
+    const saveTags = async () => {
+        if (!selected || tagReason.trim().length < 5) return
+        setSaving(true)
+        try {
+            await adminUpdateStudentTags(selected.id, tags.split(",").map((item) => item.trim()).filter(Boolean), tagReason.trim())
+            setTagReason("")
+            await refreshSelected()
+            toast.success("Теги обновлены")
+        } finally { setSaving(false) }
+    }
+
+    const grant = async () => {
+        if (!selected || !grantCourse || grantReason.trim().length < 5) return
+        setSaving(true)
+        try {
+            await adminGrantAccess(selected.id, grantCourse, "self", grantReason.trim(), grantDays)
+            setGrantReason("")
+            await Promise.all([refreshSelected(), load()])
+            toast.success("Доступ выдан")
+        } finally { setSaving(false) }
+    }
+
+    const submitSearch = (event: FormEvent) => { event.preventDefault(); void load() }
 
     return (
-        <div className="container px-6 py-8 max-w-7xl">
-            <div className="space-y-6">
-                {/* Header */}
-                <div>
-                    <h1 className="text-3xl font-bold text-text-primary flex items-center gap-2">
-                        <UsersIcon className="w-8 h-8 text-primary" />
-                        Управление пользователями
-                    </h1>
-                    <p className="text-text-secondary mt-2">
-                        Просмотр и управление всеми зарегистрированными пользователями
-                    </p>
-                </div>
-
-                {/* Content */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Все пользователи</CardTitle>
-                        <CardDescription>
-                            Всего пользователей: {users.length}
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        {isLoading ? (
-                            <div className="flex items-center justify-center py-12">
-                                <div className="text-center space-y-3">
-                                    <Loader2 className="w-8 h-8 text-primary animate-spin mx-auto" />
-                                    <p className="text-text-secondary text-sm">Загрузка пользователей...</p>
-                                </div>
-                            </div>
-                        ) : users.length > 0 ? (
-                            <div className="rounded-md border">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead className="w-[100px]">ID</TableHead>
-                                            <TableHead>Email</TableHead>
-                                            <TableHead className="w-[120px]">Роль</TableHead>
-                                            <TableHead className="w-[180px]">Дата регистрации</TableHead>
-                                            <TableHead className="w-[100px] text-right">Действия</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {users.map((user) => (
-                                            <TableRow key={user.id}>
-                                                <TableCell className="font-mono text-xs text-text-secondary">
-                                                    {user.id.slice(0, 8)}...
-                                                </TableCell>
-                                                <TableCell className="font-medium">
-                                                    {user.email}
-                                                </TableCell>
-                                                <TableCell>
-                                                    <Badge
-                                                        variant={user.role === "admin" ? "default" : "secondary"}
-                                                    >
-                                                        {user.role === "admin" ? "Админ" : "Студент"}
-                                                    </Badge>
-                                                </TableCell>
-                                                <TableCell className="text-text-secondary text-sm">
-                                                    {formatDate(user.created_at)}
-                                                </TableCell>
-                                                <TableCell className="text-right">
-                                                    <Dialog open={isDialogOpen && selectedUser?.id === user.id} onOpenChange={(open) => {
-                                                        setIsDialogOpen(open);
-                                                        if (!open) setSelectedUser(null);
-                                                    }}>
-                                                        <DialogTrigger asChild>
-                                                            <Button
-                                                                variant="outline"
-                                                                size="sm"
-                                                                onClick={() => handleOpenDialog(user)}
-                                                                className="gap-2"
-                                                            >
-                                                                <Key className="w-4 h-4" />
-                                                                Доступ
-                                                            </Button>
-                                                        </DialogTrigger>
-                                                        <DialogContent>
-                                                            <DialogHeader>
-                                                                <DialogTitle>Выдать доступ к курсу</DialogTitle>
-                                                                <DialogDescription>
-                                                                    Пользователь: <span className="font-medium text-text-primary">{user.email}</span>
-                                                                </DialogDescription>
-                                                            </DialogHeader>
-
-                                                            <div className="space-y-4 py-4">
-                                                                <div className="space-y-2">
-                                                                    <label className="text-sm font-medium">
-                                                                        Выберите курс
-                                                                    </label>
-                                                                    <Select
-                                                                        value={selectedCourseId}
-                                                                        onValueChange={(courseId) => {
-                                                                            setSelectedCourseId(courseId);
-                                                                            const selected = courses.find((course) => course.id === courseId);
-                                                                            setAccessDays(selected?.access_days ?? 30);
-                                                                        }}
-                                                                    >
-                                                                        <SelectTrigger>
-                                                                            <SelectValue placeholder="Выберите курс..." />
-                                                                        </SelectTrigger>
-                                                                        <SelectContent>
-                                                                            {courses.map((course) => (
-                                                                                <SelectItem key={course.id} value={course.id}>
-                                                                                    {course.title}
-                                                                                </SelectItem>
-                                                                            ))}
-                                                                        </SelectContent>
-                                                                    </Select>
-                                                                </div>
-
-                                                                <div className="space-y-2">
-                                                                    <Label htmlFor="access-days">Срок доступа, дней</Label>
-                                                                    <Input
-                                                                        id="access-days"
-                                                                        type="number"
-                                                                        min={1}
-                                                                        max={3650}
-                                                                        value={accessDays}
-                                                                        onChange={(event) => setAccessDays(Math.max(1, Number(event.target.value) || 1))}
-                                                                    />
-                                                                </div>
-
-                                                                <div className="space-y-2">
-                                                                    <Label htmlFor="grant-reason">Причина выдачи</Label>
-                                                                    <Textarea
-                                                                        id="grant-reason"
-                                                                        value={grantReason}
-                                                                        onChange={(event) => setGrantReason(event.target.value)}
-                                                                        placeholder="Например: участник тестовой группы"
-                                                                        maxLength={1000}
-                                                                    />
-                                                                </div>
-
-                                                                <div className="text-sm text-text-secondary bg-primary/5 p-3 rounded-lg">
-                                                                    <p className="font-medium text-text-primary mb-1">Условия:</p>
-                                                                    <ul className="space-y-1 list-disc list-inside">
-                                                                        <li>Доступ: {accessDays} дней</li>
-                                                                        <li>Тариф: Self (самостоятельный)</li>
-                                                                        <li>Если доступ уже есть - срок будет продлён</li>
-                                                                    </ul>
-                                                                </div>
-                                                            </div>
-
-                                                            <DialogFooter>
-                                                                <Button
-                                                                    variant="outline"
-                                                                    onClick={() => setIsDialogOpen(false)}
-                                                                    disabled={isGranting}
-                                                                >
-                                                                    Отмена
-                                                                </Button>
-                                                                <Button
-                                                                    onClick={handleGrantAccess}
-                                                                    disabled={!selectedCourseId || grantReason.trim().length < 5 || isGranting}
-                                                                    className="gap-2"
-                                                                >
-                                                                    {isGranting && <Loader2 className="w-4 h-4 animate-spin" />}
-                                                                    Выдать доступ
-                                                                </Button>
-                                                            </DialogFooter>
-                                                        </DialogContent>
-                                                    </Dialog>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </div>
-                        ) : (
-                            <div className="text-center py-12 text-text-secondary">
-                                <UsersIcon className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                                <p>Пользователи не найдены</p>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+        <div className="container max-w-7xl space-y-6 px-4 py-8 md:px-6">
+            <div>
+                <h1 className="text-3xl font-bold">Ученики</h1>
+                <p className="mt-1 text-muted-foreground">Серверный поиск, доступы, прогресс, сертификаты, заметки и теги.</p>
             </div>
+            <Card>
+                <CardHeader className="gap-4 md:flex-row md:items-center md:justify-between">
+                    <CardTitle>{total} учеников</CardTitle>
+                    <form className="flex w-full gap-2 md:w-96" onSubmit={submitSearch}>
+                        <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Email, имя или телефон" />
+                        <Button type="submit" variant="outline"><Search className="h-4 w-4" /></Button>
+                    </form>
+                </CardHeader>
+                <CardContent>
+                    {loading ? <Loader2 className="mx-auto my-12 h-7 w-7 animate-spin" /> : (
+                        <div className="divide-y rounded-lg border">
+                            {items.map((user) => (
+                                <button key={user.id} onClick={() => openStudent(user.id)} className="flex w-full items-center gap-4 p-4 text-left hover:bg-muted/60">
+                                    <UserRound className="h-5 w-5 text-muted-foreground" />
+                                    <div className="min-w-0 flex-1">
+                                        <p className="truncate font-medium">{user.full_name || user.email}</p>
+                                        <p className="truncate text-sm text-muted-foreground">{user.email}{user.phone ? ` · ${user.phone}` : ""}</p>
+                                    </div>
+                                    <Badge variant={user.active_entitlements ? "default" : "secondary"}>{user.active_entitlements} доступов</Badge>
+                                    <span className="hidden text-xs text-muted-foreground sm:block">{date(user.created_at)}</span>
+                                </button>
+                            ))}
+                            {!items.length && <p className="p-10 text-center text-muted-foreground">Ничего не найдено</p>}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            <Dialog open={Boolean(selected)} onOpenChange={(open) => { if (!open) setSelected(null) }}>
+                <DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto">
+                    {selected && <>
+                        <DialogHeader>
+                            <DialogTitle>{selected.full_name || selected.email}</DialogTitle>
+                            <DialogDescription>{selected.email} · зарегистрирован {date(selected.created_at)}</DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-5 md:grid-cols-2">
+                            <section className="space-y-3 rounded-lg border p-4">
+                                <h3 className="font-semibold">Прогресс</h3>
+                                <p className="text-sm">Завершено уроков: <b>{selected.completed_lessons}</b> из {selected.tracked_lessons} начатых</p>
+                                <p className="text-sm text-muted-foreground">Последняя активность: {date(selected.last_activity_at)}</p>
+                                <h3 className="pt-2 font-semibold">Доступы</h3>
+                                {selected.entitlements.map((item) => <div key={item.id} className="rounded-md bg-muted p-3 text-sm">
+                                    <div className="flex justify-between"><b>{item.course_title}</b><Badge variant="outline">{item.status}</Badge></div>
+                                    <p className="mt-1 text-muted-foreground">до {date(item.expires_at)} · {item.source}</p>
+                                </div>)}
+                                {!selected.entitlements.length && <p className="text-sm text-muted-foreground">Доступов нет</p>}
+                            </section>
+                            <section className="space-y-3 rounded-lg border p-4">
+                                <h3 className="flex items-center gap-2 font-semibold"><KeyRound className="h-4 w-4" />Выдать доступ</h3>
+                                <Select value={grantCourse} onValueChange={setGrantCourse}><SelectTrigger><SelectValue placeholder="Выберите курс" /></SelectTrigger><SelectContent>{courses.map((course) => <SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>)}</SelectContent></Select>
+                                <div><Label>Дней</Label><Input type="number" min={1} max={3650} value={grantDays} onChange={(event) => setGrantDays(Number(event.target.value))} /></div>
+                                <Textarea value={grantReason} onChange={(event) => setGrantReason(event.target.value)} placeholder="Обязательная причина" />
+                                <Button className="w-full" disabled={saving || !grantCourse || grantReason.trim().length < 5} onClick={grant}>Выдать доступ</Button>
+                            </section>
+                            <section className="space-y-3 rounded-lg border p-4">
+                                <h3 className="font-semibold">Заметки</h3>
+                                <Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Внутренняя заметка о студенте" />
+                                <Button variant="outline" disabled={saving || note.trim().length < 2} onClick={saveNote}>Добавить заметку</Button>
+                                <div className="max-h-44 space-y-2 overflow-y-auto">{selected.notes.map((item) => <div key={item.id} className="rounded-md bg-muted p-2 text-sm"><p>{item.body}</p><p className="mt-1 text-xs text-muted-foreground">{date(item.created_at)}</p></div>)}</div>
+                            </section>
+                            <section className="space-y-3 rounded-lg border p-4">
+                                <h3 className="font-semibold">Теги</h3>
+                                <Input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="vip, needs-follow-up" />
+                                <Textarea value={tagReason} onChange={(event) => setTagReason(event.target.value)} placeholder="Причина изменения тегов" />
+                                <Button variant="outline" disabled={saving || tagReason.trim().length < 5} onClick={saveTags}>Сохранить теги</Button>
+                                <div className="flex flex-wrap gap-2">{selected.tags.map((tag) => <Badge key={tag} variant="secondary">{tag}</Badge>)}</div>
+                            </section>
+                        </div>
+                        <DialogFooter><Button variant="outline" onClick={() => setSelected(null)}>Закрыть</Button></DialogFooter>
+                    </>}
+                </DialogContent>
+            </Dialog>
         </div>
-    );
+    )
 }
