@@ -18,6 +18,7 @@ from app.models.refund import RefundRequest
 from app.models.rbac import Permission, Role, UserRoleAssignment
 from app.models.audit_log import AuditLog
 from app.models.auth_security import AuthSession, MfaCredential
+from app.models.crm import StudentNote, StudentTag, StudentTagAssignment
 
 __all__ = [
     "User",
@@ -40,4 +41,7 @@ __all__ = [
     "AuditLog",
     "AuthSession",
     "MfaCredential",
+    "StudentNote",
+    "StudentTag",
+    "StudentTagAssignment",
 ]
