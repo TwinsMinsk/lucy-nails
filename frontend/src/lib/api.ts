@@ -513,6 +513,29 @@ export interface AdminCourseResponse {
     access_days: number;
 }
 
+export interface VideoHealthItem {
+    lesson_id: string;
+    lesson_title: string;
+    module_title: string;
+    course_id: string;
+    course_title: string;
+    video_id?: string | null;
+    expected_duration_seconds: number;
+    provider_duration_seconds?: number | null;
+    provider_status?: string | null;
+    progress?: number | null;
+    privacy_type?: string | null;
+    status: "ready" | "missing_video_id" | "duration_mismatch" | "processing" | "provider_error";
+    detail?: string | null;
+}
+
+export interface VideoHealthResponse {
+    total: number;
+    ready: number;
+    problems: number;
+    items: VideoHealthItem[];
+}
+
 export interface GrantAccessRequest {
     user_id: string;
     course_id: string;
@@ -819,6 +842,13 @@ export const adminGetAnalytics = async (): Promise<AnalyticsResponse> => {
 
 export const adminGetPurchases = async (): Promise<AdminPurchaseResponse[]> => {
     return apiFetch<AdminPurchaseResponse[]>("/admin/purchases");
+};
+
+export const adminCheckVideoHealth = async (courseId?: string): Promise<VideoHealthResponse> => {
+    const query = courseId ? `?course_id=${encodeURIComponent(courseId)}` : "";
+    return apiFetch<VideoHealthResponse>(`/admin/content/video-health${query}`, {
+        method: "POST",
+    });
 };
 
 // --- Operational CRM ---

@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timedelta
 
 import pytest
+import httpx
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +17,7 @@ from app.models.module import Module
 from app.models.purchase import Purchase
 from app.models.user import User
 from app.services.kinescope_service import kinescope_service
+from app.services.kinescope_service import KinescopeService
 
 
 async def _seed_play(db: AsyncSession, *, with_purchase: bool, expired: bool = False) -> uuid.UUID:
@@ -141,3 +143,46 @@ async def test_kinescope_service_get_video_info():
     if kinescope_service.is_mock_mode:
         assert video_info["title"] == "Demo Video"
         assert video_info["duration"] == 600
+
+
+@pytest.mark.asyncio
+async def test_kinescope_service_parses_official_video_envelope(monkeypatch):
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, *_args, **_kwargs):
+            return httpx.Response(
+                200,
+                request=httpx.Request("GET", "https://api.kinescope.io/v1/videos/video-1"),
+                json={
+                    "data": {
+                        "id": "video-1",
+                        "title": "Production lesson",
+                        "status": "done",
+                        "progress": 100,
+                        "duration": 302.5,
+                        "privacy_type": "custom",
+                        "poster": {"original": "https://cdn.example/poster.jpg"},
+                    }
+                },
+            )
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: FakeClient())
+    service = KinescopeService()
+    service.api_key = "test-api-key"
+    service.is_mock_mode = False
+
+    info = await service.get_video_info("video-1")
+
+    assert info == {
+        "title": "Production lesson",
+        "status": "done",
+        "progress": 100,
+        "duration": 302.5,
+        "privacy_type": "custom",
+        "poster": "https://cdn.example/poster.jpg",
+    }

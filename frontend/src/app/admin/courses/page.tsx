@@ -3,15 +3,17 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Loader2, BookOpen, Plus, Pencil, Trash2, Eye, EyeOff, ChevronRight } from "lucide-react";
+import { Activity, Loader2, BookOpen, Plus, Pencil, Trash2, Eye, EyeOff, ChevronRight } from "lucide-react";
 import {
     adminGetCourses,
     adminCreateCourse,
     adminUpdateCourse,
     adminDeleteCourse,
     adminUploadFile,
+    adminCheckVideoHealth,
     AdminCourseFullResponse,
     CourseCreateRequest,
+    VideoHealthResponse,
 } from "@/lib/api";
 import { toast } from "sonner";
 import {
@@ -57,6 +59,8 @@ export default function AdminCoursesPage() {
     const [editingCourse, setEditingCourse] = useState<AdminCourseFullResponse | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
+    const [videoHealth, setVideoHealth] = useState<VideoHealthResponse | null>(null);
+    const [isCheckingVideos, setIsCheckingVideos] = useState(false);
 
     // Form state
     const [formData, setFormData] = useState<CourseCreateRequest>({
@@ -174,6 +178,20 @@ export default function AdminCoursesPage() {
         });
     };
 
+    const handleVideoHealth = async () => {
+        setIsCheckingVideos(true);
+        try {
+            const result = await adminCheckVideoHealth();
+            setVideoHealth(result);
+            if (result.problems === 0) toast.success("Все видео готовы к показу");
+            else toast.warning(`Найдено проблем: ${result.problems}`);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Не удалось проверить видео");
+        } finally {
+            setIsCheckingVideos(false);
+        }
+    };
+
     return (
         <div className="container px-6 py-8 max-w-7xl">
             <div className="space-y-6">
@@ -188,6 +206,18 @@ export default function AdminCoursesPage() {
                             Создание и редактирование курсов, модулей и уроков
                         </p>
                     </div>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className="gap-2"
+                        disabled={isCheckingVideos}
+                        onClick={handleVideoHealth}
+                    >
+                        {isCheckingVideos
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <Activity className="h-4 w-4" />}
+                        Проверить видео
+                    </Button>
                     <Dialog open={isDialogOpen} onOpenChange={(open) => {
                         setIsDialogOpen(open);
                         if (!open) resetForm();
@@ -348,6 +378,35 @@ export default function AdminCoursesPage() {
                         </DialogContent>
                     </Dialog>
                 </div>
+
+                {videoHealth && (
+                    <Card className={videoHealth.problems ? "border-amber-300" : "border-green-300"}>
+                        <CardHeader>
+                            <CardTitle className="flex items-center justify-between gap-3">
+                                <span>Готовность Kinescope</span>
+                                <Badge variant={videoHealth.problems ? "destructive" : "default"}>
+                                    {videoHealth.ready}/{videoHealth.total} готовы
+                                </Badge>
+                            </CardTitle>
+                            <CardDescription>
+                                Проверяются наличие ID, статус обработки у провайдера и расхождение длительности более 5%.
+                            </CardDescription>
+                        </CardHeader>
+                        {videoHealth.problems > 0 && (
+                            <CardContent className="space-y-2">
+                                {videoHealth.items.filter((item) => item.status !== "ready").map((item) => (
+                                    <div key={item.lesson_id} className="flex flex-col gap-1 rounded-lg border p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                                        <div>
+                                            <p className="font-medium">{item.lesson_title}</p>
+                                            <p className="text-muted-foreground">{item.course_title} · {item.module_title}</p>
+                                        </div>
+                                        <Badge variant="outline">{item.status}</Badge>
+                                    </div>
+                                ))}
+                            </CardContent>
+                        )}
+                    </Card>
+                )}
 
                 {/* Content */}
                 <Card>

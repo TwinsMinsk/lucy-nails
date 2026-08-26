@@ -69,12 +69,22 @@ class KinescopeService:
                     timeout=10.0,
                 )
                 response.raise_for_status()
-                data = response.json()
+                payload = response.json()
+                data = payload.get("data", payload)
+                poster = data.get("poster") or {}
 
                 return {
                     "title": data.get("title", "Untitled Video"),
                     "duration": data.get("duration", 0),
-                    "poster": data.get("poster", {}).get("url", ""),
+                    "status": data.get("status", "unknown"),
+                    "progress": data.get("progress", 0),
+                    "privacy_type": data.get("privacy_type"),
+                    "poster": (
+                        poster.get("url")
+                        or poster.get("original")
+                        or poster.get("md")
+                        or ""
+                    ),
                 }
 
         except httpx.HTTPError as e:
@@ -243,6 +253,9 @@ class KinescopeService:
             "title": self.MOCK_VIDEO_TITLE,
             "duration": self.MOCK_VIDEO_DURATION,
             "poster": self.MOCK_VIDEO_THUMBNAIL,
+            "status": "done",
+            "progress": 100,
+            "privacy_type": "custom",
         }
 
 
