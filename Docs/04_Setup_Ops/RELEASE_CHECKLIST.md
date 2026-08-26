@@ -10,13 +10,14 @@
 
 - [x] Ветка основана на `origin/master` с сертификатами.
 - [x] `ruff check backend/app backend/tests scripts/ops`.
-- [x] Полный pytest на PostgreSQL 15: 159 passed, 1 skipped.
+- [x] Полный pytest на PostgreSQL 15: 167 passed, 1 skipped.
 - [x] Alembic имеет одну head `4e9d0e1f2a3b`; latest downgrade/upgrade проходит.
 - [x] Frontend ESLint, Vitest, Next production build.
 - [x] Playwright: guest checkout, public/login и content-manager RBAC в Chromium + mobile WebKit (6 passed).
 - [x] `pip-audit --strict -r backend/requirements.lock`: нет известных уязвимостей.
 - [x] `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities.
 - [x] Git diff не содержит секретов, `.env`, backup dump, test result или тяжёлых media.
+- [x] Независимое четырёхпроходное code review: после `91b796b` нет открытых Critical/Important.
 - [ ] CI релизного PR зелёный. Evidence: ______
 - [ ] Code review релизного PR завершён. Evidence: ______
 
