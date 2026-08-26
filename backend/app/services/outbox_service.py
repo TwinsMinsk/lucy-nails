@@ -48,6 +48,15 @@ async def deliver_outbox_message(message: OutboxMessage) -> None:
             message.payload["course_title"],
         )
         return
+    if message.kind == "certificate_reissue":
+        await EmailService.send_certificate_link(
+            message.recipient,
+            message.payload["student_name"],
+            message.payload["course_title"],
+            message.payload["certificate_number"],
+            message.payload["verify_url"],
+        )
+        return
     raise ValueError(f"Unsupported outbox kind: {message.kind}")
 
 
@@ -98,7 +107,9 @@ async def process_outbox_batch(
                     error=error,
                 )
             )
-            message.status = "dead" if message.attempts >= message.max_attempts else "retry"
+            message.status = (
+                "dead_letter" if message.attempts >= message.max_attempts else "retry"
+            )
             message.last_error = error
             message.locked_at = None
             message.next_attempt_at = datetime.utcnow() + timedelta(

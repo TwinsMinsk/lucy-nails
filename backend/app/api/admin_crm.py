@@ -9,6 +9,7 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.core.dependencies import require_permission
 from app.models.certificate import Certificate
 from app.models.course import Course
@@ -37,6 +38,15 @@ class DashboardResponse(BaseModel):
     payment_errors: int
     notification_dead_letters: int
     expiring_entitlements_7d: int
+
+
+class SystemStatusResponse(BaseModel):
+    checkout_enabled: bool
+    environment: str
+    integrations: dict[str, bool]
+    outbox_pending: int
+    outbox_dead_letter: int
+    last_payment_event_at: datetime | None
 
 
 class StudentListItem(BaseModel):
@@ -141,6 +151,28 @@ class OrderListItem(BaseModel):
     paid_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class EntitlementListItem(BaseModel):
+    id: UUID
+    user_id: UUID
+    user_email: str
+    course_id: UUID
+    course_title: str
+    source: str
+    tariff: str
+    status: str
+    starts_at: datetime
+    expires_at: datetime
+    reason: str | None
+    revoked_at: datetime | None
+
+
+class EntitlementPage(BaseModel):
+    items: list[EntitlementListItem]
+    total: int
+    limit: int
+    offset: int
 
 
 class OrderPage(BaseModel):
@@ -259,6 +291,36 @@ async def dashboard(
         payment_errors=int(payment_errors or 0),
         notification_dead_letters=int(dead_letters or 0),
         expiring_entitlements_7d=int(expiring or 0),
+    )
+
+
+@router.get("/system/status", response_model=SystemStatusResponse)
+async def system_status(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_permission("audit.read")),
+):
+    pending = await db.scalar(
+        select(func.count(OutboxMessage.id)).where(OutboxMessage.status == "pending")
+    )
+    dead = await db.scalar(
+        select(func.count(OutboxMessage.id)).where(OutboxMessage.status == "dead_letter")
+    )
+    last_payment = await db.scalar(select(func.max(PaymentEvent.received_at)))
+    return SystemStatusResponse(
+        checkout_enabled=settings.CHECKOUT_ENABLED,
+        environment=settings.ENVIRONMENT,
+        integrations={
+            "prodamus": bool(settings.PRODAMUS_URL and settings.PRODAMUS_SECRET_KEY),
+            "kinescope": bool(settings.KINESCOPE_API_KEY),
+            "email": bool(
+                settings.RESEND_API_KEY or (settings.SMTP_USER and settings.SMTP_PASSWORD)
+            ),
+            "telegram": bool(settings.TELEGRAM_BOT_TOKEN),
+            "redis": bool(settings.REDIS_URL),
+        },
+        outbox_pending=int(pending or 0),
+        outbox_dead_letter=int(dead or 0),
+        last_payment_event_at=last_payment,
     )
 
 
@@ -514,6 +576,66 @@ async def update_student_tags(
     )
     await db.commit()
     return normalized
+
+
+@router.get("/entitlements", response_model=EntitlementPage)
+async def list_entitlements(
+    search: str | None = Query(default=None, max_length=255),
+    status_filter: str | None = Query(default=None, alias="status", max_length=32),
+    expiring_days: int | None = Query(default=None, ge=1, le=3650),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_permission("users.read")),
+):
+    conditions = []
+    if search:
+        conditions.append(User.email.ilike(f"%{search.strip()}%"))
+    if status_filter:
+        conditions.append(Entitlement.status == status_filter)
+    if expiring_days:
+        now = datetime.utcnow()
+        conditions.extend(
+            [Entitlement.expires_at > now, Entitlement.expires_at <= now + timedelta(days=expiring_days)]
+        )
+    total = await db.scalar(
+        select(func.count(Entitlement.id))
+        .join(User, User.id == Entitlement.user_id)
+        .where(*conditions)
+    )
+    rows = (
+        await db.execute(
+            select(Entitlement, User.email, Course.title)
+            .join(User, User.id == Entitlement.user_id)
+            .join(Course, Course.id == Entitlement.course_id)
+            .where(*conditions)
+            .order_by(Entitlement.expires_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+    ).all()
+    return EntitlementPage(
+        items=[
+            EntitlementListItem(
+                id=item.id,
+                user_id=item.user_id,
+                user_email=email,
+                course_id=item.course_id,
+                course_title=course_title,
+                source=item.source,
+                tariff=item.tariff,
+                status=item.status,
+                starts_at=item.starts_at,
+                expires_at=item.expires_at,
+                reason=item.reason,
+                revoked_at=item.revoked_at,
+            )
+            for item, email, course_title in rows
+        ],
+        total=int(total or 0),
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/orders", response_model=OrderPage)

@@ -59,6 +59,10 @@ async def test_analyst_is_read_only(client: AsyncClient, db: AsyncSession):
 
     analytics = await client.get("/api/admin/analytics", headers=headers)
     assert analytics.status_code == 200, analytics.text
+    capabilities = await client.get("/api/admin/team/me", headers=headers)
+    assert capabilities.status_code == 200, capabilities.text
+    assert capabilities.json()["roles"] == ["analyst"]
+    assert capabilities.json()["permissions"] == ["analytics.read"]
 
     grant = await client.post(
         "/api/admin/grant-access",
@@ -143,6 +147,11 @@ async def test_cannot_remove_last_owner(client: AsyncClient, db: AsyncSession):
     )
     token = AuthService.create_tokens(owner.id, owner.token_version).access_token
     headers = {"Authorization": f"Bearer {token}"}
+
+    team = await client.get("/api/admin/team/users", headers=headers)
+    assert team.status_code == 200, team.text
+    assert team.json()[0]["email"] == owner.email
+    assert team.json()[0]["roles"] == ["owner"]
 
     response = await client.put(
         f"/api/admin/team/users/{owner.id}/roles",

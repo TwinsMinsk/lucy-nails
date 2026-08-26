@@ -285,6 +285,20 @@ class EmailService:
         await EmailService._send(email, "Сброс пароля — Lucy Nails Academy", html)
 
     @staticmethod
+    async def send_certificate_link(
+        email: str,
+        student_name: str,
+        course_title: str,
+        certificate_number: str,
+        verify_url: str,
+    ) -> None:
+        """Re-send an existing certificate link through the durable outbox."""
+        html = EmailService._build_certificate_html(
+            student_name, course_title, certificate_number, verify_url
+        )
+        await EmailService._send(email, "Ваш сертификат — Lucy Nails Academy", html)
+
+    @staticmethod
     def _build_certificate_html(
         student_name: str, course_title: str, certificate_number: str, verify_url: str
     ) -> str:

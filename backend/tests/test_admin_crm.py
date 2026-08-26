@@ -66,6 +66,18 @@ async def test_dashboard_and_paginated_student_search(
     assert dashboard.status_code == 200, dashboard.text
     assert dashboard.json()["active_entitlements"] == 1
     assert dashboard.json()["total_students"] == 2
+    system_status = await client.get("/api/admin/system/status", headers=headers)
+    assert system_status.status_code == 200, system_status.text
+    assert isinstance(system_status.json()["checkout_enabled"], bool)
+    assert "prodamus" in system_status.json()["integrations"]
+
+    entitlements = await client.get(
+        "/api/admin/entitlements?status=active&search=anna",
+        headers=headers,
+    )
+    assert entitlements.status_code == 200, entitlements.text
+    assert entitlements.json()["total"] == 1
+    assert entitlements.json()["items"][0]["user_email"] == anna.email
 
     students = await client.get(
         "/api/admin/students?search=anna&limit=1&offset=0",

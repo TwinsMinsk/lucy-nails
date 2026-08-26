@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import get_password_hash
 from app.models.rbac import Permission, Role, UserRoleAssignment
 from app.models.user import User
+from app.services.auth_service import AuthService
 
 
 async def _owner(db: AsyncSession) -> User:
@@ -133,3 +134,34 @@ async def test_user_can_list_and_revoke_active_session(
     assert revoked.status_code == 204
     rejected = await client.get("/api/auth/me", headers=headers)
     assert rejected.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_owner_can_force_logout_team_session(client: AsyncClient, db: AsyncSession):
+    owner = await _owner(db)
+    student = User(
+        email="forced-logout@example.com",
+        password_hash=get_password_hash("studentpass1"),
+        role="student",
+    )
+    db.add(student)
+    await db.commit()
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": student.email, "password": "studentpass1"},
+    )
+    student_token = login.json()["access_token"]
+    client.cookies.clear()
+    student_headers = {"Authorization": f"Bearer {student_token}"}
+    sessions = await client.get("/api/auth/sessions", headers=student_headers)
+    session_id = sessions.json()[0]["id"]
+
+    owner_token = AuthService.create_tokens(owner.id, owner.token_version).access_token
+    response = await client.request(
+        "DELETE",
+        f"/api/admin/team/users/{student.id}/sessions/{session_id}",
+        json={"reason": "Security incident investigation"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert response.status_code == 204, response.text
+    assert (await client.get("/api/auth/me", headers=student_headers)).status_code == 401
