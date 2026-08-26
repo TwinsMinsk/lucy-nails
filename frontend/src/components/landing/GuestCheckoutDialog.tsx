@@ -16,6 +16,8 @@ import { Label } from "@/components/ui/label";
 import { getGuestPaymentLink } from "@/lib/api";
 import { CheckCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { captureCheckoutAttribution } from "@/lib/attribution";
+import { sendYandexGoal } from "@/lib/analytics-client";
 
 interface GuestCheckoutDialogProps {
   open: boolean;
@@ -50,8 +52,10 @@ export function GuestCheckoutDialog({
         tariff,
         customer_email: trimmed,
         customer_phone: phone.trim() || undefined,
+        attribution: captureCheckoutAttribution(),
       });
       if (data.url) {
+        sendYandexGoal("checkout");
         window.location.href = data.url;
       } else {
         toast.error("Не удалось получить ссылку на оплату");

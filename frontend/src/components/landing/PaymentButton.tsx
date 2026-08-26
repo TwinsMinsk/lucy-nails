@@ -6,6 +6,8 @@ import { Loader2 } from "lucide-react";
 import { getMe, getPaymentLink, isAuthError } from "@/lib/api";
 import { toast } from "sonner";
 import { GuestCheckoutDialog } from "@/components/landing/GuestCheckoutDialog";
+import { captureCheckoutAttribution } from "@/lib/attribution";
+import { sendYandexGoal, trackPublicEvent } from "@/lib/analytics-client";
 
 interface PaymentButtonProps {
   /** UUID курса с API или `"default"` — первый опубликованный курс на бэкенде */
@@ -27,6 +29,7 @@ export function PaymentButton({ courseId, tariff, children, className }: Payment
   const effectiveCourseId = resolveCourseIdForCheckout(courseId);
 
   const handlePayment = async () => {
+    void trackPublicEvent("cta_click", { tariff, location: "pricing" }, effectiveCourseId);
     const hasSession = typeof document !== "undefined" && document.cookie.includes("auth_session=1");
 
     if (!hasSession) {
@@ -45,9 +48,11 @@ export function PaymentButton({ courseId, tariff, children, className }: Payment
         course_id: effectiveCourseId,
         tariff,
         customer_email: user.email,
+        attribution: captureCheckoutAttribution(),
       });
 
       if (data.url) {
+        sendYandexGoal("checkout");
         window.location.href = data.url;
       } else {
         toast.error("Ошибка при генерации ссылки", {

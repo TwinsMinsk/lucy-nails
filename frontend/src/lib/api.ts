@@ -2,6 +2,7 @@
  * API Client для взаимодействия с Backend
  */
 import { getPublicApiUrl } from "@/lib/env";
+import type { CheckoutAttribution } from "@/lib/attribution";
 
 const getBaseUrl = () => {
     return getPublicApiUrl();
@@ -994,6 +995,74 @@ export interface AdminCertificate {
     issued_at: string;
 }
 
+export interface ReportOverview {
+    date_from: string;
+    date_to: string;
+    gross_revenue_kopecks: number;
+    refunded_kopecks: number;
+    net_revenue_kopecks: number;
+    paid_orders: number;
+    pending_orders: number;
+    new_students: number;
+}
+
+export interface ReportTimeseriesPoint {
+    date: string;
+    orders: number;
+    gross_revenue_kopecks: number;
+    refunded_kopecks: number;
+    net_revenue_kopecks: number;
+}
+
+export interface ReportFunnelStage {
+    event_name: string;
+    label: string;
+    count: number;
+    conversion_from_previous_pct?: number | null;
+}
+
+export interface ReportSource {
+    source: string;
+    orders: number;
+    paid_orders: number;
+    gross_revenue_kopecks: number;
+    conversion_pct: number;
+}
+
+export interface ReportTariff {
+    tariff: string;
+    paid_orders: number;
+    gross_revenue_kopecks: number;
+}
+
+export interface ReportCohort {
+    cohort: string;
+    students: number;
+    purchasers: number;
+    certified_students: number;
+}
+
+export interface ReportProgress {
+    active_students: number;
+    completed_lessons: number;
+    certificates_issued: number;
+}
+
+export interface ReportRefund {
+    status: string;
+    requests: number;
+    amount_kopecks: number;
+}
+
+export interface ReportDelivery {
+    total: number;
+    sent: number;
+    pending: number;
+    retry: number;
+    dead_letter: number;
+    success_rate_pct: number;
+}
+
 const queryString = (params: Record<string, string | number | boolean | undefined | null>) => {
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
@@ -1026,6 +1095,27 @@ export const adminRevokeCertificate = (certificateId: string, reason: string) =>
     apiFetch<AdminCertificate>(`/admin/certificates/${certificateId}/revoke`, {
         method: "POST", body: JSON.stringify({ reason }),
     });
+
+export const adminGetReportOverview = (params: { date_from?: string; date_to?: string } = {}) =>
+    apiFetch<ReportOverview>(`/admin/reports/overview${queryString(params)}`);
+export const adminGetReportTimeseries = (params: { date_from?: string; date_to?: string } = {}) =>
+    apiFetch<ReportTimeseriesPoint[]>(`/admin/reports/timeseries${queryString(params)}`);
+export const adminGetReportFunnel = (params: { date_from?: string; date_to?: string } = {}) =>
+    apiFetch<{ stages: ReportFunnelStage[] }>(`/admin/reports/funnel${queryString(params)}`);
+export const adminGetReportSources = (params: { date_from?: string; date_to?: string } = {}) =>
+    apiFetch<ReportSource[]>(`/admin/reports/sources${queryString(params)}`);
+export const adminGetReportTariffs = (params: { date_from?: string; date_to?: string } = {}) =>
+    apiFetch<ReportTariff[]>(`/admin/reports/tariffs${queryString(params)}`);
+export const adminGetReportCohorts = (params: { date_from?: string; date_to?: string } = {}) =>
+    apiFetch<ReportCohort[]>(`/admin/reports/cohorts${queryString(params)}`);
+export const adminGetReportProgress = (params: { date_from?: string; date_to?: string } = {}) =>
+    apiFetch<ReportProgress>(`/admin/reports/progress${queryString(params)}`);
+export const adminGetReportRefunds = (params: { date_from?: string; date_to?: string } = {}) =>
+    apiFetch<ReportRefund[]>(`/admin/reports/refunds${queryString(params)}`);
+export const adminGetReportDelivery = (params: { date_from?: string; date_to?: string } = {}) =>
+    apiFetch<ReportDelivery>(`/admin/reports/delivery${queryString(params)}`);
+export const adminReportSourcesCsvUrl = (params: { date_from?: string; date_to?: string } = {}) =>
+    `${API_BASE_URL}/admin/reports/sources${queryString({ ...params, format: "csv" })}`;
 
 export const adminGetStudents = (params: {
     search?: string; active_access?: boolean; limit?: number; offset?: number;
@@ -1256,10 +1346,13 @@ export interface PaymentLinkRequest {
     tariff: "self" | "support";
     customer_email?: string;
     customer_phone?: string;
+    attribution?: CheckoutAttribution;
 }
 
 export interface PaymentLinkResponse {
     url: string;
+    order_id: string;
+    status_token: string;
 }
 
 /**
@@ -1277,7 +1370,29 @@ export interface GuestPaymentLinkRequest {
     tariff: "self" | "support";
     customer_email: string;
     customer_phone?: string;
+    attribution?: CheckoutAttribution;
 }
+
+export interface PublicAnalyticsEvent {
+    event_id: string;
+    event_name: "landing_view" | "cta_click";
+    source: "web";
+    happened_at?: string;
+    anonymous_id: string;
+    course_id?: string;
+    utm_source?: string;
+    utm_medium?: string;
+    utm_campaign?: string;
+    utm_content?: string;
+    utm_term?: string;
+    properties?: Record<string, string | number | boolean | null>;
+}
+
+export const postAnalyticsEvent = (event: PublicAnalyticsEvent) =>
+    apiFetch<{ accepted: boolean; duplicate: boolean }>("/analytics/events", {
+        method: "POST",
+        body: JSON.stringify(event),
+    });
 
 /**
  * Ссылка на оплату без регистрации (email в форме; после оплаты придёт пароль на почту).

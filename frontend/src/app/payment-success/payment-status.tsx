@@ -7,6 +7,7 @@ import { AlertCircle, ArrowRight, CheckCircle, Clock3, Loader2, Sparkles } from 
 
 import { Button } from "@/components/ui/button";
 import { getPublicApiUrl } from "@/lib/env";
+import { sendYandexGoal } from "@/lib/analytics-client";
 
 type PaymentState = "checking" | "pending" | "paid" | "help";
 
@@ -57,6 +58,7 @@ export function PaymentStatus() {
         const result = (await response.json()) as { status: string };
         if (result.status === "paid") {
           setState("paid");
+          sendYandexGoal("purchase");
           window.history.replaceState({}, "", "/payment-success");
           return;
         }
