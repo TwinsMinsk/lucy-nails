@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import require_admin
+from app.core.dependencies import require_permission
 from app.models.refund import RefundRequest
 from app.models.user import User
 from app.services.refund_service import RefundError, RefundService
@@ -56,7 +56,7 @@ def _refund_http_error(error: RefundError) -> HTTPException:
 @router.get("/refunds", response_model=list[RefundResponse])
 async def list_refunds(
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_permission("refunds.manage")),
 ):
     return await RefundService.list_refunds(db)
 
@@ -65,7 +65,7 @@ async def list_refunds(
 async def create_refund(
     data: RefundCreate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_permission("refunds.manage")),
 ):
     try:
         refund = await RefundService.create_refund(
@@ -87,7 +87,7 @@ async def update_refund(
     refund_id: UUID,
     data: RefundUpdate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_permission("refunds.manage")),
 ):
     refund = await db.get(RefundRequest, refund_id)
     if refund is None:

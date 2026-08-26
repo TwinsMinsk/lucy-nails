@@ -45,6 +45,11 @@ class User(Base):
         cascade="all, delete-orphan",
         foreign_keys="Entitlement.user_id",
     )
+    role_assignments: Mapped[list["UserRoleAssignment"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        foreign_keys="UserRoleAssignment.user_id",
+    )
     
     def __repr__(self) -> str:
         return f"<User {self.email} ({self.role})>"

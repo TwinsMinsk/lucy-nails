@@ -6,14 +6,14 @@ from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.core.dependencies import require_admin
+from app.core.dependencies import require_permission
 from app.models.user import User
 from app.models.course import Course
 from app.models.module import Module
@@ -22,6 +22,7 @@ from app.models.purchase import Purchase
 from app.models.entitlement import Entitlement
 from app.schemas.auth import UserResponse
 from app.services.access_service import AccessService
+from app.services.audit_service import append_audit_log
 
 
 router = APIRouter()
@@ -240,7 +241,7 @@ class AdminPurchaseResponse(BaseModel):
 @router.get("/users", response_model=list[UserResponse])
 async def get_all_users(
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("users.read"))
 ):
     """Получить список всех пользователей."""
     query = select(User).order_by(User.created_at.desc())
@@ -255,7 +256,7 @@ async def get_all_users(
 @router.get("/courses", response_model=list[CourseResponse])
 async def get_all_courses(
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Получить список всех курсов с количеством модулей и уроков."""
     query = select(Course).options(
@@ -291,7 +292,7 @@ async def get_all_courses(
 async def create_course(
     data: CourseCreateRequest,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Создать новый курс."""
     new_course = Course(
@@ -329,7 +330,7 @@ async def create_course(
 async def get_course(
     course_id: UUID,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Получить курс по ID."""
     query = select(Course).where(Course.id == course_id).options(
@@ -364,7 +365,7 @@ async def update_course(
     course_id: UUID,
     data: CourseUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Обновить курс."""
     query = select(Course).where(Course.id == course_id).options(
@@ -406,7 +407,7 @@ async def update_course(
 async def delete_course(
     course_id: UUID,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Удалить курс."""
     query = select(Course).where(Course.id == course_id)
@@ -428,7 +429,7 @@ async def delete_course(
 async def get_course_modules(
     course_id: UUID,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Получить все модули курса."""
     query = select(Module).where(Module.course_id == course_id).options(
@@ -460,7 +461,7 @@ async def get_course_modules(
 async def create_module(
     data: ModuleCreateRequest,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Создать новый модуль."""
     # Проверяем существование курса
@@ -503,7 +504,7 @@ async def update_module(
     module_id: UUID,
     data: ModuleUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Обновить модуль."""
     query = select(Module).where(Module.id == module_id).options(selectinload(Module.lessons))
@@ -539,7 +540,7 @@ async def update_module(
 async def delete_module(
     module_id: UUID,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Удалить модуль."""
     query = select(Module).where(Module.id == module_id)
@@ -561,7 +562,7 @@ async def delete_module(
 async def create_lesson(
     data: LessonCreateRequest,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Создать новый урок."""
     # Проверяем существование модуля
@@ -600,7 +601,7 @@ async def create_lesson(
 async def get_lesson_admin(
     lesson_id: UUID,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Получить детали урока."""
     query = select(Lesson).where(Lesson.id == lesson_id)
@@ -618,7 +619,7 @@ async def update_lesson(
     lesson_id: UUID,
     data: LessonUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Обновить урок."""
     query = select(Lesson).where(Lesson.id == lesson_id)
@@ -642,7 +643,7 @@ async def update_lesson(
 async def delete_lesson(
     lesson_id: UUID,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Удалить урок."""
     query = select(Lesson).where(Lesson.id == lesson_id)
@@ -663,7 +664,7 @@ async def delete_lesson(
 @router.get("/purchases", response_model=list[AdminPurchaseResponse])
 async def get_all_purchases(
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_permission("commerce.read")),
 ):
     """Получить последние покупки для админ-панели."""
     query = (
@@ -699,7 +700,7 @@ async def get_all_purchases(
 @router.get("/analytics", response_model=AnalyticsResponse)
 async def get_analytics(
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("analytics.read"))
 ):
     """Получить общую аналитику."""
     thirty_days_ago = datetime.utcnow() - timedelta(days=30)
@@ -757,8 +758,9 @@ async def get_analytics(
 @router.post("/grant-access", response_model=GrantAccessResponse)
 async def grant_course_access(
     data: GrantAccessRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("access.manage"))
 ):
     """Выдать доступ к курсу пользователю."""
     # Проверяем существование пользователя
@@ -787,6 +789,22 @@ async def grant_course_access(
         granted_by_id=admin.id,
         reason=data.reason,
     )
+    append_audit_log(
+        db,
+        actor_user_id=admin.id,
+        action="entitlement.grant",
+        object_type="entitlement",
+        object_id=str(entitlement.id),
+        reason=data.reason,
+        correlation_id=request.state.correlation_id,
+        new_value={
+            "user_id": str(data.user_id),
+            "course_id": str(data.course_id),
+            "tariff": data.tariff,
+            "access_days": data.access_days or course.access_days,
+            "expires_at": entitlement.expires_at.isoformat(),
+        },
+    )
     await db.commit()
     await db.refresh(entitlement)
 
@@ -800,13 +818,26 @@ async def grant_course_access(
 @router.post("/revoke-entitlement", response_model=RevokeEntitlementResponse)
 async def revoke_entitlement(
     data: RevokeEntitlementRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_permission("access.manage")),
 ):
     entitlement = await db.get(Entitlement, data.entitlement_id)
     if entitlement is None:
         raise HTTPException(status_code=404, detail="Entitlement not found")
+    old_value = {"status": entitlement.status, "expires_at": entitlement.expires_at.isoformat()}
     await AccessService.revoke_entitlement(db, entitlement, reason=data.reason)
+    append_audit_log(
+        db,
+        actor_user_id=admin.id,
+        action="entitlement.revoke",
+        object_type="entitlement",
+        object_id=str(entitlement.id),
+        reason=data.reason,
+        correlation_id=request.state.correlation_id,
+        old_value=old_value,
+        new_value={"status": entitlement.status},
+    )
     await db.commit()
     await db.refresh(entitlement)
     return RevokeEntitlementResponse(
@@ -820,7 +851,7 @@ async def revoke_entitlement(
 async def revoke_course_access(
     data: RevokeAccessRequest,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_permission("refunds.manage")),
 ):
     """Отозвать доступ по покупке (возврат/chargeback).
 

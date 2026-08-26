@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import require_admin
+from app.core.dependencies import require_permission
 from app.models.course import Course
 from app.models.gallery import GalleryItem
 from app.models.module import Module
@@ -35,7 +35,7 @@ router = APIRouter()
 async def get_course_landing_hero(
     course_id: UUID,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_permission("content.manage")),
 ) -> LandingHeroResponse:
     course = await db.get(Course, course_id)
     if not course:
@@ -48,7 +48,7 @@ async def update_course_landing_hero(
     course_id: UUID,
     data: LandingHeroUpdate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_permission("content.manage")),
 ) -> LandingHeroResponse:
     course = await db.get(Course, course_id)
     if not course:
@@ -75,7 +75,7 @@ async def update_course_landing_hero(
 async def list_course_landing_modules(
     course_id: UUID,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_permission("content.manage")),
 ) -> list[LandingModuleResponse]:
     result = await db.execute(
         select(Module).where(Module.course_id == course_id).order_by(Module.order_index)
@@ -89,7 +89,7 @@ async def update_module_landing(
     module_id: UUID,
     data: LandingModuleUpdate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_permission("content.manage")),
 ) -> LandingModuleResponse:
     module = await db.get(Module, module_id)
     if not module:
@@ -109,7 +109,7 @@ async def update_module_landing(
 @router.get("/gallery", response_model=list[GalleryItemResponse])
 async def list_gallery(
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_permission("content.manage")),
 ) -> list[GalleryItemResponse]:
     result = await db.execute(
         select(GalleryItem).order_by(GalleryItem.order_index, GalleryItem.created_at)
@@ -121,7 +121,7 @@ async def list_gallery(
 async def create_gallery_item(
     data: GalleryItemCreate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_permission("content.manage")),
 ) -> GalleryItemResponse:
     item = GalleryItem(id=uuid4(), **data.model_dump())
     db.add(item)
@@ -134,7 +134,7 @@ async def create_gallery_item(
 async def reorder_gallery(
     items: list[GalleryReorderItem],
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_permission("content.manage")),
 ) -> list[GalleryItemResponse]:
     if not items:
         return []
@@ -162,7 +162,7 @@ async def update_gallery_item(
     item_id: UUID,
     data: GalleryItemUpdate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_permission("content.manage")),
 ) -> GalleryItemResponse:
     item = await db.get(GalleryItem, item_id)
     if not item:
@@ -178,7 +178,7 @@ async def update_gallery_item(
 async def delete_gallery_item(
     item_id: UUID,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_permission("content.manage")),
 ) -> None:
     item = await db.get(GalleryItem, item_id)
     if not item:

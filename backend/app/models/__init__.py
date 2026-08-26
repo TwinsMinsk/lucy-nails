@@ -15,6 +15,8 @@ from app.models.outbox import DeliveryAttempt, OutboxMessage
 from app.models.entitlement import Entitlement
 from app.models.payment_event import PaymentEvent
 from app.models.refund import RefundRequest
+from app.models.rbac import Permission, Role, UserRoleAssignment
+from app.models.audit_log import AuditLog
 
 __all__ = [
     "User",
@@ -31,4 +33,8 @@ __all__ = [
     "Entitlement",
     "PaymentEvent",
     "RefundRequest",
+    "Permission",
+    "Role",
+    "UserRoleAssignment",
+    "AuditLog",
 ]

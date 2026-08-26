@@ -2,7 +2,7 @@
 FastAPI Dependencies для аутентификации и авторизации.
 """
 
-from typing import Annotated
+from typing import Annotated, Callable
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
@@ -90,6 +90,45 @@ async def require_admin(
             detail="Admin access required"
         )
     return current_user
+
+
+def require_permission(permission_name: str) -> Callable:
+    """Build a FastAPI dependency that enforces one normalized permission."""
+
+    async def permission_dependency(
+        current_user=Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+    ):
+        from app.models.rbac import Permission, Role, UserRoleAssignment
+
+        permission = await db.scalar(
+            select(Permission.id)
+            .join(Permission.roles)
+            .join(Role.assignments)
+            .where(
+                UserRoleAssignment.user_id == current_user.id,
+                Permission.name == permission_name,
+            )
+            .limit(1)
+        )
+        if permission is not None:
+            return current_user
+
+        assignment_exists = await db.scalar(
+            select(UserRoleAssignment.id)
+            .where(UserRoleAssignment.user_id == current_user.id)
+            .limit(1)
+        )
+        # Temporary rollout compatibility: legacy admins created before the RBAC
+        # migration retain access only while they have no normalized assignment.
+        if assignment_exists is None and current_user.role == "admin":
+            return current_user
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Permission required: {permission_name}",
+        )
+
+    return permission_dependency
 
 
 async def require_course_access(
