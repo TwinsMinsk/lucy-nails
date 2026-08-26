@@ -12,7 +12,11 @@
 | [`railway.toml`](railway.toml) | Railway monorepo сервисы |
 | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | CI (ruff, pytest, ESLint, Next build) |
 | [`.env.example`](.env.example) | Шаблон env для backend и общих ключей |
+| [`compose.dev.yml`](compose.dev.yml) | Локальные PostgreSQL 15 + Redis 7 |
 | [`scripts/`](scripts/) | PowerShell: `dev.ps1`, setup, и т.д. |
+| [`scripts/ops/`](scripts/ops/) | PostgreSQL backup/restore с checksum/S3 |
+| [`scripts/load/`](scripts/load/) | Staging-only k6 launch gate |
+| [`ops/`](ops/) | Backup image и init test database |
 | [`scripts/promo/`](scripts/promo/) | Пайплайн промо (Whisper, нарезка, upload/sync); метаданные — [`program.json`](scripts/promo/program.json) |
 | `promo-clips/`, `video-lessons/` | Локальные тяжёлые mp4-артефакты; исключены из Git |
 | [`Docs/`](Docs/) | PRD, архитектура, фазы, задачи, ops |
@@ -30,7 +34,9 @@
 | [`backend/app/bot/`](backend/app/bot/) | Telegram bot (handlers, entry) |
 | [`backend/alembic/`](backend/alembic/) | Миграции БД |
 | [`backend/tests/`](backend/tests/) | Pytest + httpx AsyncClient |
-| [`backend/requirements.txt`](backend/requirements.txt) | Зависимости Python |
+| [`backend/requirements.lock`](backend/requirements.lock) | Зафиксированные runtime зависимости Python 3.11 |
+| [`backend/requirements-dev.lock`](backend/requirements-dev.lock) | Test/development зависимости |
+| [`backend/requirements-tooling.lock`](backend/requirements-tooling.lock) | Audit/tooling зависимости |
 
 ## Frontend (`frontend/`)
 
@@ -42,19 +48,21 @@
 | [`frontend/src/lib/schemas.ts`](frontend/src/lib/schemas.ts) | Схемы/валидации (Zod и т.п.) |
 | [`frontend/components.json`](frontend/components.json) | Конфиг shadcn/ui |
 | [`frontend/package.json`](frontend/package.json) | Скрипты: `dev`, `build`, `lint` |
+| [`frontend/e2e/`](frontend/e2e/) | Playwright Chromium/WebKit critical-flow tests |
 | [`frontend/.env.example`](frontend/.env.example) | Шаблон для `frontend/.env.local` |
 
 ## Тесты и качество
 
-- **Backend:** `ruff check backend/app backend/tests`, `pytest backend/tests` — см. [`AGENTS.md`](AGENTS.md).
-- **Frontend:** `npm run lint`, `npm run build` из каталога `frontend`.
+- **Backend:** Ruff, pip-audit, Alembic single-head round-trip и полный PostgreSQL pytest.
+- **Frontend:** ESLint, Vitest, npm audit, production build и Playwright Chromium/WebKit.
+- **CI:** [`.github/workflows/ci.yml`](.github/workflows/ci.yml); CodeQL/Gitleaks — [`security.yml`](.github/workflows/security.yml).
 
 ## Известный техдолг (для осторожности)
 
-- Seed пользователей при старте и CORS «для отладки» в [`backend/app/main.py`](backend/app/main.py) — пересмотреть перед жёстким production-hardening (см. [`AGENTS.md`](AGENTS.md)).
-- В frontend нет скрипта `npm test`; UI-регрессии пока через lint + ручная проверка + backend-тесты.
+- Development seed запускается только при `ENVIRONMENT=development`; не расширять его на staging/production.
+- CORS origins и trusted hosts fail-closed в production; при изменении proxy topology повторять cookie/CSRF edge tests.
 - Крупный backend admin router в [`backend/app/api/admin.py`](backend/app/api/admin.py) и frontend API client в [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts) — кандидаты на доменную декомпозицию.
-- Тестовая БД в [`backend/tests/conftest.py`](backend/tests/conftest.py) создаётся через `Base.metadata.create_all`, а CI отдельно гоняет Alembic; следить за расхождением моделей и миграций.
+- Pydantic v2 deprecation warnings и один legacy admin test skip находятся в P2 текущего аудита.
 
 ## Backlog рефакторинга
 

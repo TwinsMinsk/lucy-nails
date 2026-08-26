@@ -5,13 +5,19 @@
 **Cursor / AI:** см. [`AGENTS.md`](./AGENTS.md), карта репозитория [`CODEBASE.md`](./CODEBASE.md). Правила агента: [`.cursor/rules/`](./.cursor/rules/).
 - **Frontend:** Next.js 16 (см. `frontend/package.json`), TypeScript, Tailwind CSS
 - **Backend:** Python 3.11+, FastAPI, SQLAlchemy 2.0
-- **Database:** PostgreSQL 15, Redis (опционально)
+- **Database:** PostgreSQL 15, Redis 7 (обязателен в production)
 - **Интеграции:** Kinescope, Prodamus, Telegram Bot
 
 **Профессиональный процесс разработки (окружения, PR, Railway, проверки):** [Docs/04_Setup_Ops/DEVELOPMENT_WORKFLOW.md](./Docs/04_Setup_Ops/DEVELOPMENT_WORKFLOW.md)
 **Документация по разделам:** [Docs/README.md](./Docs/README.md)
 
 ## Быстрый старт
+
+### База и Redis через Docker
+
+```powershell
+docker compose -f compose.dev.yml up -d
+```
 
 ### Запуск всего окружения одной командой
 ```powershell
@@ -76,6 +82,8 @@ npm run dev
 - [PRD](./Docs/PRD.md) — требования
 - [Architecture](./Docs/ARCHITECTURE.md) — техническая архитектура
 - [Tasks](./Docs/06_Tracking/TASKS.md) — трекер задач
+- [Production-readiness audit](./Docs/audit/production-readiness-2026-08-26/README.md) — текущий go/no-go и P0–P3
+- [Release checklist](./Docs/04_Setup_Ops/RELEASE_CHECKLIST.md) — обязательные доказательства запуска
 
 ## Структура
 

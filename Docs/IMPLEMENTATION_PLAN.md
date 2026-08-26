@@ -1,5 +1,7 @@
 # Implementation Plan: Платформа видео-курсов
 
+> **АРХИВ:** первоначальный план 22.01.2026 сохранён для истории и не является текущим backlog или описанием продукта. Актуальные источники: [`PRD.md`](PRD.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`06_Tracking/TASKS.md`](06_Tracking/TASKS.md) и [`04_Setup_Ops/RELEASE_CHECKLIST.md`](04_Setup_Ops/RELEASE_CHECKLIST.md). Старые оценки 25+ уроков/фаз не относятся к релизу из 11 уроков.
+
 > **Версия:** 1.0  
 > **Дата:** 22.01.2026  
 > **На основе:** [PRD.md](./PRD.md) v1.2, [ARCHITECTURE.md](./ARCHITECTURE.md) v1.2

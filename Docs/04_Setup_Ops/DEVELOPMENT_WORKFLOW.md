@@ -6,9 +6,9 @@
 
 | Окружение | Где живёт | База | Секреты / платежи |
 |-----------|-----------|------|-------------------|
-| **local** | Ваша машина (Windows + PowerShell) | Локальный PostgreSQL `nails_course` + отдельная `test_nails_course` для тестов | Тестовые / sandbox ключи по возможности |
-| **staging** | Отдельный проект или environment в Railway (рекомендуется) | Отдельный PostgreSQL | Тестовые webhook-URL, без боевых денег |
-| **production** | Текущий Railway | Production PostgreSQL из Railway | Боевые ключи только здесь |
+| **local** | Ваша машина (Windows + PowerShell) | PostgreSQL 15 `nails_course` + `test_nails_course`, Redis 7 | Тестовые / sandbox ключи по возможности |
+| **staging** | Отдельный Railway environment | Отдельные PostgreSQL 15 + Redis | Prodamus demo, test email/bot/chat, без боевых денег |
+| **production** | Railway | Production PostgreSQL + Redis | Боевые ключи только здесь |
 
 **Правило:** не используйте production `DATABASE_URL` как «рабочую» базу при ежедневной разработке. Для платежей и Telegram — только staging или изолированные тестовые аккаунты.
 
@@ -45,7 +45,15 @@ pip install -r backend\requirements.txt
 .\backend\venv\Scripts\pip.exe install -r backend\requirements.txt
 ```
 
-### 3) PostgreSQL и базы
+### 3) PostgreSQL, Redis и базы
+
+Рекомендуемый воспроизводимый вариант:
+
+```powershell
+docker compose -f compose.dev.yml up -d
+```
+
+При первом создании volume init-script автоматически создаёт `test_nails_course`. Альтернатива — локальные сервисы вручную:
 
 Создайте БД приложения и тестовую (имена должны быть согласованы с `DATABASE_URL` и логикой в `backend/tests/conftest.py`: по умолчанию из `DATABASE_URL` с `…/nails_course` получается `…/test_nails_course`).
 
@@ -56,7 +64,7 @@ createdb -U postgres nails_course
 createdb -U postgres test_nails_course
 ```
 
-Подробнее: [postgresql_setup.md](postgresql_setup.md), [create_database.md](create_database.md).
+Подробнее: [postgresql_setup.md](postgresql_setup.md), [create_database.md](create_database.md). Локальный `.env` использует `REDIS_URL=redis://localhost:6379/0`; в production пустой Redis URL не допускается.
 
 ### 4) Корневой `.env`
 
@@ -130,12 +138,13 @@ $env:PYTHONPATH = "backend"
 
 Важно: тестовые фикстуры создают схему через SQLAlchemy metadata, а CI отдельно выполняет `alembic upgrade head` на основной тестовой БД. При изменении моделей проверяйте и тесты, и миграции, чтобы не получить расхождение схем.
 
-### Frontend: линт и production-сборка
+### Frontend: unit, линт, production-сборка и E2E
 
 ```powershell
 Set-Location frontend
 npm ci
 npm run lint
+npm test -- --run
 ```
 Линтер может выдавать предупреждения (warnings) — они не ломают выход `0`. Правила смягчены в `frontend/eslint.config.mjs`, постепенный возврат строгости возможен по мере рефакторинга.
 
@@ -145,10 +154,12 @@ npm run lint
 $env:NEXT_PUBLIC_API_URL = "http://127.0.0.1:8000/api"
 $env:NEXT_PUBLIC_SITE_URL = "http://localhost:3000"
 npm run build
+npx playwright install chromium webkit
+npm run test:e2e
 Set-Location ..
 ```
 
-В CI эти переменные задаются в workflow автоматически.
+В CI эти переменные задаются в workflow автоматически. Runtime dependency audits выполняются командами `pip-audit --strict -r backend/requirements.lock` и `npm audit --omit=dev --audit-level=high`; security workflow запускает CodeQL и Gitleaks.
 
 ## Railway: миграции и два сервиса
 

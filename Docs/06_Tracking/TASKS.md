@@ -1,157 +1,87 @@
-# Task List: Платформа видео-курсов
+# Production readiness tasks
 
-> Статус: [ ] Not Started | [/] In Progress | [x] Done
-> **Последнее обновление:** 05.05.2026
+> **Последнее обновление:** 26.08.2026
+> **Статус:** `[ ]` open · `[/]` in progress · `[x]` verified in code/local environment
+> **Приоритет:** датированный [`production-readiness audit`](../audit/production-readiness-2026-08-26/README.md) и этот файл заменяют старые MVP-проценты.
 
----
+## Реализовано в `feat/production-readiness`
 
-## Production readiness (MVP)
-- [x] Инварианты: 30 дней доступа после оплаты, два тарифа, Prodamus webhook + phone/email, premium Telegram в ЛК
-- [/] Полный чеклист деплоя и hardening — текущий MVP scope: безопасная покупка Prodamus, доступ к урокам, кабинет, базовая админка, Railway deploy
-- [ ] Backend hardening: CORS/Trusted Hosts/JWT/seed/rate limit/Kinescope без mock в prod
-- [ ] Payment hardening: идемпотентный webhook, повторы, гонки, проверки подписи и суммы
-- [ ] После payment-first: письмо «доступ открыт» для уже существующих пользователей; страница «Сменить пароль» в ЛК (одноразовый пароль из письма)
-- [ ] Frontend hardening: auth/session UX, protected/admin guards, безопасный payment CTA
-- [ ] Staging smoke-test перед production
+### Commerce и доступ
 
-## Фаза 0: Setup (2-3 дня) — 90%
-- [x] 0.1 Инициализация репозитория (.gitignore, README.md)
-- [x] 0.2 Создание .env.example
-- [x] 0.3 Setup Frontend (Next.js 16 + TypeScript + Tailwind)
-  - [x] Инициализация Next.js
-  - [ ] Настройка ESLint + Prettier
-  - [x] Установка shadcn/ui (21 компонент)
-- [x] 0.4 Setup Backend (FastAPI + PostgreSQL)
-  - [x] Виртуальное окружение
-  - [x] Структура папок по ARCHITECTURE.md
-  - [x] requirements.txt установлен
-  - [x] Ruff (линтер Python) — установлен v0.9.4
-- [x] 0.5 Настройка PostgreSQL (создание БД nails_course)
-- [ ] 0.6 Pre-commit hooks (Husky, lint-staged)
+- [x] Immutable `Order` со снимком курса, тарифа, цены, валюты, срока, customer data и UTM.
+- [x] Публичный status endpoint по hashed random token и честные pending/paid/help состояния.
+- [x] Snapshot amount/currency validation, signed/idempotent/reordered/concurrent webhook tests.
+- [x] Разделены `Purchase` и `Entitlement`; миграционный backfill существующих успешных покупок.
+- [x] `PaymentEvent` с sanitized payload/hash; `RefundRequest` workflow.
+- [x] Atomic payment/access/outbox transaction; `OutboxMessage`/`DeliveryAttempt`, retry/dead letter/manual resend.
+- [x] Одноразовая 24-часовая activation link вместо случайного известного пароля.
+- [x] DB-backed checkout kill switch из админки без deploy и с audit reason.
 
----
+### Admin, команда и безопасность
 
-## Фаза 1: Database (3-4 дня) — 95%
-- [x] 1.1 Модели SQLAlchemy (7 таблиц)
-  - [x] `users`
-  - [x] `courses`
-  - [x] `modules`
-  - [x] `lessons`
-  - [x] `purchases`
-  - [x] `progress`
-  - [x] `certificates`
-- [x] 1.2 Alembic миграции
-- [x] 1.3 Seed-данные для разработки
-- [ ] 1.4 Unit-тесты моделей (pytest)
+- [x] Роли `owner`, `admin`, `content_manager`, `curator`, `analyst` и отрицательные permission tests.
+- [x] AuditLog для административных изменений; нельзя удалить последнего owner.
+- [x] Обязательная TOTP MFA owner/admin, резервные коды, revocable sessions и forced logout.
+- [x] CRM: серверный поиск/фильтры/пагинация, карточка ученика, notes/tags/history.
+- [x] Операционные разделы: orders/payments/refunds, entitlements, progress, certificates, notifications, system.
+- [x] Content admin и Kinescope readiness: missing ID/status/duration mismatch/provider error.
+- [x] Cookie/CSRF/trusted hosts/config hardening, Redis-backed rate limit, structured correlation logs без query/PII.
+- [x] Runtime dependency audits: 0 известных npm/pip runtime vulnerabilities на дату проверки.
 
----
+### Аналитика, consent и Telegram
 
-## Фаза 2: Backend Core (1-1.5 недели) — 95%
-- [x] 2.1 Аутентификация (JWT)
-  - [x] POST `/api/auth/register`
-  - [x] POST `/api/auth/login`
-  - [x] POST `/api/auth/logout`
-  - [x] GET `/api/auth/me`
-  - [x] FastAPI Dependencies для прав доступа
-- [x] 2.2 API Курсов и Модулей
-  - [x] GET `/api/courses`
-  - [x] GET `/api/courses/{id}`
-  - [x] GET `/api/courses/{courseId}/modules`
-  - [x] GET `/api/modules/{id}`
-- [x] 2.3 API Уроков и Прогресса
-  - [x] GET `/api/modules/{moduleId}/lessons`
-  - [x] GET `/api/lessons/{id}`
-  - [x] POST `/api/lessons/{id}/progress`
-- [x] 2.4 API Покупок
-  - [x] POST `/api/purchases/create`
-  - [x] GET `/api/purchases/my`
-- [x] 2.5 Тесты API (pytest + httpx)
-  - [x] test_auth.py
-  - [x] test_courses.py
-  - [x] test_kinescope.py
-  - [x] test_purchases.py
+- [x] PII-free first-party events, dedupe, server financial/learning events, first/last UTM.
+- [x] Overview/timeseries/funnel/sources/tariffs/cohorts/progress/refund/delivery reports и admin UI.
+- [x] Consent banner: necessary/analytics, versioning и withdrawal; Метрика только в public layout.
+- [x] Одноразовая Telegram link, payment/access notifications, 7/3/1 reminders, expiry и support group removal.
+- [x] Email и Telegram объединены общей outbox; owner operational alerts.
 
----
+### Quality и эксплуатация
 
-## Фаза 3: Frontend Core (1.5-2 недели) — 60%
-- [x] 3.1 Layout и навигация (Header 14.7KB, Footer 2.3KB)
-- [x] 3.2 Главная страница (лендинг 17.1KB)
-- [x] 3.3 Страница курса (список модулей, 15KB)
-- [x] 3.4 Авторизация (Login 4.9KB, Register UI)
-- [x] 3.5 Личный кабинет (Dashboard 9KB — с прогрессом)
-- [x] 3.6 Просмотр курса (уроки → видео, VideoPlayer 5.2KB)
-- [/] 3.7 Прогресс-бар (курс + модули)
-  - [x] Общий прогресс курса в Dashboard
-  - [ ] Детальный прогресс по модулям
-  - [ ] Навигация по модулям внутри курса
-- [ ] 3.8 Тесты компонентов (Vitest)
+- [x] Python 3.11 lock-файлы; обновлены уязвимые Next/FastAPI/Starlette/JWT dependencies.
+- [x] CI: Ruff, pip-audit, PostgreSQL pytest, Alembic single head + round-trip, ESLint, Vitest, npm audit, build, Playwright.
+- [x] Cross-browser guest checkout E2E в desktop Chromium и mobile WebKit.
+- [x] `compose.dev.yml` для PostgreSQL 15 + Redis 7.
+- [x] Backup/restore tooling с checksum, S3 encryption, retention и owner alert.
+- [x] Локальный restore drill: 28 таблиц, head `1b8c9d0e1f2a`, checksum подтверждён.
+- [x] Staging topology, incident runbooks и staging-only k6 launch gate подготовлены.
+- [x] PRD, architecture, release checklist и датированный аудит синхронизированы.
 
----
+## P0 — до deploy/go-live
 
-## Фаза 4: Integrations (1 неделя) — 65%
-- [x] 4.1 Kinescope интеграция
-  - [x] Signed URL для видео
-  - [x] Watermark с email
-  - [x] Embed-плеер (VideoPlayer.tsx)
-- [x] 4.2 Prodamus интеграция
-  - [x] Email Service (aiosmtplib, HTML-письмо с кредами)
-  - [x] Prodamus Service (generate_payment_link, verify_signature HMAC)
-  - [x] Webhook handler POST /api/payments/webhook (registered-only checkout, идемпотентность, проверка суммы)
-  - [x] Endpoint POST /api/payments/link (генерация ссылки для авторизованного пользователя)
-  - [x] PaymentButton.tsx (фронтенд)
-- [ ] 4.3 Telegram Bot
-  - [ ] Привязка аккаунта
-  - [ ] Уведомление о покупке
-  - [ ] Ссылка на закрытую группу
+- [ ] Влить/развернуть ветку, выполнить миграции и проверить production config validation. Ответственный: tech owner.
+- [ ] Создать изолированный staging и развернуть web/worker/bot/Redis/backup. Ответственный: infrastructure owner.
+- [ ] Пройти guest + authenticated Prodamus demo E2E, повтор/перестановку webhook, activation, login, lesson, certificate и refund workflow. Ответственные: owner + tech.
+- [ ] После deploy выполнить согласованный реальный платёж и возврат: доступ ≤ 60 секунд, уведомление ≤ 2 минут. Ответственные: business owner + tech.
 
----
+## P1 — launch blockers
 
-## Фаза 5: Admin Panel (1 неделя) — 70%
-- [x] Backend: Admin CRUD API (api/admin.py — 23.8KB)
-- [x] 5.1 Admin Layout + навигация (layout.tsx 5.3KB)
-- [x] 5.2 Дашборд админа (аналитика) — analytics/page.tsx (7.3KB)
-- [x] 5.3 Управление пользователями — users/page.tsx (14.9KB)
-- [x] 5.4 Управление контентом (курсы, модули, уроки)
-  - [x] Список курсов — courses/page.tsx (26.5KB)
-  - [x] Редактирование курса — courses/[id]/page.tsx (28.7KB)
-- [ ] 5.5 Управление покупками — purchases/page.tsx (**заглушка**)
+- [ ] Вручную проверить все 11 уроков: desktop Chrome/Safari, реальный iOS и Android, DRM, seek, progress, completion, тексты и изображения. Ответственный: content owner/QA.
+- [ ] Проверить истечение entitlement и Telegram reminders/removal на staging с ускоренными датами. Ответственный: QA.
+- [ ] Настроить отдельный versioned encrypted S3 backup и выполнить restore drill из внешней копии. Ответственный: infrastructure owner.
+- [ ] Запустить k6 gate на staging; приложить p95/error rate и DB/Redis metrics. Ответственный: tech owner.
+- [ ] Проверить живые Resend/SMTP, Telegram owner chat/support group, Prodamus, Kinescope DRM и failure alerts. Ответственные: owner + tech.
+- [ ] Провести юридическую/бухгалтерскую проверку оферты, privacy/cookie policy, consent, refund, retention, чеков и налоговых настроек Prodamus. Ответственный: business owner.
+- [ ] Проверить rollback последнего deploy и зафиксировать фактические RPO/RTO. Ответственный: infrastructure owner.
 
----
+## P2 — сразу после снятия launch blockers
 
-## Фаза 6: Polish & Deploy (1 неделя) — 5%
-- [ ] 6.1 SEO и Meta
-  - [/] Базовые meta в layout.tsx
-  - [ ] Open Graph теги
-  - [ ] sitemap.xml
-  - [ ] robots.txt
-- [ ] 6.2 PWA (manifest, service worker)
-- [/] 6.3 CI/CD (GitHub Actions)
-  - [x] Lint + Test на PR
-  - [ ] Alembic upgrade/head check в CI
-  - [ ] Auto-deploy на Railway
-- [ ] 6.4 Деплой на Railway
-  - [/] Backend (Dockerfile есть)
-  - [ ] Frontend
-  - [ ] PostgreSQL
-  - [ ] Redis
-  - [ ] Домен lucysmirnova.ru
-- [ ] 6.5 E2E тестирование и багфикс
+- [ ] Полный WCAG 2.2 AA аудит keyboard/focus/contrast/screen reader критических flows.
+- [ ] Добавить Android Chromium device farm; текущий mobile automated gate использует WebKit device emulation.
+- [ ] Подключить внешний uptime/error monitoring и формальные SLO для checkout/webhook/outbox.
+- [ ] Автоматизировать reconciliation с Prodamus; до этого выполнять ежедневную ручную сверку.
+- [ ] Разделить `frontend/src/lib/api.ts` и остаточный `backend/app/api/admin.py` по доменам под contract tests.
+- [ ] Убрать Pydantic v2 deprecation warnings (`model_validate`, `ConfigDict`).
 
----
+## P3 — улучшения после запуска
 
-## Отложено (Post-MVP)
-- [/] Refactor program: синхронизировать `AGENTS.md`, `CODEBASE.md`, `README.md`, `Docs/README.md`, `.cursor/rules/` как источники правды
-- [/] Refactor program: держать `promo-clips/`, `video-lessons/`, `scripts/promo/output/` вне Git и описывать медиа как локальные/внешние артефакты
-- [ ] Refactor program: разбить backend admin API, выровнять auth dependencies и политику транзакций — см. `Docs/06_Tracking/REFACTORING_ROADMAP.md`
-- [ ] Refactor program: разбить frontend API client, лендинг и крупные страницы админки — см. `Docs/06_Tracking/REFACTORING_ROADMAP.md`
-- [/] Refactor program: сверить локальные проверки с CI и добавить миграционный smoke-test или явную документацию drift-риска
-- [ ] Payment audit log + outbox/retry для писем и админского восстановления доступа
-- [ ] Redis-backed rate limits для нескольких backend-инстансов
-- [ ] Refresh-token rotation/revocation и полноценная session model
-- [ ] Расширенные E2E/component tests для frontend и payment/playback smoke
-- [ ] Telegram-бот и уведомления
-- [ ] Сертификаты (шаблон не готов)
-- [ ] Уведомления об окончании доступа (за 3 дня, за 1 день)
-- [ ] PWA
-- [ ] Расширенная аналитика
-- [ ] Страница профиля пользователя
+- [ ] Расширить performance dashboards и долгосрочные cohort/retention отчёты после накопления данных.
+- [ ] Добавить visual regression для ключевых admin/student экранов.
+- [ ] Проверить оптимизацию изображений и устранить Next warning для hero `sizes`.
+
+## Режим первых 72 часов
+
+- [ ] Усиленный мониторинг webhook/outbox/5xx/latency.
+- [ ] Ежедневная reconciliation Prodamus ↔ orders/purchases/entitlements/refunds.
+- [ ] Проверка dead letter и истекающих доступов утром и вечером.
+- [ ] Немедленный kill switch при платеже без доступа, неверной сумме или необрабатываемом webhook.
