@@ -75,8 +75,8 @@ class CourseCreateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     description: str = ""
     cover_image_url: Optional[str] = None
-    price_self: int = Field(default=5000, ge=0)
-    price_support: int = Field(default=20000, ge=0)
+    price_self: int = Field(default=5900, ge=0)
+    price_support: int = Field(default=11900, ge=0)
     is_published: bool = False
     access_days: int = Field(default=30, ge=1, le=3650)
 

@@ -67,8 +67,8 @@ export default function AdminCoursesPage() {
         title: "",
         description: "",
         cover_image_url: "",
-        price_self: 5000,
-        price_support: 20000,
+        price_self: 5900,
+        price_support: 11900,
         access_days: 30,
         is_published: false,
     });
@@ -94,8 +94,8 @@ export default function AdminCoursesPage() {
             title: "",
             description: "",
             cover_image_url: "",
-            price_self: 5000,
-            price_support: 20000,
+            price_self: 5900,
+            price_support: 11900,
             access_days: 30,
             is_published: false,
         });

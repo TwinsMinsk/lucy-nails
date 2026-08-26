@@ -9,9 +9,10 @@ Python-часть монорепозитория: FastAPI (async) API для п�
 ## Key Files
 | File | Description |
 |------|-------------|
-| `Procfile` | Команда Railway для web-процесса: `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT` — миграции применяются перед стартом сервера. |
+| `Procfile` | Railway processes: `web` с Alembic/Uvicorn, `worker` outbox, `bot` Telegram. |
 | `alembic.ini` | Конфиг Alembic; `script_location = alembic`, `sqlalchemy.url` — дефолт для локальной разработки (реальный URL подменяется в `alembic/env.py` из `settings.DATABASE_URL`). |
-| `requirements.txt` | Зависимости: FastAPI 0.115, SQLAlchemy 2 (asyncio) + asyncpg + alembic, pydantic v2, python-jose/passlib/bcrypt (auth), slowapi (rate limit), python-telegram-bot 21.10 (бот, не aiogram), httpx, firecrawl-py, ruff/pytest (dev). |
+| `requirements.txt` / `requirements.lock` | Только production runtime: FastAPI/Starlette, SQLAlchemy/asyncpg/Alembic, PyJWT+cryptography, Redis rate limit, email/Telegram/certificates. |
+| `requirements-dev.*` / `requirements-tooling.*` | Pytest/Ruff и отдельные audit/docs utilities; не устанавливаются в runtime image. |
 | `.gitignore` | Исключает `venv/`, `.env*`, `logs/`, `.pytest_cache/`. |
 
 ## Subdirectories
@@ -29,7 +30,7 @@ Python-часть монорепозитория: FastAPI (async) API для п�
 | `create_db.py` | Создаёт локальную БД `nails_course` (подключение к maintenance-БД `postgres` через psycopg2, параметры из `DATABASE_URL`). |
 | `create_test_db.py` | То же для тестовой БД `test_nails_course`. |
 | `create_admin.py` | Создаёт/повышает до admin первого продакшн-пользователя через `ensure_admin_user`; email/пароль — из env `ADMIN_EMAIL`/`ADMIN_PASSWORD`. |
-| `seed_data.py` | Наполняет dev-БД тестовыми данными напрямую через psycopg2 (не через ORM); читает промо-метаданные из `scripts/promo/program.json` в корне репо, если файл есть. |
+| `seed_data.py` | Наполняет только dev-БД актуальными Course/Purchase/Entitlement/RBAC данными; требует `SEED_*_PASSWORD` и не логирует их. |
 | `add_folga_module.py` | Одноразовый идемпотентный скрипт: публикует модуль «Фольга» и проставляет ему реальный Kinescope video id. |
 | `sync_lessons_content.py` | Одноразовый идемпотентный скрипт синхронизации текстов курса/уроков с landing-контентом (конспекты, promo-описания, чистка «битой» кириллицы). |
 | `check_production_content.py` | Валидация опубликованного контента курсов перед релизом (проверяет `Course`/`Module`/`Lesson` через ORM). |
@@ -61,6 +62,6 @@ python -m pytest backend/tests -v --tb=short
 `app/core/config.py` (`Settings`) читается всеми слоями; `app/core/database.py` — единственный источник `async_session_maker`/`get_db`.
 
 ### External
-FastAPI, SQLAlchemy 2 (async) + asyncpg, Alembic, Pydantic v2, python-jose + passlib/bcrypt, slowapi, python-telegram-bot, httpx, psycopg2-binary (sync-скрипты и Alembic).
+FastAPI, SQLAlchemy 2 (async) + asyncpg, Alembic, Pydantic v2, PyJWT + cryptography, Redis/slowapi, python-telegram-bot, httpx, psycopg2-binary.
 
 <!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->

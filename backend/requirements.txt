@@ -20,14 +20,12 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 pyotp==2.9.0
 
-# === Redis (опционально) ===
+# === Redis (обязателен в production для общего rate-limit) ===
 redis==5.2.1
 
 # === HTTP Client ===
 httpx==0.28.1
-firecrawl-py==4.22.0
 python-dotenv==1.2.2
-rich==14.3.3
 
 # === Telegram ===
 python-telegram-bot==21.10

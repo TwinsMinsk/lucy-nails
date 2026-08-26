@@ -1,1 +1,5 @@
+-r requirements.txt
+
 pip-audit==2.10.1
+firecrawl-py==4.22.0
+rich==14.3.3
