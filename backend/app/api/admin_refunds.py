@@ -49,7 +49,7 @@ class RefundResponse(BaseModel):
 
 
 def _refund_http_error(error: RefundError) -> HTTPException:
-    code = status.HTTP_404_NOT_FOUND if str(error) == "Purchase not found" else status.HTTP_422_UNPROCESSABLE_ENTITY
+    code = status.HTTP_404_NOT_FOUND if str(error) == "Purchase not found" else status.HTTP_422_UNPROCESSABLE_CONTENT
     return HTTPException(status_code=code, detail=str(error))
 
 
@@ -106,4 +106,3 @@ async def update_refund(
     await db.commit()
     await db.refresh(refund)
     return refund
-

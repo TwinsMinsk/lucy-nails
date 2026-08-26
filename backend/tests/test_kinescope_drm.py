@@ -95,7 +95,7 @@ def test_jwt_roundtrip(configured_drm):
 
 def test_jwt_rejects_tampered_token(configured_drm):
     """Изменённая подпись/payload — JWTError."""
-    from jose import JWTError
+    from jwt.exceptions import PyJWTError as JWTError
 
     svc = KinescopeJwtService()
     token = svc.create_drm_token(user_id="u1")
@@ -108,7 +108,7 @@ def test_jwt_rejects_tampered_token(configured_drm):
 
 def test_jwt_rejects_expired(configured_drm, monkeypatch):
     """Истёкший токен — JWTError."""
-    from jose import JWTError
+    from jwt.exceptions import PyJWTError as JWTError
 
     monkeypatch.setattr(settings, "KINESCOPE_DRM_TOKEN_TTL_SECONDS", 1)
     svc = KinescopeJwtService()

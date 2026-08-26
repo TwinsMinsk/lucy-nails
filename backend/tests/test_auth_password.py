@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
-from jose import jwt
+import jwt
 
 from app.core.config import settings
 from app.core.security import create_password_reset_token

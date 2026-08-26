@@ -2,7 +2,8 @@
 from uuid import UUID
 from telegram import User as TelegramUser
 from sqlalchemy import select
-from jose import jwt, JWTError
+import jwt
+from jwt.exceptions import PyJWTError as JWTError
 
 from app.core.database import async_session_maker
 from app.core.config import settings

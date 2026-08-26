@@ -1,10 +1,11 @@
 # === Core ===
-fastapi==0.115.6
+fastapi==0.141.1
+starlette==1.6.0
 slowapi==0.1.9
 uvicorn[standard]==0.34.0
 pydantic==2.10.5
 pydantic-settings==2.7.1
-python-multipart==0.0.20
+python-multipart==0.0.31
 
 # === Database ===
 sqlalchemy[asyncio]==2.0.37
@@ -14,7 +15,7 @@ psycopg2-binary==2.9.10
 greenlet==3.1.1
 
 # === Auth ===
-python-jose[cryptography]==3.3.0
+PyJWT[crypto]==2.13.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 
@@ -24,20 +25,15 @@ redis==5.2.1
 # === HTTP Client ===
 httpx==0.28.1
 firecrawl-py==4.22.0
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 rich==14.3.3
 
 # === Telegram ===
 python-telegram-bot==21.10
 
-# === Dev ===
-pytest==8.3.4
-pytest-asyncio==0.25.2
-ruff==0.9.4
-
-gunicorn==21.2.0
+gunicorn==26.1.0
 email-validator==2.1.0.post1
-aiosmtplib>=3.0
+aiosmtplib==5.1.2
 
 # === Certificates (PDF/PNG generation) ===
 Pillow==12.3.0
