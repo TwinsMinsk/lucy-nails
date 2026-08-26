@@ -19,7 +19,7 @@
 | Курс | [`course API`](https://api.lucysmirnova.ru/api/courses/db11a7f7-8dfa-437b-b9da-69c641140300): 11 модулей, 11 уроков, 17 136 секунд, 5 900/11 900 ₽ |
 | Лендинг | [`landing API`](https://api.lucysmirnova.ru/api/landing): 11 техник, около 5 часов, 30 дней |
 | Remote baseline | `origin/master` = `99e5854` — сертификаты |
-| Релизная ветка | 22 feature/security/ops commits поверх baseline после закрытия независимого review; runtime/content baseline `5bafb89` до документационного коммита |
+| Релизная ветка | `feat/production-readiness` поверх `origin/master`, включая закрытие независимого review; runtime/content baseline `5bafb89` до документационного коммита |
 | Схема | PostgreSQL 15, 28 таблиц, единственная Alembic head `4e9d0e1f2a3b` |
 
 Состояние production API подтверждает текущий продаваемый контент, но не доказывает, что новая релизная ветка развёрнута. Новые возможности ниже подтверждены кодом и локальными тестами, а не живой production-средой.
