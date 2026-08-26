@@ -16,7 +16,11 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.core.rate_limit import limiter
-from app.core.security import create_password_reset_token, verify_password_reset_token
+from app.core.security import (
+    create_password_reset_token,
+    verify_account_activation_token,
+    verify_password_reset_token,
+)
 from app.models.user import User
 from app.schemas.auth import (
     ChangePasswordRequest,
@@ -333,3 +337,31 @@ async def reset_password(
     await AuthService.set_password(db, user, data.new_password)
     await db.commit()
     return {"message": "Password has been reset"}
+
+
+@router.post("/activate")
+@limiter.limit("10/minute")
+async def activate_payment_account(
+    request: Request,
+    data: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Set the first password for an account created by a successful payment."""
+    invalid = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Invalid or expired activation token",
+    )
+    payload = verify_account_activation_token(data.token)
+    if not payload or not payload.get("sub"):
+        raise invalid
+    try:
+        user_uuid = UUID(payload["sub"])
+    except ValueError:
+        raise invalid
+    result = await db.execute(select(User).where(User.id == user_uuid))
+    user = result.scalar_one_or_none()
+    if not user or payload.get("ver") != user.token_version:
+        raise invalid
+    await AuthService.set_password(db, user, data.new_password)
+    await db.commit()
+    return {"message": "Account activated"}

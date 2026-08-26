@@ -21,12 +21,12 @@ from app.core.config import settings
 from app.core.database import async_session_maker
 from app.core.dependencies import get_current_user
 from app.core.rate_limit import limiter
-from app.core.security import get_password_hash
+from app.core.security import create_account_activation_token, get_password_hash
 from app.models.course import Course
 from app.models.order import Order
 from app.models.purchase import Purchase
 from app.models.user import User
-from app.services.email_service import EmailService
+from app.services.outbox_service import enqueue_outbox_message
 from app.services.prodamus_service import ProdamusService
 
 logger = logging.getLogger(__name__)
@@ -111,7 +111,7 @@ async def _get_or_create_user(
     db: AsyncSession,
     email: str,
     phone: str | None,
-) -> tuple[User, str | None]:
+) -> tuple[User, bool]:
     """
     Находит пользователя по email или создаёт нового с случайным паролем (payment-first).
 
@@ -121,18 +121,18 @@ async def _get_or_create_user(
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalars().first()
     if user:
-        return user, None
+        return user, False
 
-    plain = secrets.token_urlsafe(10)
+    unusable_secret = secrets.token_urlsafe(48)
     user = User(
         email=email,
-        password_hash=get_password_hash(plain),
+        password_hash=get_password_hash(unusable_secret),
         phone=phone,
         role="student",
     )
     db.add(user)
     await db.flush()
-    return user, plain
+    return user, True
 
 
 def _build_prodamus_order_id(course_id: UUID, tariff: str) -> str:
@@ -243,18 +243,17 @@ async def _record_purchase_once(
     tariff: str | None,
     payload: dict[str, Any],
     order_uuid: UUID | None = None,
-) -> tuple[str, str | None]:
+) -> str:
     """One attempt at recording the purchase in its own transaction.
 
-    Returns (customer_email, plain_password); plain_password is set only for a
-    newly created user (to email credentials). Raises HTTPException on
-    validation failure; IntegrityError propagates for the caller's retry.
+    The purchase and its notification are committed atomically. External
+    delivery is handled later by the outbox worker.
     """
     webhook_email = _normalize_email(payload.get("customer_email"))
     async with async_session_maker() as db:
         existing_pay = await db.execute(select(Purchase).where(Purchase.payment_id == payment_key))
         if existing_pay.scalars().first():
-            return webhook_email, None
+            return webhook_email
 
         order: Order | None = None
         if order_uuid is not None:
@@ -306,7 +305,7 @@ async def _record_purchase_once(
             logger.error("Prodamus webhook: unsupported currency=%s", currency)
             raise HTTPException(status_code=422, detail="Unsupported currency")
 
-        user, plain_password = await _get_or_create_user(db, customer_email, customer_phone)
+        user, is_new_user = await _get_or_create_user(db, customer_email, customer_phone)
 
         if customer_phone and not user.phone:
             user.phone = customer_phone
@@ -328,11 +327,40 @@ async def _record_purchase_once(
             expires_at=expires_at,
         )
         db.add(purchase)
+        dedupe_hash = hashlib.sha256(payment_key.encode("utf-8")).hexdigest()
+        if is_new_user:
+            activation_token = create_account_activation_token(user.id, user.token_version)
+            activation_url = (
+                f"{settings.FRONTEND_URL.rstrip('/')}/auth/activate?token={activation_token}"
+            )
+            enqueue_outbox_message(
+                db,
+                kind="account_activation",
+                recipient=customer_email,
+                payload={
+                    "activation_url": activation_url,
+                    "course_title": course.title,
+                    "expires_at": expires_at.isoformat(),
+                },
+                dedupe_key=f"payment:{dedupe_hash}:activation",
+            )
+        else:
+            enqueue_outbox_message(
+                db,
+                kind="access_granted",
+                recipient=customer_email,
+                payload={
+                    "login_url": f"{settings.FRONTEND_URL.rstrip('/')}/auth/login",
+                    "course_title": course.title,
+                    "expires_at": expires_at.isoformat(),
+                },
+                dedupe_key=f"payment:{dedupe_hash}:access",
+            )
         if order is not None:
             order.status = "paid"
             order.paid_at = paid_at
         await db.commit()
-        return customer_email, plain_password
+        return customer_email
 
 
 @router.post(
@@ -378,7 +406,6 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
     course_id_uuid, tariff = parsed if parsed else (None, None)
     payment_key = _resolve_payment_key(payload.get("order_num"), order_id_raw)
     customer_email = _normalize_email(payload.get("customer_email"))
-    plain_password_for_email: str | None = None
 
     # Record the purchase, retrying once. A concurrent first-time buyer can hit a
     # users.email unique collision (two payments, same brand-new email): the racing
@@ -387,7 +414,7 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
     # duplicate payment_id short-circuits at the existing-purchase check.
     for attempt in range(2):
         try:
-            customer_email, plain_password_for_email = await _record_purchase_once(
+            customer_email = await _record_purchase_once(
                 payment_key, course_id_uuid, tariff, payload, order_uuid
             )
             break
@@ -401,12 +428,6 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
                     return {"status": "ok"}
             logger.error("Prodamus webhook: unresolved integrity error payment_key=%s", payment_key)
             raise
-
-    if plain_password_for_email:
-        try:
-            await EmailService.send_credentials(customer_email, plain_password_for_email)
-        except Exception:
-            logger.exception("Failed to send credentials email to %s", customer_email)
 
     logger.info(
         "Webhook processed: user=%s course=%s tariff=%s",

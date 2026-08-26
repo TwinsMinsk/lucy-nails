@@ -23,6 +23,7 @@ def _valid_prod(**overrides):
         PRODAMUS_DEMO_MODE=False,
         FRONTEND_URL="https://lucysmirnova.ru",
         BACKEND_URL="https://api.lucysmirnova.ru",
+        COOKIE_DOMAIN="lucysmirnova.ru",
         TRUSTED_HOSTS="api.lucysmirnova.ru",
         SMTP_REQUIRED_FOR_PAYMENT_EMAIL=True,
         RESEND_API_KEY="re_default_key",
@@ -105,3 +106,10 @@ def test_production_config_requires_drm_basic_auth():
         _valid_prod(KINESCOPE_DRM_BASIC_USER="", KINESCOPE_DRM_BASIC_PASS="")
 
     assert "KINESCOPE_DRM_BASIC_USER and KINESCOPE_DRM_BASIC_PASS are required" in str(exc_info.value)
+
+
+def test_production_config_requires_shared_cookie_domain():
+    with pytest.raises(ValidationError) as exc_info:
+        _valid_prod(COOKIE_DOMAIN="")
+
+    assert "COOKIE_DOMAIN is required in production" in str(exc_info.value)

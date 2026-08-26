@@ -68,3 +68,20 @@ def verify_password_reset_token(token: str) -> dict[str, Any] | None:
     if payload.get("type") != "reset":
         return None
     return payload
+
+
+def create_account_activation_token(user_id: Any, token_version: int = 0) -> str:
+    """Create a single-use token for a payment-created account."""
+    expire = datetime.utcnow() + timedelta(hours=settings.ACCOUNT_ACTIVATION_TOKEN_EXPIRE_HOURS)
+    payload = {"sub": str(user_id), "ver": token_version, "exp": expire, "type": "activation"}
+    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def verify_account_activation_token(token: str) -> dict[str, Any] | None:
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+    except JWTError:
+        return None
+    if payload.get("type") != "activation":
+        return None
+    return payload

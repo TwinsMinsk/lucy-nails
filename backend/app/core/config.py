@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     # Short-lived token emailed for the forgot-password flow.
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCOUNT_ACTIVATION_TOKEN_EXPIRE_HOURS: int = 24
     # Parent domain for auth/CSRF cookies. Empty = host-only cookies (single-host dev).
     # Set to e.g. "lucysmirnova.ru" so cookies are readable by frontend on a sibling
     # subdomain (lucysmirnova.ru reading cookies set by api.lucysmirnova.ru).
@@ -140,6 +141,7 @@ class Settings(BaseSettings):
 
     # Emergency switch. Webhooks remain enabled so in-flight payments can finish.
     CHECKOUT_ENABLED: bool = True
+    OUTBOX_POLL_SECONDS: float = 5.0
 
     # Список разрешённых Origin для CORS (через запятую). Пусто — только FRONTEND_URL.
     CORS_ORIGINS: str = ""
@@ -203,6 +205,8 @@ class Settings(BaseSettings):
             errors.append("BACKEND_URL must be public in production")
         if not self.TRUSTED_HOSTS:
             errors.append("TRUSTED_HOSTS is required in production")
+        if not self.COOKIE_DOMAIN:
+            errors.append("COOKIE_DOMAIN is required in production for sibling frontend/API hosts")
 
         if errors:
             raise ValueError("; ".join(errors))

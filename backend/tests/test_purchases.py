@@ -1,15 +1,16 @@
 import uuid
 from datetime import datetime, timedelta
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.payments import _build_prodamus_order_id, parse_checkout_order_id
 from app.core.config import Settings
-from app.core.security import get_password_hash, verify_password
+from app.core.security import get_password_hash
 from app.models.course import Course
 from app.models.purchase import Purchase
 from app.models.user import User
@@ -100,7 +101,7 @@ async def test_prodamus_webhook_uses_order_id_as_stable_fallback_payment_id(
     async def fake_send_credentials(*args, **kwargs):
         return None
 
-    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", fake_send_credentials)
+    monkeypatch.setattr("app.services.email_service.EmailService.send_credentials", fake_send_credentials)
 
     course = Course(
         title="Webhook Course",
@@ -151,7 +152,7 @@ async def test_prodamus_webhook_keeps_repeat_payments_idempotent(
     async def fake_send_credentials(*args, **kwargs):
         return None
 
-    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", fake_send_credentials)
+    monkeypatch.setattr("app.services.email_service.EmailService.send_credentials", fake_send_credentials)
 
     course = Course(
         title="Repeat Payment Course",
@@ -261,7 +262,7 @@ async def test_prodamus_webhook_rejects_non_rub_currency(client: AsyncClient, db
 
 
 @pytest.mark.asyncio
-async def test_webhook_creates_user_and_sends_credentials(
+async def test_webhook_creates_user_and_queues_single_use_activation(
     client: AsyncClient,
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -271,7 +272,7 @@ async def test_webhook_creates_user_and_sends_credentials(
     async def capture_send(email: str, password: str) -> None:
         sent.append((email, password))
 
-    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", capture_send)
+    monkeypatch.setattr("app.services.email_service.EmailService.send_credentials", capture_send)
 
     course = Course(
         title="Webhook Creates User Course",
@@ -301,10 +302,35 @@ async def test_webhook_creates_user_and_sends_credentials(
     user_result = await db.execute(select(User).where(User.email == "brand-new@example.com"))
     user = user_result.scalar_one()
     assert user.phone == "+79991112233"
-    assert len(sent) == 1
-    assert sent[0][0] == "brand-new@example.com"
-    assert len(sent[0][1]) >= 8
-    assert verify_password(sent[0][1], user.password_hash)
+    assert sent == []
+
+    outbox_result = await db.execute(
+        text(
+            "SELECT kind, recipient, payload FROM outbox_messages "
+            "WHERE recipient = :recipient"
+        ),
+        {"recipient": "brand-new@example.com"},
+    )
+    outbox = outbox_result.mappings().one()
+    assert outbox["kind"] == "account_activation"
+    activation_url = outbox["payload"]["activation_url"]
+    activation_token = parse_qs(urlparse(activation_url).query)["token"][0]
+
+    activated = await client.post(
+        "/api/auth/activate",
+        json={"token": activation_token, "new_password": "new-secure-password"},
+    )
+    assert activated.status_code == 200
+    replay = await client.post(
+        "/api/auth/activate",
+        json={"token": activation_token, "new_password": "another-password"},
+    )
+    assert replay.status_code == 400
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "brand-new@example.com", "password": "new-secure-password"},
+    )
+    assert login.status_code == 200
 
     purchase_result = await db.execute(select(Purchase).where(Purchase.payment_id == f"order_id:{order_id}"))
     purchase = purchase_result.scalar_one()
@@ -313,15 +339,17 @@ async def test_webhook_creates_user_and_sends_credentials(
 
 
 @pytest.mark.asyncio
-async def test_webhook_existing_user_does_not_resend_credentials(
+async def test_webhook_existing_user_queues_access_notification(
     client: AsyncClient,
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    async def must_not_send(*_args: object, **_kwargs: object) -> None:
-        raise AssertionError("send_credentials must not be called for existing user")
+    sent: list[tuple[object, ...]] = []
 
-    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", must_not_send)
+    async def capture_send(*args: object, **_kwargs: object) -> None:
+        sent.append(args)
+
+    monkeypatch.setattr("app.services.email_service.EmailService.send_credentials", capture_send)
 
     course = Course(
         title="Webhook Existing User Course",
@@ -347,21 +375,34 @@ async def test_webhook_existing_user_does_not_resend_credentials(
 
     response = await client.post("/api/payments/webhook", json=payload, headers=wh_headers)
     assert response.status_code == 200
+    assert sent == []
+
+    outbox_table = await db.scalar(text("SELECT to_regclass('public.outbox_messages')"))
+    assert outbox_table == "outbox_messages"
+    outbox_result = await db.execute(
+        text(
+            "SELECT kind, recipient FROM outbox_messages "
+            "WHERE recipient = :recipient"
+        ),
+        {"recipient": "existing-webhook@example.com"},
+    )
+    outbox = outbox_result.mappings().one()
+    assert outbox["kind"] == "access_granted"
 
     purchase_result = await db.execute(select(Purchase).where(Purchase.payment_id == f"order_id:{order_id}"))
     assert purchase_result.scalar_one_or_none() is not None
 
 
 @pytest.mark.asyncio
-async def test_webhook_email_failure_does_not_break_idempotency(
+async def test_webhook_retry_does_not_duplicate_outbox_message(
     client: AsyncClient,
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    async def boom_send(*args: object, **kwargs: object) -> None:
-        raise RuntimeError("smtp down")
+    async def capture_send(*_args: object, **_kwargs: object) -> None:
+        return None
 
-    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", boom_send)
+    monkeypatch.setattr("app.services.email_service.EmailService.send_credentials", capture_send)
 
     course = Course(
         title="Webhook Email Fail Course",
@@ -392,6 +433,16 @@ async def test_webhook_email_failure_does_not_break_idempotency(
 
     count_result = await db.execute(select(func.count(Purchase.id)))
     assert count_result.scalar_one() == 1
+    outbox_table = await db.scalar(text("SELECT to_regclass('public.outbox_messages')"))
+    assert outbox_table == "outbox_messages"
+    outbox_count = await db.execute(
+        text(
+            "SELECT count(*) FROM outbox_messages "
+            "WHERE recipient = :recipient"
+        ),
+        {"recipient": "email-fail@example.com"},
+    )
+    assert outbox_count.scalar_one() == 1
 
 
 @pytest.mark.asyncio
@@ -454,7 +505,7 @@ async def test_checkout_order_keeps_original_price_when_course_price_changes(
     async def fake_send_credentials(*_args: object, **_kwargs: object) -> None:
         return None
 
-    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", fake_send_credentials)
+    monkeypatch.setattr("app.services.email_service.EmailService.send_credentials", fake_send_credentials)
     course = await _published_course(db, "Immutable Checkout Price")
 
     checkout = await client.post(
@@ -601,7 +652,7 @@ async def test_webhook_two_payments_same_new_email_keeps_both(
     async def fake_send_credentials(*args, **kwargs):
         return None
 
-    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", fake_send_credentials)
+    monkeypatch.setattr("app.services.email_service.EmailService.send_credentials", fake_send_credentials)
 
     course = await _published_course(db, "Two Payments Course")
 
@@ -647,7 +698,7 @@ async def test_webhook_retries_on_integrity_error(
     async def fake_send_credentials(*args, **kwargs):
         return None
 
-    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", fake_send_credentials)
+    monkeypatch.setattr("app.services.email_service.EmailService.send_credentials", fake_send_credentials)
 
     course = await _published_course(db, "Retry Course")
 

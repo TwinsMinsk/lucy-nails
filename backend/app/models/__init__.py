@@ -11,6 +11,7 @@ from app.models.progress import Progress
 from app.models.certificate import Certificate
 from app.models.gallery import GalleryItem
 from app.models.order import Order
+from app.models.outbox import DeliveryAttempt, OutboxMessage
 
 __all__ = [
     "User",
@@ -22,4 +23,6 @@ __all__ = [
     "Certificate",
     "GalleryItem",
     "Order",
+    "OutboxMessage",
+    "DeliveryAttempt",
 ]
