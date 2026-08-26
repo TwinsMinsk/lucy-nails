@@ -24,6 +24,8 @@ PowerShell-скрипты для локальной разработки (зап
 |-----------|---------|
 | [`promo/`](promo/) | Офлайн-пайплайн: `video-lessons/*.mp4` → транскрипт Whisper → подбор хайлайтов → сборка `promo.mp4` → опциональная загрузка в Kinescope → `program.json`. Свой [`AGENTS.md`](promo/AGENTS.md) |
 | [`kinescope/`](kinescope/) | Настройка и отладка Kinescope DRM Authorization Backend (генерация ключей/JWK, регистрация webhook, подпись/проверка токенов). Свой [`AGENTS.md`](kinescope/AGENTS.md) |
+| `load/` | Безопасный staging-only k6 gate: 100 одновременных чтений, 20 checkout и burst webhook 10/с; требует явного `ALLOW_STAGING_LOAD=true` |
+| `ops/` | Проверяемые PostgreSQL backup/restore CLI с SHA-256, S3 и Telegram alert |
 | `prodamus/` | [`actions.py`](prodamus/actions.py) — автономный CLI: подписанные checkout-ссылки, верификация подписи webhook, REST-действия подписок (`setActivity`, `setSubscriptionPaymentDate`, `setSubscriptionDiscount`). Отдельный `AGENTS.md` не создаётся |
 | `railway/` | [`create_admin.py`](railway/create_admin.py) — создание/апгрейд админа напрямую через `asyncpg` + `bcrypt` (без импорта backend-кода); [`push_drm_variables.ps1`](railway/push_drm_variables.ps1) — заливка Kinescope DRM-переменных из `.env` + PEM в Railway (backend-сервис). Отдельный `AGENTS.md` не создаётся |
 | `works_photos/` | [`process.py`](works_photos/process.py) — обрабатывает `photo-work/*` в WebP (1024/640) для `frontend/public/works/<slug>/` и перегенерирует манифест `frontend/src/lib/landing/works-photos.ts`. Отдельный `AGENTS.md` не создаётся |

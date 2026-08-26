@@ -62,6 +62,16 @@ jobs:
           PYTHONPATH: .
         run: alembic upgrade head
 
+      - name: Alembic latest migration round trip
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/nails_course
+          PYTHONPATH: .
+        run: |
+          test "$(alembic heads | wc -l)" -eq 1
+          alembic downgrade -1
+          alembic upgrade head
+
       - name: Pytest
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/nails_course
@@ -89,6 +99,10 @@ jobs:
         working-directory: frontend
         run: npm run lint
 
+      - name: Unit tests
+        working-directory: frontend
+        run: npm test -- --run
+
       - name: Audit runtime dependencies
         working-directory: frontend
         run: npm audit --omit=dev --audit-level=high
@@ -99,3 +113,14 @@ jobs:
           NEXT_PUBLIC_API_URL: http://127.0.0.1:8000/api
           NEXT_PUBLIC_SITE_URL: http://localhost:3000
         run: npm run build
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Playwright smoke tests
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:8000/api
+          NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+        run: npm run test:e2e

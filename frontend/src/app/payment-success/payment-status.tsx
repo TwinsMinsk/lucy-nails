@@ -32,8 +32,10 @@ const stateCopy: Record<PaymentState, { title: string; description: string }> = 
 
 export function PaymentStatus() {
   const searchParams = useSearchParams();
-  const orderId = searchParams.get("order_id");
-  const token = searchParams.get("token");
+  const [{ orderId, token }] = useState(() => ({
+    orderId: searchParams.get("order_id"),
+    token: searchParams.get("token"),
+  }));
   const [state, setState] = useState<PaymentState>("checking");
 
   useEffect(() => {

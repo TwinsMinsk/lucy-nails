@@ -17,7 +17,6 @@ import {
     CardDescription,
     CardFooter,
     CardHeader,
-    CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import {
@@ -169,7 +168,7 @@ export default function LoginPage() {
         <div className="flex min-h-[calc(100vh-200px)] flex-col items-center justify-center px-4 py-12">
             <Card className="w-full max-w-md">
                 <CardHeader className="space-y-1">
-                    <CardTitle className="text-center text-2xl font-bold">{titles[step][0]}</CardTitle>
+                    <h1 className="text-center text-2xl font-bold leading-none">{titles[step][0]}</h1>
                     <CardDescription className="text-center">{titles[step][1]}</CardDescription>
                 </CardHeader>
                 <CardContent>
