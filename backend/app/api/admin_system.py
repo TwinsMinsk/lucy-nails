@@ -17,6 +17,7 @@ from app.models.rbac import Role, UserRoleAssignment
 from app.models.user import User
 from app.services.audit_service import append_audit_log
 from app.services.runtime_settings_service import RuntimeSettingsService
+from app.services.session_service import SessionService
 
 
 router = APIRouter()
@@ -229,7 +230,21 @@ async def update_team_roles(
                 assigned_by_id=owner.id,
             )
         )
-    target.role = "admin" if roles else "student"
+    privileged_roles = {"owner", "admin"}
+    privileged_assignment_changed = bool(
+        (set(old_names) ^ set(requested_names)) & privileged_roles
+    )
+    target.role = (
+        "admin"
+        if any(role.name in privileged_roles for role in roles)
+        else "student"
+    )
+    if privileged_assignment_changed:
+        # Permissions are read from the database on each request. Invalidate
+        # every pre-promotion token as well, otherwise an already authenticated
+        # student could exercise owner/admin powers without an MFA login.
+        target.token_version = (target.token_version or 0) + 1
+        await SessionService.revoke_all(db, target.id)
     append_audit_log(
         db,
         actor_user_id=owner.id,
@@ -237,7 +252,10 @@ async def update_team_roles(
         object_type="user",
         object_id=str(user_id),
         old_value={"roles": old_names},
-        new_value={"roles": requested_names},
+        new_value={
+            "roles": requested_names,
+            "reauthentication_required": privileged_assignment_changed,
+        },
         reason=data.reason,
         correlation_id=request.state.correlation_id,
     )

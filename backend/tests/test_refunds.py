@@ -12,6 +12,7 @@ from app.models.purchase import Purchase
 from app.models.refund import RefundRequest
 from app.models.user import User
 from app.models.analytics_event import AnalyticsEvent
+from app.services.access_service import AccessService
 
 
 @pytest.mark.asyncio
@@ -103,6 +104,19 @@ async def test_admin_refund_workflow_revokes_access_without_rewriting_purchase(
     await db.refresh(entitlement)
     assert purchase.payment_status == "success"
     assert entitlement.status == "revoked"
+    assert not await AccessService.has_active_access(db, student.id, course.id)
+
+    student_login = await client.post(
+        "/api/auth/login",
+        json={"email": student.email, "password": "studentpass1"},
+    )
+    client.cookies.clear()
+    dashboard = await client.get(
+        "/api/purchases/my",
+        headers={"Authorization": f"Bearer {student_login.json()['access_token']}"},
+    )
+    assert dashboard.status_code == 200
+    assert dashboard.json() == []
     refund_event = await db.scalar(
         select(AnalyticsEvent).where(
             AnalyticsEvent.event_name == "refund_processed",

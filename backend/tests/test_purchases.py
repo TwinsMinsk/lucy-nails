@@ -95,7 +95,7 @@ async def test_create_and_list_purchases(client: AsyncClient, db: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_prodamus_webhook_uses_order_id_as_stable_fallback_payment_id(
+async def test_prodamus_webhook_uses_documented_provider_callback_fields(
     client: AsyncClient,
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -116,10 +116,13 @@ async def test_prodamus_webhook_uses_order_id_as_stable_fallback_payment_id(
     await db.commit()
     await db.refresh(course)
 
-    order_id = _build_prodamus_order_id(course.id, "self")
+    merchant_order_reference = _build_prodamus_order_id(course.id, "self")
     payload, headers = _signed_payload(
         {
-            "order_id": order_id,
+            # Prodamus callback contract: order_id belongs to Prodamus, while
+            # order_num is the merchant reference supplied during checkout.
+            "order_id": "300155",
+            "order_num": merchant_order_reference,
             "customer_email": "webhook-buyer@example.com",
             "customer_phone": "+79990000000",
             "sum": "5000",
@@ -136,10 +139,14 @@ async def test_prodamus_webhook_uses_order_id_as_stable_fallback_payment_id(
 
     result = await db.execute(select(Purchase))
     purchase = result.scalar_one()
-    assert purchase.payment_id == f"order_id:{order_id}"
+    assert purchase.payment_id == "300155"
     assert purchase.payment_status == "success"
     assert purchase.amount_kopecks == 500000
     assert purchase.customer_phone == "+79990000000"
+
+    event = (await db.execute(select(PaymentEvent))).scalar_one()
+    assert event.external_event_id == "300155"
+    assert event.order_reference == merchant_order_reference
 
     count_result = await db.execute(select(func.count(Purchase.id)))
     assert count_result.scalar_one() == 1

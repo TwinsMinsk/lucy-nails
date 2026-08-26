@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -13,6 +13,12 @@ class Entitlement(Base):
     """A revocable, time-bounded right to access one course."""
 
     __tablename__ = "entitlements"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('active', 'suspended', 'revoked', 'expired')",
+            name="ck_entitlements_status",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -48,4 +54,3 @@ class Entitlement(Base):
     course: Mapped["Course"] = relationship(back_populates="entitlements")
     source_purchase: Mapped["Purchase | None"] = relationship(back_populates="entitlement")
     granted_by: Mapped["User | None"] = relationship(foreign_keys=[granted_by_id])
-

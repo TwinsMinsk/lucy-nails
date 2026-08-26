@@ -34,8 +34,11 @@ def build_payment_event_data(payload: dict[str, Any]) -> PaymentEventData:
             return None
         return str(value).strip()[:limit]
 
-    order_reference = clean("order_id")
-    external_event_id = clean("order_num") or order_reference
+    # Prodamus names these fields from its own perspective: ``order_id`` is
+    # the provider payment/order identifier, while ``order_num`` is the
+    # merchant reference supplied when the payment link was created.
+    external_event_id = clean("order_id")
+    order_reference = clean("order_num")
     event_type = (
         clean("payment_status", 64)
         or clean("status", 64)

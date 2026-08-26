@@ -223,11 +223,22 @@ async def _create_checkout_order(
     return order, status_token
 
 
-def _resolve_payment_key(order_num_raw: Any, order_id_raw: str) -> str:
-    """Returns a stable idempotency key for Prodamus webhook processing."""
-    if order_num_raw is not None and str(order_num_raw).strip() != "":
-        return str(order_num_raw).strip()
-    return f"order_id:{order_id_raw}"
+def _resolve_payment_key(provider_order_id_raw: Any, merchant_reference_raw: Any) -> str:
+    """Return the provider payment id, retaining legacy callback compatibility."""
+    provider_order_id = str(provider_order_id_raw or "").strip()
+    merchant_reference = str(merchant_reference_raw or "").strip()
+    provider_contains_legacy_reference = bool(
+        _parse_persisted_order_id(provider_order_id)
+        or parse_checkout_order_id(provider_order_id)
+    )
+    if provider_order_id and not provider_contains_legacy_reference:
+        return provider_order_id
+    # Older application fixtures and callbacks inverted the two fields. Keep
+    # accepting them during rollout, but never prefer a merchant reference to
+    # a genuine Prodamus order_id.
+    if merchant_reference and provider_contains_legacy_reference:
+        return merchant_reference
+    return f"order_id:{provider_order_id}"
 
 
 def _is_success_payment_payload(payload: dict[str, Any]) -> bool:
@@ -518,23 +529,39 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
         logger.warning("Prodamus webhook: non-success payment payload")
         raise HTTPException(status_code=422, detail="Payment is not successful")
 
-    order_id_raw = str(payload.get("order_id", "")).strip()
-    order_uuid = _parse_persisted_order_id(order_id_raw)
-    parsed = parse_checkout_order_id(order_id_raw) if order_uuid is None else None
+    provider_order_id_raw = str(payload.get("order_id", "")).strip()
+    merchant_reference_raw = str(payload.get("order_num", "")).strip()
+    order_reference_raw = merchant_reference_raw
+    order_uuid = _parse_persisted_order_id(order_reference_raw)
+    parsed = parse_checkout_order_id(order_reference_raw) if order_uuid is None else None
+
+    # Compatibility for callbacks produced while the old field mapping was
+    # deployed. New checkout callbacks are always resolved through order_num.
+    if order_uuid is None and not parsed:
+        order_reference_raw = provider_order_id_raw
+        order_uuid = _parse_persisted_order_id(order_reference_raw)
+        parsed = (
+            parse_checkout_order_id(order_reference_raw)
+            if order_uuid is None
+            else None
+        )
     if order_uuid is None and not parsed:
         await record_terminal_payment_event(
             event_data,
             processing_status="rejected",
-            error_code="invalid_order_id",
+            error_code="invalid_order_reference",
             error_detail="Order reference has an unsupported format",
         )
-        logger.error("Prodamus webhook: invalid order_id=%s", order_id_raw)
-        raise HTTPException(status_code=422, detail="Invalid order_id")
+        logger.error("Prodamus webhook: invalid merchant order reference")
+        raise HTTPException(status_code=422, detail="Invalid order reference")
 
     course_id_uuid, tariff = parsed if parsed else (None, None)
-    payment_key = _resolve_payment_key(payload.get("order_num"), order_id_raw)
+    payment_key = _resolve_payment_key(
+        provider_order_id_raw,
+        merchant_reference_raw,
+    )
     try:
-        customer_email = _normalize_email(payload.get("customer_email"))
+        _normalize_email(payload.get("customer_email"))
     except HTTPException as exc:
         await record_terminal_payment_event(
             event_data,
@@ -552,7 +579,7 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
     # duplicate payment_id short-circuits at the existing-purchase check.
     for attempt in range(2):
         try:
-            customer_email = await _record_purchase_once(
+            await _record_purchase_once(
                 payment_key, course_id_uuid, tariff, payload, event_data, order_uuid
             )
             break
@@ -578,10 +605,10 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
             raise
 
     logger.info(
-        "Webhook processed: user=%s course=%s tariff=%s",
-        customer_email,
+        "Webhook processed: course=%s tariff=%s order=%s",
         course_id_uuid,
         tariff,
+        order_uuid,
     )
     return {"status": "ok"}
 

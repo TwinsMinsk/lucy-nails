@@ -145,7 +145,9 @@ class LifecycleService:
         if not settings.TELEGRAM_BOT_TOKEN or settings.TELEGRAM_OWNER_CHAT_ID is None:
             return 0
         failed_payments = await db.scalar(
-            select(func.count(PaymentEvent.id)).where(PaymentEvent.status == "error")
+            select(func.count(PaymentEvent.id)).where(
+                PaymentEvent.processing_status == "rejected"
+            )
         )
         dead_letters = await db.scalar(
             select(func.count(OutboxMessage.id)).where(

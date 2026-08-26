@@ -61,6 +61,20 @@ class AccessService:
         if entitlement is not None:
             return True
 
+        entitlement_exists = await db.scalar(
+            select(Entitlement.id)
+            .where(
+                Entitlement.user_id == user_id,
+                Entitlement.course_id == course_id,
+            )
+            .limit(1)
+        )
+        if entitlement_exists is not None:
+            # Once a pair has entered the entitlement model, its state is
+            # authoritative. An immutable successful purchase must never
+            # resurrect revoked, suspended, or expired access.
+            return False
+
         # Compatibility window for records created before the entitlement
         # migration or while rolling out across multiple application instances.
         legacy_result = await db.execute(
@@ -163,6 +177,17 @@ class AccessService:
                     expires_at=entitlement.expires_at,
                 )
 
+        entitlement_course_ids = set(
+            (
+                await db.execute(
+                    select(Entitlement.course_id).where(
+                        Entitlement.user_id == user_id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
         legacy_result = await db.execute(
             select(Purchase)
             .where(
@@ -180,7 +205,11 @@ class AccessService:
             .order_by(Purchase.expires_at.desc(), Purchase.created_at.desc())
         )
         for purchase in legacy_result.scalars().all():
-            if purchase.course and purchase.course_id not in by_course:
+            if (
+                purchase.course
+                and purchase.course_id not in entitlement_course_ids
+                and purchase.course_id not in by_course
+            ):
                 by_course[purchase.course_id] = ActiveCourseAccess(
                     course=purchase.course,
                     tariff=purchase.tariff,

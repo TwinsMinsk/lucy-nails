@@ -17,10 +17,12 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.course import Course
+from app.models.entitlement import Entitlement
 from app.models.lesson import Lesson
 from app.models.module import Module
 from app.models.purchase import Purchase
@@ -267,6 +269,42 @@ async def test_drm_authorize_403_without_purchase(
         headers={"Authorization": _basic_auth_header("kinescope-drm", "test-pass-123")},
     )
     assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_drm_authorize_403_after_entitlement_revoked(
+    client: AsyncClient, db: AsyncSession, configured_drm
+):
+    """A revoked entitlement overrides the immutable successful purchase."""
+    from app.services.kinescope_jwt_service import KinescopeJwtService
+
+    user, lesson = await _seed_course(db, with_paid_purchase=True, video_id="vid-revoked")
+    purchase = (await db.execute(select(Purchase).where(Purchase.user_id == user.id))).scalar_one()
+    db.add(
+        Entitlement(
+            user_id=user.id,
+            course_id=purchase.course_id,
+            source_purchase_id=purchase.id,
+            source="purchase",
+            tariff=purchase.tariff,
+            status="revoked",
+            starts_at=datetime.utcnow(),
+            expires_at=purchase.expires_at,
+            revoked_at=datetime.utcnow(),
+            reason="Refund processed",
+        )
+    )
+    await db.commit()
+
+    token = KinescopeJwtService().create_drm_token(
+        user_id=str(user.id), email=user.email, lesson_id=str(lesson.id)
+    )
+    response = await client.post(
+        "/api/integrations/kinescope/drm/authorize",
+        json={"id": "vid-revoked", "token": token},
+        headers={"Authorization": _basic_auth_header("kinescope-drm", "test-pass-123")},
+    )
+    assert response.status_code == 403
 
 
 @pytest.mark.asyncio

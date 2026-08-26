@@ -16,6 +16,7 @@ from app.models.analytics_event import AnalyticsEvent
 from app.models.course import Course
 from app.models.entitlement import Entitlement
 from app.models.outbox import OutboxMessage
+from app.models.payment_event import PaymentEvent
 from app.models.telegram_link import TelegramLinkToken
 from app.models.user import User
 from app.services.auth_service import AuthService
@@ -131,3 +132,36 @@ async def test_lifecycle_scheduler_is_idempotent_and_expires_access(
     )
     assert event is not None
     assert event.user_id == user.id
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_owner_alert_uses_payment_processing_status(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", 987654321)
+    db.add(
+        PaymentEvent(
+            provider="prodamus",
+            event_hash="f" * 64,
+            event_type="success",
+            processing_status="rejected",
+            sanitized_payload={},
+            error_code="amount_mismatch",
+        )
+    )
+    await db.commit()
+
+    scheduled = await LifecycleService.schedule(
+        db,
+        now=datetime(2026, 8, 26, 12, 0, 0),
+    )
+    await db.commit()
+
+    assert scheduled == 1
+    alert = await db.scalar(
+        select(OutboxMessage).where(OutboxMessage.kind == "system_alert")
+    )
+    assert alert is not None
+    assert alert.channel == "telegram"

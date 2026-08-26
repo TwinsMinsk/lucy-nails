@@ -298,7 +298,14 @@ async def refresh_token_endpoint(
                 detail="Refresh token reuse detected",
             )
     else:
-        # Upgrade a pre-session refresh token to a revocable session.
+        # Privileged accounts must never upgrade a pre-session token: it was
+        # issued without a session-bound MFA authentication event.
+        if await MfaService.requires_mfa(db, user.id):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="MFA reauthentication required",
+            )
+        # Upgrade a pre-session non-privileged refresh token to a revocable session.
         tokens, _ = await SessionService.issue(db, user, request)
     await db.commit()
     _set_auth_cookies(response, tokens)

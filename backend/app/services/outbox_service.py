@@ -140,12 +140,16 @@ async def process_outbox_batch(
     )
     messages = list(result.scalars().all())
 
+    # Claim the complete selected batch while every row is still locked.  A
+    # commit inside this loop would release the locks for the rows that have
+    # not been marked yet, allowing another worker to deliver them as well.
     for message in messages:
         message.status = "processing"
         message.locked_at = now
         message.attempts += 1
-        await db.commit()
+    await db.commit()
 
+    for message in messages:
         try:
             await deliver(message)
         except Exception as exc:

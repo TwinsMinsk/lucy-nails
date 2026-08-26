@@ -165,3 +165,68 @@ async def test_owner_can_force_logout_team_session(client: AsyncClient, db: Asyn
     )
     assert response.status_code == 204, response.text
     assert (await client.get("/api/auth/me", headers=student_headers)).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_privileged_role_promotion_revokes_existing_sessions(
+    client: AsyncClient,
+    db: AsyncSession,
+):
+    owner = await _owner(db)
+    admin_role = Role(name="admin", description="Admin", is_system=True)
+    target = User(
+        email="promoted-admin@example.com",
+        password_hash=get_password_hash("PromotedAdminPass1!"),
+        role="student",
+    )
+    db.add_all([admin_role, target])
+    await db.commit()
+
+    target_login = await client.post(
+        "/api/auth/login",
+        json={"email": target.email, "password": "PromotedAdminPass1!"},
+    )
+    old_access_token = target_login.json()["access_token"]
+    old_token_version = target.token_version
+    client.cookies.clear()
+
+    owner_token = AuthService.create_tokens(owner.id, owner.token_version).access_token
+    promoted = await client.put(
+        f"/api/admin/team/users/{target.id}/roles",
+        json={"roles": ["admin"], "reason": "Operations team promotion"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert promoted.status_code == 200, promoted.text
+
+    await db.refresh(target)
+    assert target.token_version == old_token_version + 1
+    rejected_session = await client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {old_access_token}"},
+    )
+    assert rejected_session.status_code == 401
+    setup_required = await client.post(
+        "/api/auth/login",
+        json={"email": target.email, "password": "PromotedAdminPass1!"},
+    )
+    assert setup_required.status_code == 403
+    assert setup_required.json()["detail"]["code"] == "mfa_setup_required"
+
+
+@pytest.mark.asyncio
+async def test_sessionless_refresh_is_rejected_for_mfa_required_user(
+    client: AsyncClient,
+    db: AsyncSession,
+):
+    owner = await _owner(db)
+    legacy_refresh = AuthService.create_tokens(
+        owner.id,
+        owner.token_version,
+    ).refresh_token
+
+    response = await client.post(
+        "/api/auth/refresh",
+        json={"refresh_token": legacy_refresh},
+    )
+
+    assert response.status_code == 401
