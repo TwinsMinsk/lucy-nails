@@ -73,6 +73,17 @@ const parseErrorDetail = (detail: unknown, fallback: string): string => {
     return fallback;
 };
 
+export class ApiError extends Error {
+    constructor(
+        public readonly status: number,
+        public readonly detail: unknown,
+        fallback: string,
+    ) {
+        super(parseErrorDetail(detail, fallback));
+        this.name = "ApiError";
+    }
+}
+
 export const isAuthError = (error: unknown): boolean => (
     error instanceof Error && error.message === "Требуется вход в аккаунт"
 );
@@ -140,7 +151,7 @@ export async function apiFetch<T>(endpoint: string, options?: RequestInit, retry
 
         const errorData = await response.json().catch(() => ({ detail: `HTTP error ${response.status} at ${fullUrl}` }));
         console.error(`❌ API Error [${response.status}] ${fullUrl}:`, errorData);
-        throw new Error(parseErrorDetail(errorData.detail, `HTTP ${response.status}`));
+        throw new ApiError(response.status, errorData.detail, `HTTP ${response.status}`);
     }
 
     return response.json();
@@ -217,6 +228,16 @@ export interface TokenResponse {
 export interface LoginCredentials {
     email: string;
     password: string;
+    mfa_code?: string;
+}
+
+export interface MfaSetupResponse {
+    secret: string;
+    provisioning_uri: string;
+}
+
+export interface MfaConfirmResponse extends TokenResponse {
+    backup_codes: string[];
 }
 
 export interface RegisterCredentials {
@@ -241,6 +262,25 @@ export const login = async (credentials: LoginCredentials): Promise<TokenRespons
 
     saveTokens(response);
 
+    return response;
+};
+
+export const setupMfa = async (setupToken: string): Promise<MfaSetupResponse> => {
+    return apiFetch<MfaSetupResponse>("/auth/mfa/setup", {
+        method: "POST",
+        body: JSON.stringify({ setup_token: setupToken }),
+    });
+};
+
+export const confirmMfa = async (
+    setupToken: string,
+    code: string,
+): Promise<MfaConfirmResponse> => {
+    const response = await apiFetch<MfaConfirmResponse>("/auth/mfa/confirm", {
+        method: "POST",
+        body: JSON.stringify({ setup_token: setupToken, code }),
+    });
+    saveTokens(response);
     return response;
 };
 
