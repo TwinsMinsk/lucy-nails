@@ -155,6 +155,10 @@ export async function apiFetch<T>(endpoint: string, options?: RequestInit, retry
         throw new ApiError(response.status, errorData.detail, `HTTP ${response.status}`);
     }
 
+    if (response.status === 204) {
+        return undefined as T;
+    }
+
     return response.json();
 }
 
@@ -300,6 +304,28 @@ export const register = async (credentials: RegisterCredentials): Promise<UserRe
  */
 export const getMe = async (): Promise<UserResponse> => {
     return apiFetch<UserResponse>("/auth/me");
+};
+
+export interface TelegramStatusResponse {
+    connected: boolean;
+    username?: string | null;
+}
+
+export interface TelegramLinkResponse extends TelegramStatusResponse {
+    url: string;
+    expires_at: string;
+}
+
+export const getTelegramStatus = async (): Promise<TelegramStatusResponse> => {
+    return apiFetch<TelegramStatusResponse>("/telegram/status");
+};
+
+export const createTelegramLink = async (): Promise<TelegramLinkResponse> => {
+    return apiFetch<TelegramLinkResponse>("/telegram/link", { method: "POST" });
+};
+
+export const disconnectTelegram = async (): Promise<void> => {
+    await apiFetch<void>("/telegram/link", { method: "DELETE" });
 };
 
 /**

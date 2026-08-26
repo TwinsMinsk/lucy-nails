@@ -1,79 +1,76 @@
+"""One-time Telegram account linking used by the standalone bot."""
 
-from uuid import UUID
-from telegram import User as TelegramUser
+import hashlib
+import logging
+from datetime import datetime
+
 from sqlalchemy import select
-import jwt
-from jwt.exceptions import PyJWTError as JWTError
+from telegram import User as TelegramUser
 
-from app.core.database import async_session_maker
 from app.core.config import settings
+from app.core.database import async_session_maker
+from app.models.entitlement import Entitlement
+from app.models.telegram_link import TelegramLinkToken
 from app.models.user import User
 
+
+logger = logging.getLogger(__name__)
+
+
 class BotAuthService:
-    """Сервис для аутентификации через Telegram."""
-    
     @staticmethod
     async def link_account(token: str, telegram_user: TelegramUser) -> str:
-        """
-        Привязывает Telegram аккаунт к пользователю по JWT токену.
-        
-        Args:
-            token: JWT токен из deep link
-            telegram_user: Объект пользователя Telegram
-            
-        Returns:
-            Сообщение о результатах операции
-        """
-        # 1. Валидация токена
-        try:
-            payload = jwt.decode(
-                token, 
-                settings.JWT_SECRET_KEY, 
-                algorithms=[settings.JWT_ALGORITHM]
-            )
-            user_id_str: str = payload.get("sub")
-            if not user_id_str:
-                return "Некорректный токен. Попробуйте снова."
-                
-            user_id = UUID(user_id_str)
-        except JWTError:
-            return "Ссылка устарела или некорректна. Попробуйте сгенерировать новую в личном кабинете."
-        except ValueError:
-            return "Ошибка данных пользователя."
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        now = datetime.utcnow()
 
-        # 2. Поиск и обновление пользователя в БД
         async with async_session_maker() as session:
             try:
-                # Проверяем, не привязан ли уже этот Telegram ID к кому-то
-                result = await session.execute(
+                token_row = await session.scalar(
+                    select(TelegramLinkToken)
+                    .where(TelegramLinkToken.token_hash == token_hash)
+                    .with_for_update()
+                )
+                if token_row is None:
+                    return "Ссылка некорректна. Создайте новую в личном кабинете."
+                if token_row.used_at is not None:
+                    return "Эта ссылка уже использована. Создайте новую в личном кабинете."
+                if token_row.expires_at <= now:
+                    return "Ссылка устарела. Создайте новую в личном кабинете."
+
+                user = await session.get(User, token_row.user_id)
+                if user is None:
+                    return "Пользователь не найден."
+
+                telegram_owner = await session.scalar(
                     select(User).where(User.telegram_id == telegram_user.id)
                 )
-                existing_telegram_user = result.scalar_one_or_none()
-                
-                if existing_telegram_user:
-                    if existing_telegram_user.id == user_id:
-                        return "Этот аккаунт Telegram уже привязан к вашему профилю."
-                    else:
-                        return "Этот аккаунт Telegram уже используется другим пользователем."
-                
-                # Ищем пользователя по ID из токена
-                result = await session.execute(
-                    select(User).where(User.id == user_id)
-                )
-                user = result.scalar_one_or_none()
-                
-                if not user:
-                    return "Пользователь не найден."
-                
-                # Привязываем
+                if telegram_owner is not None and telegram_owner.id != user.id:
+                    return "Этот Telegram уже используется другим пользователем."
+                if user.telegram_id is not None and user.telegram_id != telegram_user.id:
+                    return "Сначала отключите прежний Telegram в личном кабинете."
+
                 user.telegram_id = telegram_user.id
                 user.telegram_username = telegram_user.username
-                
+                token_row.used_at = now
                 await session.commit()
-                return "✅ Аккаунт успешно привязан! Теперь вы сможете получать уведомления и доступ к чату."
-                
-            except Exception as e:
+
+                support = await session.scalar(
+                    select(Entitlement.id).where(
+                        Entitlement.user_id == user.id,
+                        Entitlement.tariff == "support",
+                        Entitlement.status == "active",
+                        Entitlement.starts_at <= now,
+                        Entitlement.expires_at > now,
+                    )
+                )
+                suffix = ""
+                if support is not None and settings.TELEGRAM_SUPPORT_GROUP_INVITE:
+                    suffix = f"\n\nЧат поддержки: {settings.TELEGRAM_SUPPORT_GROUP_INVITE}"
+                return (
+                    "✅ Аккаунт успешно привязан. Теперь сюда будут приходить "
+                    f"уведомления о курсе.{suffix}"
+                )
+            except Exception:
                 await session.rollback()
-                # Логируем ошибку реально
-                print(f"Error linking account: {e}")
+                logger.exception("Telegram account linking failed")
                 return "Произошла ошибка при привязке. Попробуйте позже."

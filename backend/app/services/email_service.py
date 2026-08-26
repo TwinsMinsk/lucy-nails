@@ -235,6 +235,33 @@ class EmailService:
         await EmailService._send(email, "Доступ к курсу открыт — Lucy Nails Academy", html)
 
     @staticmethod
+    async def send_access_expiry_reminder(
+        email: str, course_title: str, days: int, expires_at: str
+    ) -> None:
+        safe_title = escape(course_title)
+        safe_expires_at = escape(expires_at)
+        login_url = escape(f"{settings.FRONTEND_URL.rstrip('/')}/dashboard", quote=True)
+        html = (
+            f"<h1>Доступ закончится через {days} дн.</h1>"
+            f"<p>Курс «{safe_title}» доступен до {safe_expires_at}.</p>"
+            f'<p><a href="{login_url}">Продолжить обучение</a></p>'
+        )
+        await EmailService._send(
+            email, f"До окончания доступа осталось {days} дн. — Lucy Nails Academy", html
+        )
+
+    @staticmethod
+    async def send_access_expired(email: str, course_title: str) -> None:
+        safe_title = escape(course_title)
+        html = (
+            f"<h1>Срок доступа завершён</h1><p>Доступ к курсу «{safe_title}» закончился.</p>"
+            "<p>Если это ошибка или вам нужна помощь, ответьте на это письмо.</p>"
+        )
+        await EmailService._send(
+            email, "Срок доступа к курсу завершён — Lucy Nails Academy", html
+        )
+
+    @staticmethod
     def _build_reset_html(reset_url: str) -> str:
         safe_url = escape(reset_url, quote=True)
         return f"""

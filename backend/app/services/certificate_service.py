@@ -251,6 +251,19 @@ class CertificateService:
                 },
                 dedupe_key=f"certificate:{certificate.id}:issued",
             )
+            if user.telegram_id is not None and settings.TELEGRAM_BOT_TOKEN:
+                enqueue_outbox_message(
+                    db,
+                    kind="certificate_issued",
+                    channel="telegram",
+                    recipient=str(user.telegram_id),
+                    payload={
+                        "text": (
+                            f"🎓 Сертификат № {certificate_number} готов: {verify_url}"
+                        )
+                    },
+                    dedupe_key=f"certificate:{certificate.id}:issued:telegram",
+                )
             await db.commit()
         except IntegrityError:
             # Concurrent double-claim raced past the existence check above and both

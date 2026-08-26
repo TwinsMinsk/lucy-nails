@@ -122,7 +122,11 @@ class Settings(BaseSettings):
 
     # === Telegram ===
     TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_BOT_USERNAME: str = ""
     TELEGRAM_SUPPORT_GROUP_INVITE: str = ""
+    TELEGRAM_SUPPORT_GROUP_ID: int | None = None
+    TELEGRAM_OWNER_CHAT_ID: int | None = None
+    LIFECYCLE_SCAN_SECONDS: int = 300
     
     # === Frontend ===
     FRONTEND_URL: str = "http://localhost:3000"

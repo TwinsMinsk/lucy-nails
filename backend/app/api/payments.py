@@ -432,6 +432,25 @@ async def _record_purchase_once(
                 },
                 dedupe_key=f"payment:{dedupe_hash}:access",
             )
+        if user.telegram_id is not None and settings.TELEGRAM_BOT_TOKEN:
+            support_note = ""
+            if tariff == "support" and settings.TELEGRAM_SUPPORT_GROUP_INVITE:
+                support_note = (
+                    f"\nЧат поддержки: {settings.TELEGRAM_SUPPORT_GROUP_INVITE}"
+                )
+            enqueue_outbox_message(
+                db,
+                kind="access_granted",
+                channel="telegram",
+                recipient=str(user.telegram_id),
+                payload={
+                    "text": (
+                        f"✅ Оплата подтверждена. Доступ к курсу «{course.title}» открыт "
+                        f"до {expires_at:%d.%m.%Y}.{support_note}"
+                    )
+                },
+                dedupe_key=f"payment:{dedupe_hash}:access:telegram",
+            )
         if order is not None:
             order.status = "paid"
             order.paid_at = paid_at

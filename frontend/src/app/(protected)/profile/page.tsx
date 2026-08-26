@@ -2,10 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { changePassword, getMe, isAuthError, logout, UserResponse } from "@/lib/api";
+import {
+    changePassword,
+    createTelegramLink,
+    disconnectTelegram,
+    getMe,
+    getTelegramStatus,
+    isAuthError,
+    logout,
+    TelegramStatusResponse,
+    UserResponse,
+} from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { BookOpen, Loader2, LogOut, User } from "lucide-react";
+import { BookOpen, Loader2, LogOut, MessageCircle, Unlink, User } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -19,12 +29,15 @@ export default function ProfilePage() {
     const [newPassword, setNewPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [isChanging, setIsChanging] = useState(false);
+    const [telegram, setTelegram] = useState<TelegramStatusResponse | null>(null);
+    const [telegramBusy, setTelegramBusy] = useState(false);
 
     useEffect(() => {
         const fetchProfile = async () => {
             try {
                 const userData = await getMe();
                 setUser(userData);
+                setTelegram(await getTelegramStatus());
             } catch (error) {
                 if (!isAuthError(error)) {
                     toast.error("Ошибка загрузки профиля");
@@ -70,6 +83,46 @@ export default function ProfilePage() {
             toast.error("Ошибка", { description: message });
         } finally {
             setIsChanging(false);
+        }
+    };
+
+    const refreshTelegram = async () => {
+        setTelegramBusy(true);
+        try {
+            setTelegram(await getTelegramStatus());
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Не удалось проверить Telegram");
+        } finally {
+            setTelegramBusy(false);
+        }
+    };
+
+    const handleConnectTelegram = async () => {
+        setTelegramBusy(true);
+        try {
+            const link = await createTelegramLink();
+            window.open(link.url, "_blank", "noopener,noreferrer");
+            toast.success("Откройте Telegram и нажмите Start", {
+                description: "Ссылка одноразовая и действует 15 минут.",
+            });
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Не удалось открыть Telegram");
+        } finally {
+            setTelegramBusy(false);
+        }
+    };
+
+    const handleDisconnectTelegram = async () => {
+        if (!window.confirm("Отключить Telegram-уведомления?")) return;
+        setTelegramBusy(true);
+        try {
+            await disconnectTelegram();
+            setTelegram({ connected: false, username: null });
+            toast.success("Telegram отключён");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Не удалось отключить Telegram");
+        } finally {
+            setTelegramBusy(false);
         }
     };
 
@@ -146,6 +199,56 @@ export default function ProfilePage() {
                         Выйти
                     </Button>
                 </CardFooter>
+            </Card>
+
+            <Card className="w-full shadow-lg border-primary/10">
+                <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-xl font-serif text-text-primary">
+                        <MessageCircle className="h-5 w-5" /> Telegram
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <p className="text-sm leading-relaxed text-text-secondary">
+                        Получайте подтверждение оплаты, ссылку на чат поддержки, напоминания
+                        об окончании доступа и готовый сертификат.
+                    </p>
+                    <div className="rounded-xl bg-muted/40 p-3 text-sm">
+                        {telegram?.connected
+                            ? `Подключён${telegram.username ? `: @${telegram.username}` : ""}`
+                            : "Telegram пока не подключён"}
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                        {telegram?.connected ? (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="flex-1 gap-2"
+                                disabled={telegramBusy}
+                                onClick={handleDisconnectTelegram}
+                            >
+                                <Unlink className="h-4 w-4" /> Отключить
+                            </Button>
+                        ) : (
+                            <Button
+                                type="button"
+                                className="flex-1 gap-2"
+                                disabled={telegramBusy}
+                                onClick={handleConnectTelegram}
+                            >
+                                {telegramBusy && <Loader2 className="h-4 w-4 animate-spin" />}
+                                Подключить Telegram
+                            </Button>
+                        )}
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            disabled={telegramBusy}
+                            onClick={refreshTelegram}
+                        >
+                            Проверить связь
+                        </Button>
+                    </div>
+                </CardContent>
             </Card>
 
             <Card className="w-full shadow-lg border-primary/10">

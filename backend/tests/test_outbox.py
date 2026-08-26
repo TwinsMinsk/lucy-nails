@@ -60,3 +60,29 @@ async def test_outbox_retries_failure_and_records_success(db: AsyncSession):
         (1, "failed"),
         (2, "sent"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_outbox_delivers_telegram_channel(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    sent: list[tuple[str, str]] = []
+
+    async def fake_telegram(recipient: str, text: str) -> None:
+        sent.append((recipient, text))
+
+    monkeypatch.setattr(outbox_service, "send_telegram_message", fake_telegram)
+    message = enqueue_outbox_message(
+        db,
+        kind="access_expiry_reminder",
+        channel="telegram",
+        recipient="123456789",
+        payload={"text": "Доступ закончится через 7 дней"},
+        dedupe_key="telegram-reminder-test",
+    )
+    await db.commit()
+
+    assert await outbox_service.process_outbox_batch(db) == 1
+    await db.refresh(message)
+    assert message.status == "sent"
+    assert sent == [("123456789", "Доступ закончится через 7 дней")]
