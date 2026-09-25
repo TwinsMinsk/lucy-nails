@@ -29,6 +29,17 @@ class ActiveCourseAccess:
     expires_at: datetime
 
 
+@dataclass(frozen=True)
+class ExpiredCourseAccess:
+    course: Course
+    expired_at: datetime
+
+
+# Entitlement statuses of access that ran out on its own. Revoked (incl. refunds)
+# and suspended access is excluded on purpose: it was taken away, not expired.
+NATURALLY_ENDED_STATUSES = ("active", "expired")
+
+
 class AccessService:
     """Use entitlements as the source of truth, with a temporary legacy fallback."""
 
@@ -363,3 +374,45 @@ class AccessService:
                 )
 
         return sorted(by_course.values(), key=lambda item: item.expires_at, reverse=True)
+
+    @staticmethod
+    async def get_expired_course_accesses(
+        db: AsyncSession,
+        user_id: UUID,
+        *,
+        now: datetime | None = None,
+    ) -> list[ExpiredCourseAccess]:
+        """Published courses whose access ran out and has not been renewed.
+
+        One entry per course with the latest natural expiry; courses with a
+        currently active entitlement are skipped.
+        """
+        current_time = now or datetime.utcnow()
+        active_course_ids = select(Entitlement.course_id).where(
+            Entitlement.user_id == user_id,
+            Entitlement.status == "active",
+            Entitlement.starts_at <= current_time,
+            Entitlement.expires_at > current_time,
+        )
+        result = await db.execute(
+            select(Entitlement)
+            .where(
+                Entitlement.user_id == user_id,
+                Entitlement.status.in_(NATURALLY_ENDED_STATUSES),
+                Entitlement.expires_at <= current_time,
+                Entitlement.course_id.not_in(active_course_ids),
+            )
+            .options(selectinload(Entitlement.course))
+            .order_by(Entitlement.expires_at.desc(), Entitlement.created_at.desc())
+        )
+
+        by_course: dict[UUID, ExpiredCourseAccess] = {}
+        for entitlement in result.scalars().all():
+            course = entitlement.course
+            if course is None or not course.is_published or course.id in by_course:
+                continue
+            by_course[course.id] = ExpiredCourseAccess(
+                course=course,
+                expired_at=entitlement.expires_at,
+            )
+        return list(by_course.values())

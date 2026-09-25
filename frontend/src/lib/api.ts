@@ -471,6 +471,21 @@ export const getMyCourses = async (): Promise<MyCourseResponse[]> => {
     return apiFetch<MyCourseResponse[]>("/purchases/my");
 };
 
+export interface ExpiredCourseResponse {
+    course_id: string;
+    course_title: string;
+    cover_image_url?: string | null;
+    price_self: number;
+    expired_at: string;
+}
+
+/**
+ * Курсы, доступ к которым закончился и не продлён (для продления из кабинета)
+ */
+export const getMyExpiredCourses = async (): Promise<ExpiredCourseResponse[]> => {
+    return apiFetch<ExpiredCourseResponse[]>("/purchases/my/expired");
+};
+
 /**
  * Получить публичную информацию о курсе
  */

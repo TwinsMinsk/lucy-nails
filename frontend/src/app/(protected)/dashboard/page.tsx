@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Award, BookOpen, CalendarClock, CheckCircle, Loader2, PlayCircle } from "lucide-react";
+import { Award, BookOpen, CalendarClock, CalendarX, CheckCircle, Loader2, PlayCircle } from "lucide-react";
 import Image from "next/image";
 
+import { PaymentButton } from "@/components/landing/PaymentButton";
 import { Button } from "@/components/ui/button";
 import {
     Card,
@@ -16,7 +17,15 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { getMyCourses, getMe, isAuthError, MyCourseResponse, UserResponse } from "@/lib/api";
+import {
+    ExpiredCourseResponse,
+    getMyCourses,
+    getMyExpiredCourses,
+    getMe,
+    isAuthError,
+    MyCourseResponse,
+    UserResponse,
+} from "@/lib/api";
 import { toast } from "sonner";
 import { CertificateClaimDialog } from "@/components/certificate/CertificateClaimDialog";
 
@@ -24,6 +33,7 @@ export default function DashboardPage() {
     const router = useRouter();
     const [user, setUser] = useState<UserResponse | null>(null);
     const [courses, setCourses] = useState<MyCourseResponse[]>([]);
+    const [expiredCourses, setExpiredCourses] = useState<ExpiredCourseResponse[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [claimCourse, setClaimCourse] = useState<MyCourseResponse | null>(null);
 
@@ -31,13 +41,16 @@ export default function DashboardPage() {
         const fetchData = async () => {
             try {
                 // Получаем данные пользователя и его курсы
-                const [userData, coursesData] = await Promise.all([
+                const [userData, coursesData, expiredData] = await Promise.all([
                     getMe(),
                     getMyCourses(),
+                    // Renewal offers are secondary: never let them break the dashboard.
+                    getMyExpiredCourses().catch((): ExpiredCourseResponse[] => []),
                 ]);
 
                 setUser(userData);
                 setCourses(coursesData);
+                setExpiredCourses(expiredData);
             } catch (error) {
                 if (isAuthError(error)) {
                     router.push("/auth/login");
@@ -224,7 +237,7 @@ export default function DashboardPage() {
                             );
                         })}
                     </div>
-                ) : (
+                ) : expiredCourses.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-16 text-center bg-surface border rounded-[2rem] border-dashed px-6">
                         <div className="bg-primary/10 p-4 rounded-full mb-4">
                             <BookOpen className="w-8 h-8 text-primary" />
@@ -236,6 +249,69 @@ export default function DashboardPage() {
                         <Button asChild className="rounded-full bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white">
                             <Link href="/">Перейти в каталог</Link>
                         </Button>
+                    </div>
+                ) : null}
+
+                {expiredCourses.length > 0 && (
+                    <div className={courses.length > 0 ? "mt-10" : undefined}>
+                        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-text-primary">
+                            <CalendarX className="w-5 h-5 text-[#D4AF37]" />
+                            Доступ закончился
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {expiredCourses.map((course) => (
+                                <Card key={course.course_id} className="flex flex-col border-primary/10">
+                                    <div className="aspect-video w-full bg-primary/5 relative overflow-hidden rounded-t-xl">
+                                        {course.cover_image_url ? (
+                                            <Image
+                                                src={course.cover_image_url}
+                                                alt={course.course_title}
+                                                fill
+                                                className="object-cover opacity-70"
+                                            />
+                                        ) : (
+                                            <div className="absolute inset-0 flex items-center justify-center text-primary/20">
+                                                <BookOpen className="w-12 h-12" />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <CardHeader className="pb-3">
+                                        <CardTitle className="text-xl line-clamp-3 leading-tight" title={course.course_title}>
+                                            {course.course_title}
+                                        </CardTitle>
+                                    </CardHeader>
+
+                                    <CardContent className="flex-1">
+                                        <div className="flex items-center gap-2 rounded-xl bg-[#fff1f4] px-3 py-2 text-xs text-text-secondary">
+                                            <CalendarX className="w-4 h-4 text-[#D4AF37]" />
+                                            <span>
+                                                Доступ закончился{" "}
+                                                <span className="font-medium text-text-primary">
+                                                    {new Date(course.expired_at).toLocaleDateString("ru-RU")}
+                                                </span>
+                                            </span>
+                                        </div>
+                                    </CardContent>
+
+                                    <CardFooter className="pt-2 flex flex-col gap-2">
+                                        <PaymentButton
+                                            courseId={course.course_id}
+                                            tariff="self"
+                                            className="relative overflow-hidden group w-full h-11 rounded-full bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white border-none"
+                                        >
+                                            Продлить доступ — {course.price_self.toLocaleString("ru-RU")} ₽
+                                        </PaymentButton>
+                                        <p className="text-xs text-text-secondary text-center">
+                                            Нажимая «Продлить доступ», вы принимаете условия{" "}
+                                            <Link href="/terms" target="_blank" className="underline underline-offset-2 hover:text-text-primary">
+                                                оферты
+                                            </Link>
+                                        </p>
+                                    </CardFooter>
+                                </Card>
+                            ))}
+                        </div>
                     </div>
                 )}
             </section>

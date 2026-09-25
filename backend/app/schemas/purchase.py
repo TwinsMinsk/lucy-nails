@@ -78,3 +78,13 @@ class MyCourseResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+class ExpiredCourseResponse(BaseModel):
+    """A course whose access ran out and can be renewed from the dashboard."""
+
+    course_id: UUID
+    course_title: str
+    cover_image_url: str | None = None
+    price_self: int = Field(..., description="Renewal price in rubles")
+    expired_at: datetime
+

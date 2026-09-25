@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, CheckCircle, Loader2, Check, ListVideo, Award } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getLesson, LessonResponse, getPublicCourseModules, ModuleResponse, getCourseProgress, updateLessonProgress, isAuthError, getPublicCourse, getCertificateStatus, CertificateResponse } from "@/lib/api";
+import { ApiError, getLesson, LessonResponse, getPublicCourseModules, ModuleResponse, getCourseProgress, updateLessonProgress, isAuthError, getPublicCourse, getCertificateStatus, CertificateResponse } from "@/lib/api";
 import { toast } from "sonner";
 import { sanitizeHtml } from "@/lib/sanitize";
 
@@ -41,10 +41,12 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
     const courseTitleRef = useRef("");
     const [certificate, setCertificate] = useState<CertificateResponse | null | undefined>(undefined);
     const [claimOpen, setClaimOpen] = useState(false);
+    const [accessDenied, setAccessDenied] = useState(false);
 
     useEffect(() => {
         const fetchData = async () => {
             setIsLoading(true);
+            setAccessDenied(false);
             try {
                 // Fetch current lesson, course structure and progress in parallel
                 const [lessonData, modulesData, progressData] = await Promise.all([
@@ -98,6 +100,10 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
                 console.error(error);
                 if (isAuthError(error)) {
                     router.push("/auth/login");
+                    return;
+                }
+                if (error instanceof ApiError && error.status === 403) {
+                    setAccessDenied(true);
                     return;
                 }
                 toast.error("Ошибка загрузки данных урока");
@@ -185,6 +191,17 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
         return (
             <div className="flex items-center justify-center h-[calc(100vh-64px)]">
                 <Loader2 className="w-8 h-8 text-primary animate-spin" />
+            </div>
+        );
+    }
+
+    if (accessDenied) {
+        return (
+            <div className="flex flex-col items-center justify-center h-[calc(100vh-64px)] gap-4 px-4 text-center">
+                <p className="text-text-secondary">Доступ к курсу закончился или ещё не открыт</p>
+                <Button asChild variant="outline">
+                    <Link href="/dashboard">Перейти в кабинет</Link>
+                </Button>
             </div>
         );
     }
