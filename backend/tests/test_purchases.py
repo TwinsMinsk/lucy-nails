@@ -1427,3 +1427,45 @@ async def test_rejected_signed_webhook_alerts_owner_once(
         "Email: mismatch-alert@example.com\n"
         f"Заказ: {reference}"
     )
+
+
+@pytest.mark.asyncio
+async def test_webhook_matches_legacy_mixed_case_buyer_and_order(
+    client: AsyncClient,
+    db: AsyncSession,
+):
+    course = await _published_course(db, "Legacy Case Course")
+    buyer = await _create_user(db, "Legacy.Buyer@Example.com")
+    order = Order(
+        user_id=buyer.id,
+        course_id=course.id,
+        course_title=course.title,
+        tariff="self",
+        customer_email="Legacy.Buyer@Example.com",
+        amount_kopecks=500000,
+        currency="RUB",
+        access_days=course.access_days,
+        status="pending",
+        status_token_hash="0" * 64,
+    )
+    db.add(order)
+    await db.commit()
+
+    payload, headers = _signed_payload(
+        {
+            "order_id": "300555",
+            "order_num": f"order|{order.id}",
+            "customer_email": "legacy.buyer@example.com",
+            "sum": "5000",
+            "currency": "rub",
+            "payment_status": "success",
+        }
+    )
+    response = await client.post("/api/payments/webhook", json=payload, headers=headers)
+
+    assert response.status_code == 200, response.text
+    purchase = (
+        await db.execute(select(Purchase).where(Purchase.payment_id == "300555"))
+    ).scalar_one()
+    assert purchase.user_id == buyer.id
+    assert await db.scalar(select(func.count(User.id))) == 1

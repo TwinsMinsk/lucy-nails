@@ -20,7 +20,7 @@ from pydantic import (
     ValidationError,
     field_validator,
 )
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -147,7 +147,8 @@ async def _get_or_create_user(
     Returns:
         (user, plain_password) — plain_password только для нового пользователя (для email).
     """
-    result = await db.execute(select(User).where(User.email == email))
+    # Callers pass a lowercased email; func.lower() also matches legacy mixed-case rows.
+    result = await db.execute(select(User).where(func.lower(User.email) == email))
     user = result.scalars().first()
     if user:
         return user, False
@@ -367,7 +368,8 @@ async def _record_purchase_once(
             order = order_result.scalar_one_or_none()
             if order is None:
                 raise HTTPException(status_code=422, detail="Order not found")
-            if webhook_email != order.customer_email:
+            # Orders created before email normalization may keep mixed case.
+            if webhook_email != order.customer_email.strip().lower():
                 raise HTTPException(status_code=422, detail="Order customer mismatch")
             course_id_uuid = order.course_id
             tariff = order.tariff
@@ -375,7 +377,7 @@ async def _record_purchase_once(
         if course_id_uuid is None or tariff is None:
             raise HTTPException(status_code=422, detail="Invalid order_id")
 
-        customer_email = order.customer_email if order else webhook_email
+        customer_email = webhook_email
 
         customer_phone = _normalize_phone(payload.get("customer_phone"))
 
