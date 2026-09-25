@@ -45,19 +45,40 @@ test("guest checkout reaches confirmed access state", async ({ page }) => {
 
     await page.getByLabel("Email").fill("student@example.com")
     const payButton = page.getByRole("button", { name: "Перейти к оплате" })
+    const offer = page.getByRole("checkbox", { name: "Я принимаю условия оферты" })
+    const personalData = page.getByRole("checkbox", { name: "Даю согласие на обработку персональных данных" })
+    const offerError = page.getByRole("alert").filter({ hasText: "Примите условия оферты" })
+    const personalDataError = page.getByRole("alert").filter({ hasText: "Дайте согласие на обработку персональных данных" })
     await expect(payButton).toHaveAttribute("aria-disabled", "true")
+    await expect(offer).toHaveAttribute("aria-required", "true")
+    await expect(personalData).toHaveAttribute("aria-required", "true")
+
     // Submitting without consent explains the requirement and does not start checkout.
     await page.getByLabel("Email").press("Enter")
-    await expect(page.getByText("Отметьте согласие, чтобы продолжить")).toBeVisible()
+    await expect(offerError).toBeVisible()
+    await expect(personalDataError).toBeVisible()
+    await expect(offer).toBeFocused()
     expect(checkoutPayload).toBeUndefined()
 
-    await page.getByRole("checkbox", { name: /Я принимаю условия оферты/ }).check()
-    await expect(page.getByText("Отметьте согласие, чтобы продолжить")).toHaveCount(0)
+    // The offer alone is not enough: personal-data consent is a separate, required box.
+    await offer.check()
+    await expect(offerError).toHaveCount(0)
+    await page.getByLabel("Email").press("Enter")
+    await expect(personalDataError).toBeVisible()
+    await expect(personalData).toBeFocused()
+    expect(checkoutPayload).toBeUndefined()
+
+    await personalData.check()
+    await expect(personalDataError).toHaveCount(0)
+    await expect(payButton).not.toHaveAttribute("aria-disabled", "true")
     await payButton.click()
 
     await expect(page.getByRole("heading", { name: "Оплата подтверждена" })).toBeVisible()
     expect(checkoutPayload).toMatchObject({
         customer_email: "student@example.com",
         tariff: "self",
+        offer_accepted: true,
+        personal_data_consent: true,
+        consent_version: expect.any(String),
     })
 })

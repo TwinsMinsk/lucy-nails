@@ -258,7 +258,14 @@ export interface MfaConfirmResponse extends TokenResponse {
     backup_codes: string[];
 }
 
-export interface RegisterCredentials {
+/** Offer and personal-data consent are separate checkboxes; the backend requires both. */
+export interface ConsentFields {
+    offer_accepted: boolean;
+    personal_data_consent: boolean;
+    consent_version: string;
+}
+
+export interface RegisterCredentials extends ConsentFields {
     email: string;
     password: string;
 }
@@ -1533,7 +1540,7 @@ export const getPaymentLink = async (data: PaymentLinkRequest): Promise<PaymentL
     });
 };
 
-export interface GuestPaymentLinkRequest {
+export interface GuestPaymentLinkRequest extends ConsentFields {
     course_id: string;
     tariff: "self";
     customer_email: string;

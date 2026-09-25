@@ -13,12 +13,21 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PersonalDataConsent } from "@/components/legal/PersonalDataConsent";
+import {
+  type ConsentState,
+  focusFirstMissingConsent,
+  hasFullConsent,
+  NO_CONSENT,
+  PersonalDataConsent,
+} from "@/components/legal/PersonalDataConsent";
 import { getGuestPaymentLink } from "@/lib/api";
 import { CheckCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { captureCheckoutAttribution } from "@/lib/attribution";
 import { sendYandexGoal } from "@/lib/analytics-client";
+import { CONSENT_VERSION } from "@/lib/legal";
+
+const CONSENT_ID = "guest-checkout-consent";
 
 interface GuestCheckoutDialogProps {
   open: boolean;
@@ -35,21 +44,23 @@ export function GuestCheckoutDialog({
 }: GuestCheckoutDialogProps) {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [consent, setConsent] = useState(false);
+  const [consent, setConsent] = useState<ConsentState>(NO_CONSENT);
   const [consentError, setConsentError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const next = encodeURIComponent(`/?course=${courseId}&tariff=${tariff}#pricing`);
+  const consentGiven = hasFullConsent(consent);
 
-  const handleConsentChange = (checked: boolean) => {
-    setConsent(checked);
-    if (checked) setConsentError(false);
+  const handleConsentChange = (value: ConsentState) => {
+    setConsent(value);
+    if (hasFullConsent(value)) setConsentError(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!consent) {
+    if (!consentGiven) {
       setConsentError(true);
+      focusFirstMissingConsent(CONSENT_ID, consent);
       return;
     }
     const trimmed = email.trim().toLowerCase();
@@ -65,6 +76,9 @@ export function GuestCheckoutDialog({
         customer_email: trimmed,
         customer_phone: phone.trim() || undefined,
         attribution: captureCheckoutAttribution(),
+        offer_accepted: consent.offer,
+        personal_data_consent: consent.personalData,
+        consent_version: CONSENT_VERSION,
       });
       if (data.url) {
         sendYandexGoal("checkout");
@@ -132,9 +146,9 @@ export function GuestCheckoutDialog({
             />
           </div>
           <PersonalDataConsent
-            id="guest-checkout-consent"
-            checked={consent}
-            onCheckedChange={handleConsentChange}
+            id={CONSENT_ID}
+            value={consent}
+            onChange={handleConsentChange}
             showError={consentError}
             disabled={submitting}
           />
@@ -143,7 +157,7 @@ export function GuestCheckoutDialog({
             <Button
               type="submit"
               disabled={submitting}
-              aria-disabled={!consent}
+              aria-disabled={!consentGiven}
               className="w-full rounded-full bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
             >
               {submitting ? (

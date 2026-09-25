@@ -29,7 +29,10 @@ test("registration requires personal-data consent", async ({ page }) => {
     await expect(page.getByRole("button", { name: "Зарегистрироваться" })).toHaveAttribute("aria-disabled", "true")
     await page.getByLabel("Подтвердите пароль").press("Enter")
 
-    await expect(page.getByText("Отметьте согласие, чтобы продолжить")).toBeVisible()
+    await expect(page.getByRole("alert").filter({ hasText: "Примите условия оферты" })).toBeVisible()
+    await expect(page.getByRole("alert").filter({ hasText: "Дайте согласие на обработку персональных данных" })).toBeVisible()
+    await expect(page.getByRole("checkbox", { name: "Я принимаю условия оферты" })).toBeFocused()
     expect(registerCalled).toBe(false)
-    await expect(page.getByRole("link", { name: "политикой конфиденциальности" })).toHaveAttribute("target", "_blank")
+    await expect(page.getByRole("link", { name: "оферты", exact: true })).toHaveAttribute("target", "_blank")
+    await expect(page.getByRole("link", { name: "обработку персональных данных" })).toHaveAttribute("target", "_blank")
 })

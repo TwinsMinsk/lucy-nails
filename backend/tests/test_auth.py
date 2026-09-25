@@ -1,5 +1,12 @@
+from datetime import datetime
+
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.legal import CONSENT_REQUIRED_DETAIL, CONSENT_VERSION
+from app.models.user import User
 
 
 @pytest.mark.asyncio
@@ -7,7 +14,9 @@ async def test_register_user(client: AsyncClient):
     response = await client.post("/api/auth/register", json={
         "email": "test_register_unique@example.com",
         "password": "password123",
-        "password_confirm": "password123"
+        "password_confirm": "password123",
+        "offer_accepted": True,
+        "personal_data_consent": True
     })
     if response.status_code != 201:
         print(f"Registration failed: {response.text}")
@@ -22,7 +31,9 @@ async def test_login_user(client: AsyncClient):
     await client.post("/api/auth/register", json={
         "email": "login@example.com",
         "password": "password123",
-        "password_confirm": "password123"
+        "password_confirm": "password123",
+        "offer_accepted": True,
+        "personal_data_consent": True
     })
     
     # Login
@@ -43,7 +54,9 @@ async def test_get_me_accepts_cookie_token(client: AsyncClient):
     await client.post("/api/auth/register", json={
         "email": "cookie-me@example.com",
         "password": "password123",
-        "password_confirm": "password123"
+        "password_confirm": "password123",
+        "offer_accepted": True,
+        "personal_data_consent": True
     })
 
     login_res = await client.post("/api/auth/login", json={
@@ -65,7 +78,9 @@ async def test_refresh_accepts_cookie_token(client: AsyncClient):
     await client.post("/api/auth/register", json={
         "email": "cookie-refresh@example.com",
         "password": "password123",
-        "password_confirm": "password123"
+        "password_confirm": "password123",
+        "offer_accepted": True,
+        "personal_data_consent": True
     })
 
     login_res = await client.post("/api/auth/login", json={
@@ -90,7 +105,9 @@ async def test_get_me(client: AsyncClient):
     await client.post("/api/auth/register", json={
         "email": "me@example.com",
         "password": "password123",
-        "password_confirm": "password123"
+        "password_confirm": "password123",
+        "offer_accepted": True,
+        "personal_data_consent": True
     })
     
     # Login
@@ -107,3 +124,47 @@ async def test_get_me(client: AsyncClient):
     assert response.status_code == 200
     data = response.json()
     assert data["email"] == "me@example.com"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "consent",
+    [
+        {},
+        {"offer_accepted": True},
+        {"personal_data_consent": True},
+        {"offer_accepted": False, "personal_data_consent": True},
+    ],
+)
+async def test_register_requires_offer_and_personal_data_consent(
+    client: AsyncClient, db: AsyncSession, consent: dict
+):
+    response = await client.post(
+        "/api/auth/register",
+        json={"email": "no-consent@example.com", "password": "password123", **consent},
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"] == CONSENT_REQUIRED_DETAIL
+    assert (await db.execute(select(func.count(User.id)))).scalar_one() == 0
+
+
+@pytest.mark.asyncio
+async def test_register_records_consent(client: AsyncClient, db: AsyncSession):
+    before = datetime.utcnow()
+
+    response = await client.post(
+        "/api/auth/register",
+        json={
+            "email": "consent@example.com",
+            "password": "password123",
+            "offer_accepted": True,
+            "personal_data_consent": True,
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    user = (await db.execute(select(User).where(User.email == "consent@example.com"))).scalar_one()
+    assert user.consent_version == CONSENT_VERSION
+    assert user.offer_accepted_at is not None and user.offer_accepted_at >= before
+    assert user.personal_data_consent_at is not None and user.personal_data_consent_at >= before

@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import async_session_maker
 from app.core.dependencies import get_current_user
+from app.core.legal import CONSENT_VERSION, require_consent
 from app.core.rate_limit import limiter
 from app.core.security import create_account_activation_token, get_password_hash
 from app.models.course import Course
@@ -180,6 +181,7 @@ async def _create_checkout_order(
     *,
     user_id: UUID | None = None,
     attribution: dict[str, Any] | None = None,
+    consented_at: datetime | None = None,
 ) -> tuple[Order, str]:
     if tariff not in SELLABLE_TARIFFS:
         raise HTTPException(status_code=400, detail="Invalid tariff")
@@ -200,6 +202,9 @@ async def _create_checkout_order(
         access_days=course.access_days,
         status="pending",
         status_token_hash=_hash_status_token(status_token),
+        offer_accepted_at=consented_at,
+        personal_data_consent_at=consented_at,
+        consent_version=CONSENT_VERSION if consented_at else None,
         first_utm_source=first_touch.get("utm_source"),
         first_utm_medium=first_touch.get("utm_medium"),
         first_utm_campaign=first_touch.get("utm_campaign"),
@@ -418,6 +423,11 @@ async def _record_purchase_once(
             raise HTTPException(status_code=422, detail="Unsupported currency")
 
         user, is_new_user = await _get_or_create_user(db, customer_email, customer_phone)
+        if is_new_user and order is not None:
+            # The account is born from this guest checkout: keep its consent proof.
+            user.offer_accepted_at = order.offer_accepted_at
+            user.personal_data_consent_at = order.personal_data_consent_at
+            user.consent_version = order.consent_version
 
         if customer_phone and not user.phone:
             user.phone = customer_phone
@@ -790,6 +800,9 @@ class GuestPaymentLinkRequest(BaseModel):
     customer_email: EmailStr
     customer_phone: str | None = None
     attribution: CheckoutAttribution | None = None
+    # Both must be true; checked in the endpoint to return a readable Russian 422.
+    offer_accepted: bool = False
+    personal_data_consent: bool = False
 
 
 @router.post(
@@ -802,6 +815,7 @@ async def get_guest_payment_link(
     data: GuestPaymentLinkRequest,
 ) -> dict[str, str]:
     """Гостевая оплата: после webhook создаётся аккаунт и отправляется пароль на email."""
+    require_consent(data.offer_accepted, data.personal_data_consent)
     async with async_session_maker() as db:
         await _ensure_checkout_enabled(db)
         course = await _resolve_course_for_checkout(db, data.course_id)
@@ -814,6 +828,7 @@ async def get_guest_payment_link(
             email_normalized,
             phone,
             attribution=data.attribution.model_dump() if data.attribution else None,
+            consented_at=datetime.utcnow(),
         )
         await db.commit()
 

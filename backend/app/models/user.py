@@ -39,6 +39,10 @@ class User(Base):
     # a token whose "ver" != this value is rejected, so changing the password
     # invalidates all previously issued access/refresh/reset tokens.
     token_version: Mapped[int] = mapped_column(default=0, server_default="0", nullable=False)
+    # Consent proof from self-registration or copied from the guest checkout order.
+    offer_accepted_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    personal_data_consent_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    consent_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
     

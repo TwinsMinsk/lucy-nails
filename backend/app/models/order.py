@@ -40,6 +40,10 @@ class Order(Base):
     last_utm_campaign: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_utm_content: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_utm_term: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Guest checkout consent proof (offer and personal data are accepted separately).
+    offer_accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    personal_data_consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    consent_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

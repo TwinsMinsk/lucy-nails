@@ -129,6 +129,8 @@ async def test_checkout_snapshots_first_and_last_touch_and_emits_server_events(
             "course_id": str(course.id),
             "tariff": "self",
             "customer_email": "attributed@example.com",
+            "offer_accepted": True,
+            "personal_data_consent": True,
             "attribution": {
                 "anonymous_id": anonymous_id,
                 "first_touch": {
@@ -165,6 +167,8 @@ async def test_checkout_snapshots_first_and_last_touch_and_emits_server_events(
             "course_id": str(course.id),
             "tariff": "self",
             "customer_email": "safe-customer@example.com",
+            "offer_accepted": True,
+            "personal_data_consent": True,
             "attribution": {"anonymous_id": "tracking@example.com"},
         },
     )

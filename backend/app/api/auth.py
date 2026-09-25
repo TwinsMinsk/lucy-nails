@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
+from app.core.legal import require_consent
 from app.core.rate_limit import limiter
 from app.core.security import (
     create_mfa_setup_token,
@@ -153,7 +154,9 @@ async def register(
 
     Raises:
         HTTPException 400: Email уже зарегистрирован
+        HTTPException 422: Не приняты оферта или согласие на обработку ПДн
     """
+    require_consent(data.offer_accepted, data.personal_data_consent)
     try:
         user = await AuthService.register_user(db, data)
         await db.commit()

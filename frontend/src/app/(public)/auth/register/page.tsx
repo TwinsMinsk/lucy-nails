@@ -27,14 +27,23 @@ import {
     FormLabel,
     FormMessage,
 } from "@/components/ui/form"
-import { PersonalDataConsent } from "@/components/legal/PersonalDataConsent"
+import {
+    type ConsentState,
+    focusFirstMissingConsent,
+    hasFullConsent,
+    NO_CONSENT,
+    PersonalDataConsent,
+} from "@/components/legal/PersonalDataConsent"
 import { RegisterSchema } from "@/lib/schemas"
 import { register, login } from "@/lib/api"
+import { CONSENT_VERSION } from "@/lib/legal"
 import { safeNextPath } from "@/lib/navigation"
+
+const CONSENT_ID = "register-consent"
 
 export default function RegisterPage() {
     const [isLoading, setIsLoading] = useState(false)
-    const [consent, setConsent] = useState(false)
+    const [consent, setConsent] = useState<ConsentState>(NO_CONSENT)
     const [consentError, setConsentError] = useState(false)
     const router = useRouter()
 
@@ -47,14 +56,17 @@ export default function RegisterPage() {
         },
     })
 
-    function handleConsentChange(checked: boolean) {
-        setConsent(checked)
-        if (checked) setConsentError(false)
+    const consentGiven = hasFullConsent(consent)
+
+    function handleConsentChange(value: ConsentState) {
+        setConsent(value)
+        if (hasFullConsent(value)) setConsentError(false)
     }
 
     async function onSubmit(values: z.infer<typeof RegisterSchema>) {
-        if (!consent) {
+        if (!consentGiven) {
             setConsentError(true)
+            focusFirstMissingConsent(CONSENT_ID, consent)
             return
         }
         setIsLoading(true)
@@ -66,6 +78,9 @@ export default function RegisterPage() {
             await register({
                 email,
                 password: values.password,
+                offer_accepted: consent.offer,
+                personal_data_consent: consent.personalData,
+                consent_version: CONSENT_VERSION,
             })
 
             toast.success("Регистрация успешна!", {
@@ -107,7 +122,7 @@ export default function RegisterPage() {
                     <Form {...form}>
                         <form
                             onSubmit={form.handleSubmit(onSubmit, () => {
-                                if (!consent) setConsentError(true)
+                                if (!consentGiven) setConsentError(true)
                             })}
                             className="space-y-4"
                         >
@@ -159,9 +174,9 @@ export default function RegisterPage() {
                                 )}
                             />
                             <PersonalDataConsent
-                                id="register-consent"
-                                checked={consent}
-                                onCheckedChange={handleConsentChange}
+                                id={CONSENT_ID}
+                                value={consent}
+                                onChange={handleConsentChange}
                                 showError={consentError}
                                 disabled={isLoading}
                             />
@@ -170,7 +185,7 @@ export default function RegisterPage() {
                                 type="submit"
                                 className="w-full aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
                                 disabled={isLoading}
-                                aria-disabled={!consent}
+                                aria-disabled={!consentGiven}
                             >
                                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                 Зарегистрироваться

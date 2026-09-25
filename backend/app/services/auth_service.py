@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.legal import CONSENT_VERSION
 from app.core.security import get_password_hash, verify_password, create_access_token, create_refresh_token
 from app.models.user import User
 from app.schemas.auth import UserRegister, UserLogin, Token
@@ -42,10 +43,14 @@ class AuthService:
             raise ValueError("Email already registered")
         
         # Создание пользователя
+        consented_at = datetime.utcnow()
         user = User(
             email=data.email,
             password_hash=get_password_hash(data.password),
             role="student",  # По умолчанию студент
+            offer_accepted_at=consented_at if data.offer_accepted else None,
+            personal_data_consent_at=consented_at if data.personal_data_consent else None,
+            consent_version=CONSENT_VERSION,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )

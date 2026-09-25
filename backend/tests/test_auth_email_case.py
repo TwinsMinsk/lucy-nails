@@ -19,7 +19,7 @@ from app.services.email_service import EmailService
 async def test_register_stores_email_lowercase(client: AsyncClient, db: AsyncSession):
     r = await client.post(
         "/api/auth/register",
-        json={"email": "Maria@Example.com", "password": "password123"},
+        json={"email": "Maria@Example.com", "password": "password123", "offer_accepted": True, "personal_data_consent": True},
     )
     assert r.status_code == 201, r.text
     assert r.json()["email"] == "maria@example.com"
@@ -32,7 +32,7 @@ async def test_register_stores_email_lowercase(client: AsyncClient, db: AsyncSes
 async def test_login_is_case_insensitive(client: AsyncClient):
     await client.post(
         "/api/auth/register",
-        json={"email": "Case@Example.com", "password": "password123"},
+        json={"email": "Case@Example.com", "password": "password123", "offer_accepted": True, "personal_data_consent": True},
     )
 
     upper = await client.post(
@@ -50,13 +50,13 @@ async def test_login_is_case_insensitive(client: AsyncClient):
 async def test_register_duplicate_is_case_insensitive(client: AsyncClient):
     r1 = await client.post(
         "/api/auth/register",
-        json={"email": "dup@example.com", "password": "password123"},
+        json={"email": "dup@example.com", "password": "password123", "offer_accepted": True, "personal_data_consent": True},
     )
     assert r1.status_code == 201, r1.text
 
     r2 = await client.post(
         "/api/auth/register",
-        json={"email": "DUP@Example.com", "password": "password123"},
+        json={"email": "DUP@Example.com", "password": "password123", "offer_accepted": True, "personal_data_consent": True},
     )
     assert r2.status_code == 400
     assert r2.json()["detail"] == "Email already registered"
@@ -66,7 +66,7 @@ async def test_register_duplicate_is_case_insensitive(client: AsyncClient):
 async def test_forgot_password_is_case_insensitive(client: AsyncClient, monkeypatch):
     await client.post(
         "/api/auth/register",
-        json={"email": "forgot@example.com", "password": "password123"},
+        json={"email": "forgot@example.com", "password": "password123", "offer_accepted": True, "personal_data_consent": True},
     )
 
     sent_to: list[str] = []

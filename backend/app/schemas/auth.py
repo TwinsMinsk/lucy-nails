@@ -20,6 +20,9 @@ class UserRegister(BaseModel):
 
     email: EmailStr = Field(..., description="Email пользователя")
     password: str = Field(..., min_length=6, description="Пароль (минимум 6 символов)")
+    # Both must be true; checked in the endpoint to return a readable Russian 422.
+    offer_accepted: bool = Field(False, description="Принял условия оферты")
+    personal_data_consent: bool = Field(False, description="Дал согласие на обработку персональных данных")
 
     _normalize_email = field_validator("email", mode="before")(_normalize_email)
 

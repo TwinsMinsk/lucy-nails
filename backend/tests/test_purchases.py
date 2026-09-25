@@ -15,6 +15,7 @@ from app.api.payments import (
     parse_checkout_order_id,
 )
 from app.core.config import Settings, settings
+from app.core.legal import CONSENT_REQUIRED_DETAIL, CONSENT_VERSION
 from app.core.security import get_password_hash
 from app.models.audit_log import AuditLog
 from app.models.course import Course
@@ -75,7 +76,7 @@ async def test_create_and_list_purchases(client: AsyncClient, db: AsyncSession):
 
     await client.post(
         "/api/auth/register",
-        json={"email": "buyer@t.com", "password": "password123", "password_confirm": "password123"},
+        json={"email": "buyer@t.com", "password": "password123", "password_confirm": "password123", "offer_accepted": True, "personal_data_consent": True},
     )
     login = await client.post("/api/auth/login", json={"email": "buyer@t.com", "password": "password123"})
     token = login.json()["access_token"]
@@ -213,7 +214,7 @@ async def test_prodamus_form_webhook_with_nested_products_grants_access(
     email = f"form-{encoding}@example.com"
     checkout = await client.post(
         "/api/payments/guest-link",
-        json={"course_id": str(course.id), "tariff": "self", "customer_email": email},
+        json={"course_id": str(course.id), "tariff": "self", "customer_email": email, "offer_accepted": True, "personal_data_consent": True},
     )
     assert checkout.status_code == 200, checkout.text
     order_reference = checkout.json()["order_id"]
@@ -799,6 +800,8 @@ async def test_guest_payment_link_returns_url(client: AsyncClient, db: AsyncSess
             "course_id": str(course.id),
             "tariff": "self",
             "customer_email": "guest@example.com",
+            "offer_accepted": True,
+            "personal_data_consent": True,
             "customer_phone": "+79990001122",
         },
     )
@@ -812,6 +815,75 @@ async def test_guest_payment_link_returns_url(client: AsyncClient, db: AsyncSess
     success_query = parse_qs(urlparse(success_url).query)
     assert success_query["order_id"] == [response_data["order_id"]]
     assert success_query["token"] == [response_data["status_token"]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "consent",
+    [
+        {},
+        {"offer_accepted": True},
+        {"personal_data_consent": True},
+        {"offer_accepted": True, "personal_data_consent": False},
+    ],
+)
+async def test_guest_payment_link_requires_offer_and_personal_data_consent(
+    client: AsyncClient, db: AsyncSession, consent: dict
+):
+    course = await _published_course(db, "Consent Required Course")
+
+    response = await client.post(
+        "/api/payments/guest-link",
+        json={
+            "course_id": str(course.id),
+            "tariff": "self",
+            "customer_email": "no-consent@example.com",
+            **consent,
+        },
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"] == CONSENT_REQUIRED_DETAIL
+    assert (await db.execute(select(func.count(Order.id)))).scalar_one() == 0
+
+
+@pytest.mark.asyncio
+async def test_guest_checkout_records_consent_and_copies_it_to_the_new_account(
+    client: AsyncClient, db: AsyncSession
+):
+    course = await _published_course(db, "Consent Proof Course")
+    email = "consent-proof@example.com"
+    before = datetime.utcnow()
+
+    checkout = await client.post(
+        "/api/payments/guest-link",
+        json={
+            "course_id": str(course.id),
+            "tariff": "self",
+            "customer_email": email,
+            "offer_accepted": True,
+            "personal_data_consent": True,
+        },
+    )
+
+    assert checkout.status_code == 200, checkout.text
+    order_reference = checkout.json()["order_id"]
+    order = await db.get(Order, uuid.UUID(order_reference.split("|", 1)[1]))
+    assert order.consent_version == CONSENT_VERSION
+    assert order.offer_accepted_at is not None and order.offer_accepted_at >= before
+    assert order.personal_data_consent_at is not None
+    assert order.personal_data_consent_at >= before
+
+    payload, headers = _signed_payload(
+        _prodamus_notification(order_reference, email, f"{course.title} — Самостоятельный")
+    )
+    webhook = await client.post("/api/payments/webhook", json=payload, headers=headers)
+
+    assert webhook.status_code == 200, webhook.text
+    user = (await db.execute(select(User).where(User.email == email))).scalar_one()
+    assert user.offer_accepted_at == order.offer_accepted_at
+    assert user.personal_data_consent_at == order.personal_data_consent_at
+    assert user.consent_version == CONSENT_VERSION
 
 
 @pytest.mark.asyncio
@@ -830,6 +902,8 @@ async def test_guest_checkout_is_blocked_by_kill_switch(
             "course_id": str(course.id),
             "tariff": "self",
             "customer_email": "disabled-checkout@example.com",
+            "offer_accepted": True,
+            "personal_data_consent": True,
         },
     )
 
@@ -871,6 +945,8 @@ async def test_admin_can_toggle_checkout_without_deploy(
             "course_id": str(course.id),
             "tariff": "self",
             "customer_email": "runtime-disabled@example.com",
+            "offer_accepted": True,
+            "personal_data_consent": True,
         },
     )
     assert checkout.status_code == 503
@@ -904,6 +980,8 @@ async def test_checkout_order_keeps_original_price_when_course_price_changes(
             "course_id": str(course.id),
             "tariff": "self",
             "customer_email": "snapshot-buyer@example.com",
+            "offer_accepted": True,
+            "personal_data_consent": True,
         },
     )
     assert checkout.status_code == 200
@@ -988,6 +1066,8 @@ async def test_checkout_rejects_discontinued_support_tariff(client: AsyncClient,
                 "course_id": str(course.id),
                 "tariff": "support",
                 "customer_email": "support-guest@example.com",
+                "offer_accepted": True,
+                "personal_data_consent": True,
             },
         ),
         await client.post(
@@ -1435,6 +1515,8 @@ async def test_successful_webhook_queues_single_owner_payment_alert(
             "course_id": str(course.id),
             "tariff": "self",
             "customer_email": "owner-alert@example.com",
+            "offer_accepted": True,
+            "personal_data_consent": True,
         },
     )
     assert checkout.status_code == 200, checkout.text
