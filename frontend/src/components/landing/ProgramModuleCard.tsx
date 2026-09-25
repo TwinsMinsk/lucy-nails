@@ -1,4 +1,4 @@
-import { CheckCircle, Sparkles } from "lucide-react";
+import { CheckCircle } from "lucide-react";
 
 import { WorksMarquee } from "@/components/landing/WorksMarquee";
 import type { WorkPhoto } from "@/lib/landing/works-photos";
@@ -26,22 +26,17 @@ export function ProgramModuleCard({
   reverseMarquee = false,
   durationLabel,
 }: ProgramModuleCardProps) {
-  const mediaArea =
-    photos.length > 0 ? (
-      <WorksMarquee photos={photos} title={title} reverse={reverseMarquee} />
-    ) : (
-      <div className="flex h-64 w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-primary/25 bg-white/50 md:h-72">
-        <Sparkles className="h-6 w-6 text-[#D4AF37]" />
-        <p className="px-4 text-center text-sm text-text-secondary/80">
-          Фото работ скоро появятся
-        </p>
-      </div>
-    );
+  // Modules without photos render text only instead of a placeholder for buyers.
+  const hasPhotos = photos.length > 0;
 
   return (
     <article className="flex flex-col bg-[#FFF1F4] rounded-[2rem] border border-primary/20 border-b-[6px] border-b-primary/15 shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
-      <div className="p-5 pb-4">{mediaArea}</div>
-      <div className="px-6 pb-6 flex flex-col flex-1 gap-3">
+      {hasPhotos ? (
+        <div className="p-5 pb-4">
+          <WorksMarquee photos={photos} title={title} reverse={reverseMarquee} />
+        </div>
+      ) : null}
+      <div className={`px-6 pb-6 flex flex-col flex-1 gap-3${hasPhotos ? "" : " pt-6"}`}>
         <div className="flex items-start justify-between gap-3">
           <h3 className="font-serif text-2xl text-text-primary leading-snug">
             Модуль {orderIndex}: {title}

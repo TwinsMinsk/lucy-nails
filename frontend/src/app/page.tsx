@@ -4,7 +4,6 @@ import {
   Sparkles,
   CheckCircle,
   ArrowRight,
-  ShieldCheck,
   Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -207,10 +206,6 @@ export default async function Home() {
           <h2 className="font-serif text-4xl md:text-5xl text-text-primary text-center">
             Галерея работ
           </h2>
-          <p className="text-center text-text-secondary mt-4 max-w-2xl mx-auto">
-            Добавляйте сюда реальные фотографии из портфолио: подпись покажет технику,
-            а будущий ученик сразу увидит, какие работы сможет предлагать клиентам.
-          </p>
         </div>
 
         <NailsGallery items={gallery} />
@@ -220,10 +215,6 @@ export default async function Home() {
       <section id="pricing" className="py-24 bg-white">
         <div className="container px-4 md:px-6">
           <div className="text-center mb-16">
-            <div className="inline-flex items-center gap-2 rounded-full bg-[#fff1f4] px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-text-secondary mb-4">
-              <ShieldCheck className="w-4 h-4 text-[#D4AF37]" />
-              Тестовая оплата уже подключена
-            </div>
             <h2 className="font-serif text-4xl md:text-5xl text-text-primary mb-4">
               Стоимость обучения
             </h2>
@@ -231,12 +222,6 @@ export default async function Home() {
               Если покупаете без входа в аккаунт, укажите email: после подтверждения оплаты
               туда придёт ссылка для входа в личный кабинет.
             </p>
-            {!primaryCourseId && (
-              <p className="text-sm text-text-secondary mt-3">
-                Каталог курсов с сервера не подгрузился, но оплата доступна: будет использован основной
-                опубликованный курс. Если сумма не та — обновите страницу.
-              </p>
-            )}
           </div>
 
           <div className="max-w-md mx-auto">
