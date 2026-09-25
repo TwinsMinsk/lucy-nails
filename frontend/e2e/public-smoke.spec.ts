@@ -9,3 +9,22 @@ test("public landing and login remain usable", async ({ page }) => {
     await expect(page.getByLabel("Email")).toBeVisible()
     await expect(page.getByLabel("Пароль")).toBeVisible()
 })
+
+test("registration requires personal-data consent", async ({ page }) => {
+    let registerCalled = false
+    await page.route("**/api/auth/register", async (route) => {
+        registerCalled = true
+        await route.abort()
+    })
+
+    await page.goto("/auth/register")
+    await page.getByLabel("Email").fill("new-student@example.com")
+    await page.getByLabel("Пароль", { exact: true }).fill("secret123")
+    await page.getByLabel("Подтвердите пароль").fill("secret123")
+    await expect(page.getByRole("button", { name: "Зарегистрироваться" })).toHaveAttribute("aria-disabled", "true")
+    await page.getByLabel("Подтвердите пароль").press("Enter")
+
+    await expect(page.getByText("Отметьте согласие, чтобы продолжить")).toBeVisible()
+    expect(registerCalled).toBe(false)
+    await expect(page.getByRole("link", { name: "политикой конфиденциальности" })).toHaveAttribute("target", "_blank")
+})

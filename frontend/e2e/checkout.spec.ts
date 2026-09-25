@@ -44,7 +44,16 @@ test("guest checkout reaches confirmed access state", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "Оплата без регистрации" })).toBeVisible()
 
     await page.getByLabel("Email").fill("student@example.com")
-    await page.getByRole("button", { name: "Перейти к оплате" }).click()
+    const payButton = page.getByRole("button", { name: "Перейти к оплате" })
+    await expect(payButton).toHaveAttribute("aria-disabled", "true")
+    // Submitting without consent explains the requirement and does not start checkout.
+    await page.getByLabel("Email").press("Enter")
+    await expect(page.getByText("Отметьте согласие, чтобы продолжить")).toBeVisible()
+    expect(checkoutPayload).toBeUndefined()
+
+    await page.getByRole("checkbox", { name: /Я принимаю условия оферты/ }).check()
+    await expect(page.getByText("Отметьте согласие, чтобы продолжить")).toHaveCount(0)
+    await payButton.click()
 
     await expect(page.getByRole("heading", { name: "Оплата подтверждена" })).toBeVisible()
     expect(checkoutPayload).toMatchObject({

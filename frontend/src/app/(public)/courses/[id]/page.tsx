@@ -179,10 +179,16 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                                             </li>
                                         </ul>
                                     </CardContent>
-                                    <CardFooter>
+                                    <CardFooter className="flex-col gap-3">
                                         <CoursePaymentCTA courseId={id} tariff="self" className="w-full h-12 rounded-lg text-sm uppercase tracking-wide font-bold bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white">
                                             Купить курс
                                         </CoursePaymentCTA>
+                                        <p className="text-xs text-text-secondary text-center">
+                                            Нажимая «Купить курс», вы принимаете условия{" "}
+                                            <Link href="/terms" target="_blank" className="underline underline-offset-2 hover:text-text-primary">
+                                                оферты
+                                            </Link>
+                                        </p>
                                     </CardFooter>
                                 </Card>
                             </div>

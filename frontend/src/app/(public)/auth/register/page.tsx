@@ -27,12 +27,15 @@ import {
     FormLabel,
     FormMessage,
 } from "@/components/ui/form"
+import { PersonalDataConsent } from "@/components/legal/PersonalDataConsent"
 import { RegisterSchema } from "@/lib/schemas"
 import { register, login } from "@/lib/api"
 import { safeNextPath } from "@/lib/navigation"
 
 export default function RegisterPage() {
     const [isLoading, setIsLoading] = useState(false)
+    const [consent, setConsent] = useState(false)
+    const [consentError, setConsentError] = useState(false)
     const router = useRouter()
 
     const form = useForm<z.infer<typeof RegisterSchema>>({
@@ -44,7 +47,16 @@ export default function RegisterPage() {
         },
     })
 
+    function handleConsentChange(checked: boolean) {
+        setConsent(checked)
+        if (checked) setConsentError(false)
+    }
+
     async function onSubmit(values: z.infer<typeof RegisterSchema>) {
+        if (!consent) {
+            setConsentError(true)
+            return
+        }
         setIsLoading(true)
 
         try {
@@ -93,7 +105,12 @@ export default function RegisterPage() {
                 </CardHeader>
                 <CardContent>
                     <Form {...form}>
-                        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                        <form
+                            onSubmit={form.handleSubmit(onSubmit, () => {
+                                if (!consent) setConsentError(true)
+                            })}
+                            className="space-y-4"
+                        >
                             <FormField
                                 control={form.control}
                                 name="email"
@@ -141,7 +158,20 @@ export default function RegisterPage() {
                                     </FormItem>
                                 )}
                             />
-                            <Button type="submit" className="w-full" disabled={isLoading}>
+                            <PersonalDataConsent
+                                id="register-consent"
+                                checked={consent}
+                                onCheckedChange={handleConsentChange}
+                                showError={consentError}
+                                disabled={isLoading}
+                            />
+                            {/* aria-disabled (not disabled) keeps the click alive so we can explain why it is blocked */}
+                            <Button
+                                type="submit"
+                                className="w-full aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
+                                disabled={isLoading}
+                                aria-disabled={!consent}
+                            >
                                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                 Зарегистрироваться
                             </Button>

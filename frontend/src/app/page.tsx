@@ -247,10 +247,16 @@ export default async function Home() {
                   ))}
                 </ul>
               </CardContent>
-              <CardFooter className="pb-8 px-8">
+              <CardFooter className="pb-8 px-8 flex-col gap-3">
                 <PaymentButton courseId={primaryCourseId} tariff="self">
                   Начать обучение
                 </PaymentButton>
+                <p className="text-xs text-text-secondary text-center">
+                  Нажимая «Начать обучение», вы принимаете условия{" "}
+                  <Link href="/terms" target="_blank" className="underline underline-offset-2 hover:text-text-primary">
+                    оферты
+                  </Link>
+                </p>
               </CardFooter>
             </Card>
           </div>

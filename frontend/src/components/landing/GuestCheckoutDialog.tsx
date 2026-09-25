@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PersonalDataConsent } from "@/components/legal/PersonalDataConsent";
 import { getGuestPaymentLink } from "@/lib/api";
 import { CheckCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -34,12 +35,23 @@ export function GuestCheckoutDialog({
 }: GuestCheckoutDialogProps) {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [consent, setConsent] = useState(false);
+  const [consentError, setConsentError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const next = encodeURIComponent(`/?course=${courseId}&tariff=${tariff}#pricing`);
 
+  const handleConsentChange = (checked: boolean) => {
+    setConsent(checked);
+    if (checked) setConsentError(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!consent) {
+      setConsentError(true);
+      return;
+    }
     const trimmed = email.trim().toLowerCase();
     if (!trimmed) {
       toast.error("Укажите email", { description: "На него пришлём данные для входа после оплаты." });
@@ -119,11 +131,20 @@ export function GuestCheckoutDialog({
               disabled={submitting}
             />
           </div>
+          <PersonalDataConsent
+            id="guest-checkout-consent"
+            checked={consent}
+            onCheckedChange={handleConsentChange}
+            showError={consentError}
+            disabled={submitting}
+          />
           <DialogFooter className="flex-col gap-2 sm:flex-col sm:space-x-0">
+            {/* aria-disabled (not disabled) keeps the click alive so we can explain why it is blocked */}
             <Button
               type="submit"
               disabled={submitting}
-              className="w-full rounded-full bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white"
+              aria-disabled={!consent}
+              className="w-full rounded-full bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
             >
               {submitting ? (
                 <span className="flex items-center justify-center gap-2">
