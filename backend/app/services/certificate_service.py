@@ -25,7 +25,8 @@ from app.models.certificate import Certificate
 from app.models.course import Course
 from app.models.user import User
 from app.services.certificate_renderer import png_to_pdf, render_certificate_png
-from app.services.email_service import EmailService
+from app.services.analytics_service import AnalyticsService
+from app.services.outbox_service import enqueue_outbox_message
 from app.services.progress_service import ProgressService
 from app.services.purchase_service import PurchaseService
 
@@ -228,6 +229,41 @@ class CertificateService:
         db.add(certificate)
 
         try:
+            await db.flush()
+            await AnalyticsService.record_event(
+                db,
+                event_id=f"certificate_issued:{certificate.id}",
+                event_name="certificate_issued",
+                source="server",
+                user_id=user_id,
+                course_id=course_id,
+                properties={},
+            )
+            enqueue_outbox_message(
+                db,
+                kind="certificate_issued",
+                recipient=user.email,
+                payload={
+                    "student_name": full_name,
+                    "course_title": course.title,
+                    "certificate_number": certificate_number,
+                    "verify_url": verify_url,
+                },
+                dedupe_key=f"certificate:{certificate.id}:issued",
+            )
+            if user.telegram_id is not None and settings.TELEGRAM_BOT_TOKEN:
+                enqueue_outbox_message(
+                    db,
+                    kind="certificate_issued",
+                    channel="telegram",
+                    recipient=str(user.telegram_id),
+                    payload={
+                        "text": (
+                            f"🎓 Сертификат № {certificate_number} готов: {verify_url}"
+                        )
+                    },
+                    dedupe_key=f"certificate:{certificate.id}:issued:telegram",
+                )
             await db.commit()
         except IntegrityError:
             # Concurrent double-claim raced past the existence check above and both
@@ -250,12 +286,5 @@ class CertificateService:
         # certificate.course.title without an extra query or a lazy-load attempt
         # on the async session (which would raise MissingGreenlet).
         certificate.course = course
-
-        try:
-            await EmailService.send_certificate(
-                user.email, full_name, course.title, certificate_number, verify_url, pdf_bytes
-            )
-        except Exception:
-            logger.exception("Failed to send certificate email to %s", user.email)
 
         return certificate, True

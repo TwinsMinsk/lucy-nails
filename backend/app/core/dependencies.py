@@ -2,13 +2,13 @@
 FastAPI Dependencies для аутентификации и авторизации.
 """
 
-from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Callable
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError as JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -72,6 +72,20 @@ async def get_current_user(
     # tokens minted before it (mismatched or missing "ver") are rejected.
     if payload.get("ver") != user.token_version:
         raise credentials_exception
+    session_id = payload.get("sid")
+    if session_id:
+        from app.services.session_service import SessionService
+
+        try:
+            parsed_session_id = UUID(session_id)
+        except (TypeError, ValueError):
+            raise credentials_exception
+        auth_session = await SessionService.get_active(db, parsed_session_id, user.id)
+        if auth_session is None:
+            raise credentials_exception
+        request.state.auth_session_id = parsed_session_id
+    else:
+        request.state.auth_session_id = None
     return user
 
 
@@ -92,6 +106,51 @@ async def require_admin(
     return current_user
 
 
+async def user_has_permission(
+    db: AsyncSession,
+    user,
+    permission_name: str,
+) -> bool:
+    """Return one normalized permission, with a legacy-admin rollout fallback."""
+    from app.models.rbac import Permission, Role, UserRoleAssignment
+
+    permission = await db.scalar(
+        select(Permission.id)
+        .join(Permission.roles)
+        .join(Role.assignments)
+        .where(
+            UserRoleAssignment.user_id == user.id,
+            Permission.name == permission_name,
+        )
+        .limit(1)
+    )
+    if permission is not None:
+        return True
+    assignment_exists = await db.scalar(
+        select(UserRoleAssignment.id)
+        .where(UserRoleAssignment.user_id == user.id)
+        .limit(1)
+    )
+    return assignment_exists is None and user.role == "admin"
+
+
+def require_permission(permission_name: str) -> Callable:
+    """Build a FastAPI dependency that enforces one normalized permission."""
+
+    async def permission_dependency(
+        current_user=Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+    ):
+        if await user_has_permission(db, current_user, permission_name):
+            return current_user
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Permission required: {permission_name}",
+        )
+
+    return permission_dependency
+
+
 async def require_course_access(
     course_id: UUID,
     current_user = Depends(get_current_user),
@@ -108,20 +167,14 @@ async def require_course_access(
     Raises:
         HTTPException: 403 если нет доступа
     """
-    from app.models.purchase import Purchase
-    
-    result = await db.execute(
-        select(Purchase).where(
-            Purchase.user_id == current_user.id,
-            Purchase.course_id == course_id,
-            Purchase.payment_status == "success",
-            Purchase.expires_at > datetime.utcnow()
-        )
-    )
-    purchase = result.scalar_one_or_none()
-    if not purchase:
+    from app.services.access_service import AccessService
+
+    entitlement = await AccessService.get_active_entitlement(db, current_user.id, course_id)
+    if entitlement is None and not await AccessService.has_active_access(
+        db, current_user.id, course_id
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Course access required"
         )
-    return purchase
+    return entitlement

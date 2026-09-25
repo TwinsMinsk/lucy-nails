@@ -3,6 +3,7 @@
 """
 
 import httpx
+import logging
 import urllib.parse
 from typing import Dict
 from uuid import UUID
@@ -13,6 +14,9 @@ from app.services.kinescope_jwt_service import (
     KinescopeJwtNotConfiguredError,
     kinescope_jwt_service,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class KinescopeNotConfiguredError(RuntimeError):
@@ -31,7 +35,7 @@ class KinescopeService:
     def __init__(self):
         """Инициализация сервиса."""
         self.api_key = (settings.KINESCOPE_API_KEY or "").strip()
-        self._production = settings.ENVIRONMENT == "production"
+        self._production = settings.ENVIRONMENT in {"production", "staging"}
         # В development/test без ключа разрешён mock; в production — нет
         self.is_mock_mode = not self.api_key
 
@@ -69,18 +73,28 @@ class KinescopeService:
                     timeout=10.0,
                 )
                 response.raise_for_status()
-                data = response.json()
+                payload = response.json()
+                data = payload.get("data", payload)
+                poster = data.get("poster") or {}
 
                 return {
                     "title": data.get("title", "Untitled Video"),
                     "duration": data.get("duration", 0),
-                    "poster": data.get("poster", {}).get("url", ""),
+                    "status": data.get("status", "unknown"),
+                    "progress": data.get("progress", 0),
+                    "privacy_type": data.get("privacy_type"),
+                    "poster": (
+                        poster.get("url")
+                        or poster.get("original")
+                        or poster.get("md")
+                        or ""
+                    ),
                 }
 
         except httpx.HTTPError as e:
             if self._production:
                 raise RuntimeError(f"Kinescope API error: {e}") from e
-            print(f"Kinescope API error: {e}. Falling back to mock mode.")
+            logger.warning("Kinescope API error in development; using mock metadata: %s", e)
             return self._get_mock_video_info(video_id)
 
     def get_embed_url(
@@ -243,6 +257,9 @@ class KinescopeService:
             "title": self.MOCK_VIDEO_TITLE,
             "duration": self.MOCK_VIDEO_DURATION,
             "poster": self.MOCK_VIDEO_THUMBNAIL,
+            "status": "done",
+            "progress": 100,
+            "privacy_type": "custom",
         }
 
 

@@ -6,6 +6,8 @@ import "./globals.css";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { getPublicSiteUrl } from "@/lib/env";
+import { AnalyticsBootstrap } from "@/components/analytics/AnalyticsBootstrap";
+import { ConsentBanner } from "@/components/analytics/ConsentBanner";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -65,6 +67,8 @@ export default function RootLayout({
 
         {/* 4. Добавляем Footer снизу */}
         <Footer />
+        <AnalyticsBootstrap />
+        <ConsentBanner />
         <Toaster />
       </body>
     </html>

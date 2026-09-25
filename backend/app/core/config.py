@@ -54,7 +54,7 @@ class Settings(BaseSettings):
         return v
     
     # === Redis ===
-    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_URL: str = ""
     
     # === Auth ===
     JWT_SECRET_KEY: str = "your-super-secret-key-change-in-production"
@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     # Short-lived token emailed for the forgot-password flow.
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCOUNT_ACTIVATION_TOKEN_EXPIRE_HOURS: int = 24
+    MFA_SETUP_TOKEN_EXPIRE_MINUTES: int = 10
+    # Dedicated pepper/encryption material for TOTP secrets and backup codes.
+    # Development falls back to JWT_SECRET_KEY; production requires a distinct key.
+    MFA_ENCRYPTION_KEY: str = ""
     # Parent domain for auth/CSRF cookies. Empty = host-only cookies (single-host dev).
     # Set to e.g. "lucysmirnova.ru" so cookies are readable by frontend on a sibling
     # subdomain (lucysmirnova.ru reading cookies set by api.lucysmirnova.ru).
@@ -117,7 +122,11 @@ class Settings(BaseSettings):
 
     # === Telegram ===
     TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_BOT_USERNAME: str = ""
     TELEGRAM_SUPPORT_GROUP_INVITE: str = ""
+    TELEGRAM_SUPPORT_GROUP_ID: int | None = None
+    TELEGRAM_OWNER_CHAT_ID: int | None = None
+    LIFECYCLE_SCAN_SECONDS: int = 300
     
     # === Frontend ===
     FRONTEND_URL: str = "http://localhost:3000"
@@ -138,11 +147,18 @@ class Settings(BaseSettings):
     # Сколько дней доступа к курсу после успешной оплаты (production v1)
     COURSE_ACCESS_DAYS: int = 30
 
+    # Emergency switch. Webhooks remain enabled so in-flight payments can finish.
+    CHECKOUT_ENABLED: bool = True
+    OUTBOX_POLL_SECONDS: float = 5.0
+
     # Список разрешённых Origin для CORS (через запятую). Пусто — только FRONTEND_URL.
     CORS_ORIGINS: str = ""
 
     # Для production: список Host заголовков (через запятую), например api.example.com,localhost
     TRUSTED_HOSTS: str = ""
+    # Comma-separated proxy IPs/CIDRs trusted by Uvicorn. Never use "*" in
+    # production; otherwise clients can forge the rate-limit address.
+    FORWARDED_ALLOW_IPS: str = "127.0.0.1"
 
     # Persistent upload directory. Leave empty in production to disable local uploads.
     UPLOAD_STORAGE_DIR: str = ""
@@ -161,6 +177,10 @@ class Settings(BaseSettings):
             errors.append("JWT_SECRET_KEY must be changed in production")
         elif len(self.JWT_SECRET_KEY) < 32:
             errors.append("JWT_SECRET_KEY must be at least 32 characters in production")
+        if len(self.MFA_ENCRYPTION_KEY) < 32:
+            errors.append("MFA_ENCRYPTION_KEY must be at least 32 characters in production")
+        elif self.MFA_ENCRYPTION_KEY == self.JWT_SECRET_KEY:
+            errors.append("MFA_ENCRYPTION_KEY must be different from JWT_SECRET_KEY")
         if not self.KINESCOPE_API_KEY:
             errors.append("KINESCOPE_API_KEY is required in production")
         # DRM signing backend must be configured, otherwise get_embed_url would
@@ -200,6 +220,16 @@ class Settings(BaseSettings):
             errors.append("BACKEND_URL must be public in production")
         if not self.TRUSTED_HOSTS:
             errors.append("TRUSTED_HOSTS is required in production")
+        if not self.FORWARDED_ALLOW_IPS or self.FORWARDED_ALLOW_IPS.strip() == "*":
+            errors.append("FORWARDED_ALLOW_IPS must list trusted proxy IPs/CIDRs in production")
+        if not self.COOKIE_DOMAIN:
+            errors.append("COOKIE_DOMAIN is required in production for sibling frontend/API hosts")
+        if not self.REDIS_URL:
+            errors.append("REDIS_URL is required in production for shared rate limiting")
+        if not self.TELEGRAM_BOT_TOKEN or not self.TELEGRAM_BOT_USERNAME:
+            errors.append("Telegram bot token and username are required in production")
+        if self.TELEGRAM_OWNER_CHAT_ID is None:
+            errors.append("TELEGRAM_OWNER_CHAT_ID is required for production alerts")
 
         if errors:
             raise ValueError("; ".join(errors))

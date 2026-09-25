@@ -17,6 +17,9 @@ class CourseBase(BaseModel):
     price_support: int = Field(..., description="Цена тарифа 'С поддержкой' (в рублях)")
 
 
+    access_days: int = Field(30, description="Срок доступа к курсу в днях")
+
+
 class CourseResponse(CourseBase):
     """Схема ответа с данными курса."""
     

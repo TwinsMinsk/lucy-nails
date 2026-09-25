@@ -25,7 +25,7 @@ const nextConfig: NextConfig = {
               [
                 "default-src 'self'",
                 "base-uri 'self'",
-                `connect-src 'self' ${apiOrigin} https://kinescope.io https://*.kinescope.io https://cloudflareinsights.com https://static.cloudflareinsights.com`,
+                `connect-src 'self' ${apiOrigin} https://kinescope.io https://*.kinescope.io https://cloudflareinsights.com https://static.cloudflareinsights.com https://mc.yandex.ru https://mc.yandex.com`,
                 "font-src 'self' data:",
                 "form-action 'self'",
                 "frame-ancestors 'none'",
@@ -33,7 +33,7 @@ const nextConfig: NextConfig = {
                 `img-src 'self' data: blob: https: ${apiOrigin}`,
                 "media-src 'self' blob: https://kinescope.io https://*.kinescope.io",
                 "object-src 'none'",
-                "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com",
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com https://mc.yandex.ru https://mc.yandex.com",
                 "style-src 'self' 'unsafe-inline'",
               ].join("; "),
           },

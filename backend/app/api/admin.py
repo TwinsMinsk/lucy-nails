@@ -6,21 +6,25 @@ from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.config import settings
 from app.core.database import get_db
-from app.core.dependencies import require_admin
+from app.core.dependencies import require_permission, user_has_permission
 from app.models.user import User
 from app.models.course import Course
 from app.models.module import Module
 from app.models.lesson import Lesson
 from app.models.purchase import Purchase
+from app.models.entitlement import Entitlement
+from app.models.order import Order
+from app.models.certificate import Certificate
 from app.schemas.auth import UserResponse
+from app.services.access_service import AccessService
+from app.services.audit_service import append_audit_log
 
 
 router = APIRouter()
@@ -33,18 +37,46 @@ class GrantAccessRequest(BaseModel):
     user_id: UUID
     course_id: UUID
     tariff: Literal["self", "support"] = "self"
+    access_days: int | None = Field(default=None, ge=1, le=3650)
+    reason: str = Field(..., min_length=5, max_length=1000)
 
 
 class GrantAccessResponse(BaseModel):
     """Схема ответа на выдачу доступа."""
     message: str
-    purchase_id: UUID
+    entitlement_id: UUID
+    expires_at: datetime
+
+
+class RevokeEntitlementRequest(BaseModel):
+    entitlement_id: UUID
+    reason: str = Field(..., min_length=5, max_length=1000)
+
+
+class RevokeEntitlementResponse(BaseModel):
+    message: str
+    entitlement_id: UUID
+    status: str
+
+
+class EntitlementReasonRequest(BaseModel):
+    reason: str = Field(..., min_length=5, max_length=1000)
+
+
+class EntitlementExtendRequest(EntitlementReasonRequest):
+    days: int = Field(..., ge=1, le=3650)
+
+
+class EntitlementActionResponse(BaseModel):
+    entitlement_id: UUID
+    status: str
     expires_at: datetime
 
 
 class RevokeAccessRequest(BaseModel):
     """Схема запроса на отзыв доступа (возврат/chargeback)."""
     purchase_id: UUID
+    reason: str = Field(..., min_length=5, max_length=1000)
 
 
 class RevokeAccessResponse(BaseModel):
@@ -52,6 +84,8 @@ class RevokeAccessResponse(BaseModel):
     message: str
     purchase_id: UUID
     payment_status: str
+    entitlement_id: UUID
+    access_status: str
 
 
 # --- Course Schemas ---
@@ -60,9 +94,10 @@ class CourseCreateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     description: str = ""
     cover_image_url: Optional[str] = None
-    price_self: int = Field(default=5000, ge=0)
-    price_support: int = Field(default=20000, ge=0)
+    price_self: int = Field(default=5900, ge=0)
+    price_support: int = Field(default=11900, ge=0)
     is_published: bool = False
+    access_days: int = Field(default=30, ge=1, le=3650)
 
 
 class CourseUpdateRequest(BaseModel):
@@ -73,6 +108,7 @@ class CourseUpdateRequest(BaseModel):
     price_self: Optional[int] = Field(None, ge=0)
     price_support: Optional[int] = Field(None, ge=0)
     is_published: Optional[bool] = None
+    access_days: Optional[int] = Field(None, ge=1, le=3650)
 
 
 class CourseResponse(BaseModel):
@@ -84,6 +120,7 @@ class CourseResponse(BaseModel):
     price_self: int
     price_support: int
     is_published: bool
+    access_days: int
     created_at: datetime
     modules_count: int = 0
     lessons_count: int = 0
@@ -216,6 +253,23 @@ class AdminPurchaseResponse(BaseModel):
     paid_at: Optional[datetime] = None
     created_at: datetime
     customer_phone: Optional[str] = None
+    entitlement_id: Optional[UUID] = None
+    access_status: str
+    access_expires_at: Optional[datetime] = None
+
+
+def _mask_email(value: str) -> str:
+    local, separator, domain = value.partition("@")
+    if not separator:
+        return "***"
+    return f"{local[:1]}***@{domain}"
+
+
+def _mask_phone(value: str | None) -> str | None:
+    if not value:
+        return None
+    digits = "".join(character for character in value if character.isdigit())
+    return f"***{digits[-4:]}" if digits else "***"
 
 
 # === User Endpoints ===
@@ -223,7 +277,7 @@ class AdminPurchaseResponse(BaseModel):
 @router.get("/users", response_model=list[UserResponse])
 async def get_all_users(
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("users.read"))
 ):
     """Получить список всех пользователей."""
     query = select(User).order_by(User.created_at.desc())
@@ -238,7 +292,7 @@ async def get_all_users(
 @router.get("/courses", response_model=list[CourseResponse])
 async def get_all_courses(
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Получить список всех курсов с количеством модулей и уроков."""
     query = select(Course).options(
@@ -261,6 +315,7 @@ async def get_all_courses(
             price_self=course.price_self,
             price_support=course.price_support,
             is_published=course.is_published,
+            access_days=course.access_days,
             created_at=course.created_at,
             modules_count=modules_count,
             lessons_count=lessons_count
@@ -273,7 +328,7 @@ async def get_all_courses(
 async def create_course(
     data: CourseCreateRequest,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Создать новый курс."""
     new_course = Course(
@@ -284,6 +339,7 @@ async def create_course(
         price_self=data.price_self,
         price_support=data.price_support,
         is_published=data.is_published,
+        access_days=data.access_days,
         created_at=datetime.utcnow()
     )
     
@@ -299,6 +355,7 @@ async def create_course(
         price_self=new_course.price_self,
         price_support=new_course.price_support,
         is_published=new_course.is_published,
+        access_days=new_course.access_days,
         created_at=new_course.created_at,
         modules_count=0,
         lessons_count=0
@@ -309,7 +366,7 @@ async def create_course(
 async def get_course(
     course_id: UUID,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Получить курс по ID."""
     query = select(Course).where(Course.id == course_id).options(
@@ -332,6 +389,7 @@ async def get_course(
         price_self=course.price_self,
         price_support=course.price_support,
         is_published=course.is_published,
+        access_days=course.access_days,
         created_at=course.created_at,
         modules_count=modules_count,
         lessons_count=lessons_count
@@ -343,7 +401,7 @@ async def update_course(
     course_id: UUID,
     data: CourseUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Обновить курс."""
     query = select(Course).where(Course.id == course_id).options(
@@ -374,6 +432,7 @@ async def update_course(
         price_self=course.price_self,
         price_support=course.price_support,
         is_published=course.is_published,
+        access_days=course.access_days,
         created_at=course.created_at,
         modules_count=modules_count,
         lessons_count=lessons_count
@@ -384,19 +443,33 @@ async def update_course(
 async def delete_course(
     course_id: UUID,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Удалить курс."""
-    query = select(Course).where(Course.id == course_id)
+    # Lock the row first: inserts referencing the course take a key-share lock
+    # on it, so no purchase/order can appear between the checks and the delete.
+    query = select(Course).where(Course.id == course_id).with_for_update()
     result = await db.execute(query)
     course = result.scalar_one_or_none()
     
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
-    
+
+    # Deleting would cascade away payment history (purchases) or hit the
+    # RESTRICT FK on orders, so commerce/access records force unpublishing.
+    for model in (Purchase, Order, Entitlement, Certificate):
+        reference = await db.scalar(
+            select(model.id).where(model.course_id == course_id).limit(1)
+        )
+        if reference is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Курс с оплатами или доступами нельзя удалить — снимите его с публикации",
+            )
+
     await db.delete(course)
     await db.commit()
-    
+
     return {"message": "Course deleted successfully"}
 
 
@@ -406,7 +479,7 @@ async def delete_course(
 async def get_course_modules(
     course_id: UUID,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Получить все модули курса."""
     query = select(Module).where(Module.course_id == course_id).options(
@@ -438,7 +511,7 @@ async def get_course_modules(
 async def create_module(
     data: ModuleCreateRequest,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Создать новый модуль."""
     # Проверяем существование курса
@@ -481,7 +554,7 @@ async def update_module(
     module_id: UUID,
     data: ModuleUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Обновить модуль."""
     query = select(Module).where(Module.id == module_id).options(selectinload(Module.lessons))
@@ -517,7 +590,7 @@ async def update_module(
 async def delete_module(
     module_id: UUID,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Удалить модуль."""
     query = select(Module).where(Module.id == module_id)
@@ -539,7 +612,7 @@ async def delete_module(
 async def create_lesson(
     data: LessonCreateRequest,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Создать новый урок."""
     # Проверяем существование модуля
@@ -578,7 +651,7 @@ async def create_lesson(
 async def get_lesson_admin(
     lesson_id: UUID,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Получить детали урока."""
     query = select(Lesson).where(Lesson.id == lesson_id)
@@ -596,7 +669,7 @@ async def update_lesson(
     lesson_id: UUID,
     data: LessonUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Обновить урок."""
     query = select(Lesson).where(Lesson.id == lesson_id)
@@ -620,7 +693,7 @@ async def update_lesson(
 async def delete_lesson(
     lesson_id: UUID,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """Удалить урок."""
     query = select(Lesson).where(Lesson.id == lesson_id)
@@ -641,7 +714,7 @@ async def delete_lesson(
 @router.get("/purchases", response_model=list[AdminPurchaseResponse])
 async def get_all_purchases(
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_permission("commerce.read")),
 ):
     """Получить последние покупки для админ-панели."""
     query = (
@@ -649,18 +722,33 @@ async def get_all_purchases(
         .options(
             selectinload(Purchase.user),
             selectinload(Purchase.course),
+            selectinload(Purchase.entitlement),
         )
         .order_by(Purchase.created_at.desc())
         .limit(200)
     )
     result = await db.execute(query)
     purchases = result.scalars().all()
+    can_read_pii = await user_has_permission(db, admin, "pii.read")
+    now = datetime.utcnow()
+
+    def access_status(purchase: Purchase) -> str:
+        entitlement = purchase.entitlement
+        if entitlement is None:
+            return "missing"
+        if entitlement.status == "active" and entitlement.expires_at <= now:
+            return "expired"
+        return entitlement.status
 
     return [
         AdminPurchaseResponse(
             id=purchase.id,
             payment_id=purchase.payment_id,
-            user_email=purchase.user.email if purchase.user else "",
+            user_email=(
+                purchase.user.email
+                if purchase.user and can_read_pii
+                else _mask_email(purchase.user.email) if purchase.user else ""
+            ),
             course_title=purchase.course.title if purchase.course else "",
             tariff=purchase.tariff,
             amount_kopecks=purchase.amount_kopecks,
@@ -668,7 +756,16 @@ async def get_all_purchases(
             expires_at=purchase.expires_at,
             paid_at=purchase.paid_at,
             created_at=purchase.created_at,
-            customer_phone=purchase.customer_phone,
+            customer_phone=(
+                purchase.customer_phone
+                if can_read_pii
+                else _mask_phone(purchase.customer_phone)
+            ),
+            entitlement_id=purchase.entitlement.id if purchase.entitlement else None,
+            access_status=access_status(purchase),
+            access_expires_at=(
+                purchase.entitlement.expires_at if purchase.entitlement else None
+            ),
         )
         for purchase in purchases
     ]
@@ -677,7 +774,7 @@ async def get_all_purchases(
 @router.get("/analytics", response_model=AnalyticsResponse)
 async def get_analytics(
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("analytics.read"))
 ):
     """Получить общую аналитику."""
     thirty_days_ago = datetime.utcnow() - timedelta(days=30)
@@ -735,8 +832,9 @@ async def get_analytics(
 @router.post("/grant-access", response_model=GrantAccessResponse)
 async def grant_course_access(
     data: GrantAccessRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("access.manage"))
 ):
     """Выдать доступ к курсу пользователю."""
     # Проверяем существование пользователя
@@ -755,81 +853,242 @@ async def grant_course_access(
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
     
-    # Проверяем существующую покупку
-    purchase_query = select(Purchase).where(
-        and_(
-            Purchase.user_id == data.user_id,
-            Purchase.course_id == data.course_id
-        )
-    ).order_by(Purchase.expires_at.desc(), Purchase.created_at.desc())
-    purchase_result = await db.execute(purchase_query)
-    existing_purchase = purchase_result.scalars().first()
-    
-    paid_now = datetime.utcnow()
-    expires_at = paid_now + timedelta(days=settings.COURSE_ACCESS_DAYS)
+    # Manual access is deliberately separate from financial purchase history.
+    entitlement = await AccessService.grant_manual_access(
+        db,
+        user_id=data.user_id,
+        course_id=data.course_id,
+        tariff=data.tariff,
+        access_days=data.access_days or course.access_days,
+        granted_by_id=admin.id,
+        reason=data.reason,
+    )
+    append_audit_log(
+        db,
+        actor_user_id=admin.id,
+        action="entitlement.grant",
+        object_type="entitlement",
+        object_id=str(entitlement.id),
+        reason=data.reason,
+        correlation_id=request.state.correlation_id,
+        new_value={
+            "user_id": str(data.user_id),
+            "course_id": str(data.course_id),
+            "tariff": data.tariff,
+            "access_days": data.access_days or course.access_days,
+            "expires_at": entitlement.expires_at.isoformat(),
+        },
+    )
+    await db.commit()
+    await db.refresh(entitlement)
 
-    if existing_purchase:
-        existing_purchase.expires_at = expires_at
-        existing_purchase.payment_status = "success"
-        existing_purchase.tariff = data.tariff
-        existing_purchase.paid_at = paid_now
+    return GrantAccessResponse(
+        message="Access granted successfully",
+        entitlement_id=entitlement.id,
+        expires_at=entitlement.expires_at,
+    )
 
-        await db.commit()
-        await db.refresh(existing_purchase)
-        
-        return GrantAccessResponse(
-            message="Access extended successfully",
-            purchase_id=existing_purchase.id,
-            expires_at=existing_purchase.expires_at
+
+@router.post("/revoke-entitlement", response_model=RevokeEntitlementResponse)
+async def revoke_entitlement(
+    data: RevokeEntitlementRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_permission("access.manage")),
+):
+    entitlement = await db.get(Entitlement, data.entitlement_id)
+    if entitlement is None:
+        raise HTTPException(status_code=404, detail="Entitlement not found")
+    old_value = {"status": entitlement.status, "expires_at": entitlement.expires_at.isoformat()}
+    await AccessService.revoke_entitlement(db, entitlement, reason=data.reason)
+    append_audit_log(
+        db,
+        actor_user_id=admin.id,
+        action="entitlement.revoke",
+        object_type="entitlement",
+        object_id=str(entitlement.id),
+        reason=data.reason,
+        correlation_id=request.state.correlation_id,
+        old_value=old_value,
+        new_value={"status": entitlement.status},
+    )
+    await db.commit()
+    await db.refresh(entitlement)
+    return RevokeEntitlementResponse(
+        message="Access revoked",
+        entitlement_id=entitlement.id,
+        status=entitlement.status,
+    )
+
+
+async def _load_entitlement_for_action(
+    db: AsyncSession,
+    entitlement_id: UUID,
+) -> Entitlement:
+    entitlement = await db.scalar(
+        select(Entitlement)
+        .where(Entitlement.id == entitlement_id)
+        .with_for_update()
+    )
+    if entitlement is None:
+        raise HTTPException(status_code=404, detail="Entitlement not found")
+    return entitlement
+
+
+@router.post(
+    "/entitlements/{entitlement_id}/extend",
+    response_model=EntitlementActionResponse,
+)
+async def extend_entitlement(
+    entitlement_id: UUID,
+    data: EntitlementExtendRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_permission("access.manage")),
+):
+    entitlement = await _load_entitlement_for_action(db, entitlement_id)
+    old_value = {
+        "status": entitlement.status,
+        "expires_at": entitlement.expires_at.isoformat(),
+    }
+    try:
+        await AccessService.extend_entitlement(
+            db,
+            entitlement,
+            days=data.days,
+            reason=data.reason,
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    append_audit_log(
+        db,
+        actor_user_id=admin.id,
+        action="entitlement.extend",
+        object_type="entitlement",
+        object_id=str(entitlement.id),
+        reason=data.reason,
+        correlation_id=request.state.correlation_id,
+        old_value=old_value,
+        new_value={
+            "status": entitlement.status,
+            "expires_at": entitlement.expires_at.isoformat(),
+            "days": data.days,
+        },
+    )
+    await db.commit()
+    return EntitlementActionResponse(
+        entitlement_id=entitlement.id,
+        status=entitlement.status,
+        expires_at=entitlement.expires_at,
+    )
+
+
+async def _change_entitlement_state(
+    *,
+    db: AsyncSession,
+    entitlement: Entitlement,
+    action: str,
+    reason: str,
+) -> None:
+    if action == "suspend":
+        await AccessService.suspend_entitlement(db, entitlement, reason=reason)
     else:
-        price = course.price_support if data.tariff == "support" else course.price_self
-        
-        new_purchase = Purchase(
-            id=uuid4(),
-            user_id=data.user_id,
-            course_id=data.course_id,
-            tariff=data.tariff,
-            amount_kopecks=price * 100,
-            payment_id=f"admin_grant_{uuid4().hex[:12]}",
-            payment_status="success",
-            paid_at=paid_now,
-            expires_at=expires_at,
-            created_at=datetime.utcnow(),
+        await AccessService.restore_entitlement(db, entitlement, reason=reason)
+
+
+@router.post(
+    "/entitlements/{entitlement_id}/{action}",
+    response_model=EntitlementActionResponse,
+)
+async def change_entitlement_state(
+    entitlement_id: UUID,
+    action: Literal["suspend", "restore"],
+    data: EntitlementReasonRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_permission("access.manage")),
+):
+    entitlement = await _load_entitlement_for_action(db, entitlement_id)
+    old_value = {
+        "status": entitlement.status,
+        "expires_at": entitlement.expires_at.isoformat(),
+    }
+    try:
+        await _change_entitlement_state(
+            db=db,
+            entitlement=entitlement,
+            action=action,
+            reason=data.reason,
         )
-        
-        db.add(new_purchase)
-        await db.commit()
-        await db.refresh(new_purchase)
-        
-        return GrantAccessResponse(
-            message="Access granted successfully",
-            purchase_id=new_purchase.id,
-            expires_at=new_purchase.expires_at
-        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    append_audit_log(
+        db,
+        actor_user_id=admin.id,
+        action=f"entitlement.{action}",
+        object_type="entitlement",
+        object_id=str(entitlement.id),
+        reason=data.reason,
+        correlation_id=request.state.correlation_id,
+        old_value=old_value,
+        new_value={
+            "status": entitlement.status,
+            "expires_at": entitlement.expires_at.isoformat(),
+        },
+    )
+    await db.commit()
+    return EntitlementActionResponse(
+        entitlement_id=entitlement.id,
+        status=entitlement.status,
+        expires_at=entitlement.expires_at,
+    )
 
 
 @router.post("/revoke-access", response_model=RevokeAccessResponse)
 async def revoke_course_access(
     data: RevokeAccessRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_permission("refunds.manage")),
 ):
-    """Отозвать доступ по покупке (возврат/chargeback).
-
-    Гасит конкретную покупку: payment_status=failed + expires_at=now.
-    check_access гейтит по success + expires_at>now, так что доступ пропадает
-    мгновенно.
-    """
+    """Отозвать связанный Entitlement, не изменяя финансовую историю Purchase."""
     purchase_result = await db.execute(
-        select(Purchase).where(Purchase.id == data.purchase_id)
+        select(Purchase)
+        .where(Purchase.id == data.purchase_id)
+        .with_for_update()
     )
     purchase = purchase_result.scalar_one_or_none()
     if not purchase:
         raise HTTPException(status_code=404, detail="Purchase not found")
 
-    purchase.payment_status = "failed"
-    purchase.expires_at = datetime.utcnow()
+    entitlement_result = await db.execute(
+        select(Entitlement).where(Entitlement.source_purchase_id == purchase.id)
+    )
+    entitlement = entitlement_result.scalar_one_or_none()
+    if entitlement is None:
+        entitlement = AccessService.create_purchase_entitlement(purchase)
+        db.add(entitlement)
+        await db.flush()
+    old_value = {
+        "entitlement_status": entitlement.status,
+        "payment_status": purchase.payment_status,
+        "purchase_expires_at": purchase.expires_at.isoformat(),
+    }
+    await AccessService.revoke_entitlement(db, entitlement, reason=data.reason)
+    append_audit_log(
+        db,
+        actor_user_id=admin.id,
+        action="entitlement.revoke_by_purchase",
+        object_type="entitlement",
+        object_id=str(entitlement.id),
+        reason=data.reason,
+        correlation_id=request.state.correlation_id,
+        old_value=old_value,
+        new_value={
+            "entitlement_status": entitlement.status,
+            "payment_status": purchase.payment_status,
+        },
+    )
     await db.commit()
     await db.refresh(purchase)
 
@@ -837,4 +1096,6 @@ async def revoke_course_access(
         message="Access revoked",
         purchase_id=purchase.id,
         payment_status=purchase.payment_status,
+        entitlement_id=entitlement.id,
+        access_status=entitlement.status,
     )

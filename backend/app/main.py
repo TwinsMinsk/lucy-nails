@@ -3,7 +3,11 @@
 """
 
 import logging
+import json
 import secrets
+import re
+import time
+import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -24,6 +28,7 @@ from app.core.security import get_password_hash
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
+_CORRELATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 
 def _is_production() -> bool:
@@ -83,6 +88,9 @@ class CsrfProtectionMiddleware(BaseHTTPMiddleware):
         "/api/auth/logout",
         "/api/auth/forgot-password",
         "/api/auth/reset-password",
+        "/api/auth/activate",
+        "/api/auth/mfa/setup",
+        "/api/auth/mfa/confirm",
     }
 
     async def dispatch(self, request: Request, call_next):
@@ -102,6 +110,44 @@ class CsrfProtectionMiddleware(BaseHTTPMiddleware):
             return JSONResponse({"detail": "CSRF token missing or invalid"}, status_code=403)
 
         return await call_next(request)
+
+
+class CorrelationIdMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        started = time.perf_counter()
+        supplied = request.headers.get("x-correlation-id", "")
+        correlation_id = supplied if _CORRELATION_ID_PATTERN.fullmatch(supplied) else str(uuid.uuid4())
+        request.state.correlation_id = correlation_id
+        try:
+            response: Response = await call_next(request)
+        except Exception:
+            logger.exception(
+                json.dumps(
+                    {
+                        "event": "http_request",
+                        "correlation_id": correlation_id,
+                        "method": request.method,
+                        "path": request.url.path,
+                        "status": 500,
+                        "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                    }
+                )
+            )
+            raise
+        response.headers["X-Correlation-ID"] = correlation_id
+        logger.info(
+            json.dumps(
+                {
+                    "event": "http_request",
+                    "correlation_id": correlation_id,
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status": response.status_code,
+                    "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                }
+            )
+        )
+        return response
 
 
 @asynccontextmanager
@@ -167,6 +213,7 @@ if _is_production():
 
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CsrfProtectionMiddleware)
+app.add_middleware(CorrelationIdMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -211,7 +258,7 @@ if settings.UPLOAD_STORAGE_DIR:
 
 
 # Подключение роутеров
-from app.api import auth, courses, modules, lessons, purchases, admin, upload, payments, landing, admin_landing, certificates  # noqa: E402
+from app.api import auth, courses, modules, lessons, purchases, admin, admin_certificates, admin_content, admin_crm, admin_refunds, admin_reports, admin_system, analytics, upload, payments, landing, admin_landing, certificates, telegram  # noqa: E402
 from app.api.integrations import kinescope as kinescope_integration  # noqa: E402
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
@@ -220,7 +267,15 @@ app.include_router(modules.router, prefix="/api/modules", tags=["Modules"])
 app.include_router(lessons.router, prefix="/api/lessons", tags=["Lessons"])
 app.include_router(purchases.router, prefix="/api/purchases", tags=["Purchases"])
 app.include_router(payments.router, prefix="/api/payments", tags=["Payments"])
+app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"])
+app.include_router(telegram.router, prefix="/api/telegram", tags=["Telegram"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+app.include_router(admin_content.router, prefix="/api/admin", tags=["Admin: Content"])
+app.include_router(admin_crm.router, prefix="/api/admin", tags=["Admin: CRM"])
+app.include_router(admin_certificates.router, prefix="/api/admin", tags=["Admin: Certificates"])
+app.include_router(admin_refunds.router, prefix="/api/admin", tags=["Admin: Refunds"])
+app.include_router(admin_reports.router, prefix="/api/admin", tags=["Admin: Reports"])
+app.include_router(admin_system.router, prefix="/api/admin", tags=["Admin: System"])
 app.include_router(upload.router, prefix="/api/admin", tags=["Upload"])
 app.include_router(landing.router, prefix="/api/landing", tags=["Landing"])
 app.include_router(admin_landing.router, prefix="/api/admin", tags=["Admin: Landing"])

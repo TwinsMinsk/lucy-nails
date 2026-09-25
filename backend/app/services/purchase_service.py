@@ -3,14 +3,12 @@ from uuid import UUID
 
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.models.certificate import Certificate
-from app.models.course import Course
-from app.models.module import Module
 from app.models.progress import Progress
 from app.models.purchase import Purchase
+from app.services.access_service import AccessService
 
 
 class PurchaseService:
@@ -84,28 +82,12 @@ class PurchaseService:
         user_id: UUID,
     ) -> list[dict]:
         """Только активные успешные покупки (expires_at > now)."""
-        now = datetime.utcnow()
-        purchases_query = (
-            select(Purchase)
-            .where(
-                and_(
-                    Purchase.user_id == user_id,
-                    Purchase.payment_status == "success",
-                    Purchase.expires_at > now,
-                )
-            )
-            .options(
-                selectinload(Purchase.course).selectinload(Course.modules).selectinload(Module.lessons),
-            )
-            .order_by(Purchase.created_at.desc())
-        )
-        purchases_result = await db.execute(purchases_query)
-        purchases = purchases_result.scalars().all()
+        accesses = await AccessService.get_active_course_accesses(db, user_id)
 
-        if not purchases:
+        if not accesses:
             return []
 
-        course_ids = [purchase.course_id for purchase in purchases]
+        course_ids = [access.course.id for access in accesses]
         certificates_query = select(Certificate.course_id, Certificate.certificate_number).where(
             and_(
                 Certificate.user_id == user_id,
@@ -127,8 +109,8 @@ class PurchaseService:
         support_invite = (settings.TELEGRAM_SUPPORT_GROUP_INVITE or "").strip() or None
 
         response = []
-        for purchase in purchases:
-            course = purchase.course
+        for access in accesses:
+            course = access.course
             if not course:
                 continue
 
@@ -168,7 +150,7 @@ class PurchaseService:
                 last_lesson_title = all_lessons[0].title
 
             support_chat_url = None
-            if purchase.tariff == "support" and support_invite:
+            if access.tariff == "support" and support_invite:
                 support_chat_url = support_invite
 
             response.append(
@@ -182,8 +164,8 @@ class PurchaseService:
                     "last_lesson_id": last_lesson_id,
                     "last_lesson_title": last_lesson_title,
                     "cover_image_url": course.cover_image_url,
-                    "tariff": purchase.tariff,
-                    "expires_at": purchase.expires_at,
+                    "tariff": access.tariff,
+                    "expires_at": access.expires_at,
                     "support_chat_url": support_chat_url,
                     "certificate_number": certificate_numbers_by_course.get(course.id),
                 }

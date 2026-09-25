@@ -8,6 +8,7 @@ Railway блокирует исходящий SMTP на планах ниже Pr
 """
 
 import base64
+import hashlib
 import logging
 from dataclasses import dataclass
 from email.mime.application import MIMEApplication
@@ -21,6 +22,10 @@ import httpx
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _recipient_label(email: str) -> str:
+    return hashlib.sha256(email.strip().lower().encode("utf-8")).hexdigest()[:12]
 
 # Ни одна отправка письма не должна висеть дольше этого времени внутри запроса.
 EMAIL_TIMEOUT_SECONDS = 10.0
@@ -61,7 +66,10 @@ class EmailService:
     ) -> None:
         """Отправляет письмо через Resend (если задан ключ) или SMTP. С таймаутом."""
         if not EmailService.is_configured():
-            logger.warning("Email transport not configured — skipping email to %s", email)
+            logger.warning(
+                "Email transport not configured — skipping recipient=%s",
+                _recipient_label(email),
+            )
             return
 
         from_address = EmailService._from_address()
@@ -92,13 +100,15 @@ class EmailService:
                 RESEND_ENDPOINT,
                 headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
                 json=payload,
-            )
+        )
         if response.status_code >= 400:
             logger.error(
-                "Resend rejected email to %s: %s %s", email, response.status_code, response.text
+                "Resend rejected email recipient=%s status=%s",
+                _recipient_label(email),
+                response.status_code,
             )
             response.raise_for_status()
-        logger.info("Email sent to %s via Resend", email)
+        logger.info("Email sent via Resend recipient=%s", _recipient_label(email))
 
     @staticmethod
     def _build_mime_message(
@@ -149,7 +159,7 @@ class EmailService:
             start_tls=True,
             timeout=timeout,
         )
-        logger.info("Email sent to %s via SMTP", email)
+        logger.info("Email sent via SMTP recipient=%s", _recipient_label(email))
 
     @staticmethod
     def _build_credentials_html(email: str, password: str) -> str:
@@ -214,6 +224,73 @@ class EmailService:
         await EmailService._send(email, "🎉 Ваш доступ к курсу — Lucy Nails Academy", html)
 
     @staticmethod
+    async def send_account_activation(email: str, activation_url: str, course_title: str) -> None:
+        safe_url = escape(activation_url, quote=True)
+        safe_title = escape(course_title)
+        html = (
+            f"<h1>Доступ к курсу открыт</h1><p>Курс: {safe_title}</p>"
+            f'<p><a href="{safe_url}">Установить пароль и войти</a></p>'
+            "<p>Ссылка действует 24 часа и может быть использована один раз.</p>"
+        )
+        await EmailService._send(email, "Установите пароль — Lucy Nails Academy", html)
+
+    @staticmethod
+    async def send_access_granted(email: str, login_url: str, course_title: str) -> None:
+        safe_url = escape(login_url, quote=True)
+        safe_title = escape(course_title)
+        # A returning guest buyer may never have set a password.
+        forgot_url = escape(
+            f"{settings.FRONTEND_URL.rstrip('/')}/auth/forgot-password", quote=True
+        )
+        html = (
+            f"<h1>Оплата подтверждена</h1><p>Доступ к курсу «{safe_title}» открыт.</p>"
+            f'<p><a href="{safe_url}">Войти в кабинет</a></p>'
+            "<p>Если вы ещё не задавали пароль, нажмите "
+            f'«<a href="{forgot_url}">Забыли пароль?</a>» на странице входа.</p>'
+        )
+        await EmailService._send(email, "Доступ к курсу открыт — Lucy Nails Academy", html)
+
+    @staticmethod
+    async def send_login_link(email: str, login_url: str) -> None:
+        safe_url = escape(login_url, quote=True)
+        html = (
+            "<h1>Вход в личный кабинет</h1>"
+            "<p>Служба поддержки отправила вам ссылку для входа в кабинет Lucy Nails Academy.</p>"
+            f'<p><a href="{safe_url}">Задать пароль и войти</a></p>'
+            f"<p>Ссылка действует {settings.ACCOUNT_ACTIVATION_TOKEN_EXPIRE_HOURS} ч. "
+            "и может быть использована один раз. Если вы не обращались в поддержку, "
+            "просто проигнорируйте это письмо.</p>"
+        )
+        await EmailService._send(email, "Ссылка для входа — Lucy Nails Academy", html)
+
+    @staticmethod
+    async def send_access_expiry_reminder(
+        email: str, course_title: str, days: int, expires_at: str
+    ) -> None:
+        safe_title = escape(course_title)
+        safe_expires_at = escape(expires_at)
+        login_url = escape(f"{settings.FRONTEND_URL.rstrip('/')}/dashboard", quote=True)
+        html = (
+            f"<h1>Доступ закончится через {days} дн.</h1>"
+            f"<p>Курс «{safe_title}» доступен до {safe_expires_at}.</p>"
+            f'<p><a href="{login_url}">Продолжить обучение</a></p>'
+        )
+        await EmailService._send(
+            email, f"До окончания доступа осталось {days} дн. — Lucy Nails Academy", html
+        )
+
+    @staticmethod
+    async def send_access_expired(email: str, course_title: str) -> None:
+        safe_title = escape(course_title)
+        html = (
+            f"<h1>Срок доступа завершён</h1><p>Доступ к курсу «{safe_title}» закончился.</p>"
+            "<p>Если это ошибка или вам нужна помощь, ответьте на это письмо.</p>"
+        )
+        await EmailService._send(
+            email, "Срок доступа к курсу завершён — Lucy Nails Academy", html
+        )
+
+    @staticmethod
     def _build_reset_html(reset_url: str) -> str:
         safe_url = escape(reset_url, quote=True)
         return f"""
@@ -262,6 +339,20 @@ class EmailService:
         """Отправляет письмо со ссылкой на сброс пароля."""
         html = EmailService._build_reset_html(reset_url)
         await EmailService._send(email, "Сброс пароля — Lucy Nails Academy", html)
+
+    @staticmethod
+    async def send_certificate_link(
+        email: str,
+        student_name: str,
+        course_title: str,
+        certificate_number: str,
+        verify_url: str,
+    ) -> None:
+        """Re-send an existing certificate link through the durable outbox."""
+        html = EmailService._build_certificate_html(
+            student_name, course_title, certificate_number, verify_url
+        )
+        await EmailService._send(email, "Ваш сертификат — Lucy Nails Academy", html)
 
     @staticmethod
     def _build_certificate_html(

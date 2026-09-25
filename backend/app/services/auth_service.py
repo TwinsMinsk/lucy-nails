@@ -5,9 +5,10 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.legal import CONSENT_VERSION
 from app.core.security import get_password_hash, verify_password, create_access_token, create_refresh_token
 from app.models.user import User
 from app.schemas.auth import UserRegister, UserLogin, Token
@@ -31,9 +32,10 @@ class AuthService:
         Raises:
             ValueError: Если email уже существует
         """
-        # Проверка существования email
+        # Проверка существования email (case-insensitive: сравниваем по lower(),
+        # чтобы легаси-записи со смешанным регистром тоже находились)
         result = await db.execute(
-            select(User).where(User.email == data.email)
+            select(User).where(func.lower(User.email) == data.email)
         )
         existing_user = result.scalar_one_or_none()
         
@@ -41,10 +43,14 @@ class AuthService:
             raise ValueError("Email already registered")
         
         # Создание пользователя
+        consented_at = datetime.utcnow()
         user = User(
             email=data.email,
             password_hash=get_password_hash(data.password),
             role="student",  # По умолчанию студент
+            offer_accepted_at=consented_at if data.offer_accepted else None,
+            personal_data_consent_at=consented_at if data.personal_data_consent else None,
+            consent_version=CONSENT_VERSION,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
@@ -68,10 +74,10 @@ class AuthService:
             User если аутентификация успешна, None если нет
         """
         result = await db.execute(
-            select(User).where(User.email == data.email)
+            select(User).where(func.lower(User.email) == data.email)
         )
         user = result.scalar_one_or_none()
-        
+
         if not user:
             return None
         
@@ -81,7 +87,11 @@ class AuthService:
         return user
     
     @staticmethod
-    def create_tokens(user_id: UUID, token_version: int = 0) -> Token:
+    def create_tokens(
+        user_id: UUID,
+        token_version: int = 0,
+        session_id: UUID | None = None,
+    ) -> Token:
         """
         Создание JWT токенов для пользователя.
 
@@ -93,6 +103,8 @@ class AuthService:
             Токены (access + refresh)
         """
         payload = {"sub": str(user_id), "ver": token_version}
+        if session_id is not None:
+            payload["sid"] = str(session_id)
         access_token = create_access_token(payload)
         refresh_token = create_refresh_token(payload)
 

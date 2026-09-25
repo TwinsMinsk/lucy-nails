@@ -23,11 +23,8 @@ interface ModuleListProps {
     modules: Module[];
 }
 
-// Helper to map module IDs to icons (optional, for visual flair)
-const getModuleIcon = (id: string) => {
-    const num = parseInt(id);
-    if (isNaN(num)) return <Layers className="w-5 h-5 text-primary-dark" />;
-
+// Helper to map the module's 1-based ordinal to an icon (optional, for visual flair)
+const getModuleIcon = (num: number) => {
     const icons = [
         <Layers key={1} className="w-5 h-5 text-primary-dark" />,       // 1. Basics
         <Palette key={2} className="w-5 h-5 text-primary-dark" />,      // 2. Pigments
@@ -47,7 +44,7 @@ export function ModuleList({ modules }: ModuleListProps) {
     return (
         <div className="w-full">
             <Accordion type="single" collapsible className="w-full space-y-4">
-                {modules.map((module) => (
+                {modules.map((module, index) => (
                     <AccordionItem
                         key={module.id}
                         value={module.id}
@@ -57,12 +54,12 @@ export function ModuleList({ modules }: ModuleListProps) {
                             <div className="flex items-center gap-4 text-left w-full">
                                 {/* Icon Box */}
                                 <div className="flex items-center justify-center w-10 h-10 rounded-full bg-white/80 shadow-inner shrink-0 group-hover:bg-primary/20 transition-colors">
-                                    {getModuleIcon(module.id)}
+                                    {getModuleIcon(index + 1)}
                                 </div>
 
                                 <div className="flex flex-col gap-0.5">
                                     <span className="text-2xl font-serif font-medium text-text-primary group-hover:text-primary-dark transition-colors">
-                                        Модуль {module.id}: {module.title}
+                                        Модуль {index + 1}: {module.title}
                                     </span>
                                 </div>
                             </div>

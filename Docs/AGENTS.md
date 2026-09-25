@@ -12,8 +12,8 @@
 | File | Description |
 |------|-------------|
 | [`README.md`](README.md) | Индекс/навигация по `Docs/` |
-| [`PRD.md`](PRD.md) | Продуктовые требования, v1.2, статус «Утверждён» |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Техническая архитектура, схема данных, API и интеграции (с mermaid-диаграммами), v1.2 |
+| [`PRD.md`](PRD.md) | Текущий production scope, v2.0, и go-live критерии |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Текущая v2.0 архитектура commerce/access/RBAC/outbox/analytics/operations |
 | [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) | Исторический план реализации по фазам (на основе PRD/ARCHITECTURE v1.x) |
 
 ## Subdirectories
@@ -26,7 +26,7 @@
 | [`05_Phases_History/`](05_Phases_History/) | Исторические отчёты завершённых фаз (Phase 1–4.1, обновления галереи/навигации/контента уроков) — контекст, не источник текущих правил |
 | [`06_Tracking/`](06_Tracking/) | [`TASKS.md`](06_Tracking/TASKS.md) (текущий трекер), [`POST_MVP_HARDENING.md`](06_Tracking/POST_MVP_HARDENING.md), [`REFACTORING_ROADMAP.md`](06_Tracking/REFACTORING_ROADMAP.md), `PROGRESS_REPORT.md`, [`CONTENT.md`](06_Tracking/CONTENT.md) (структура/контент курса, черновик) |
 | [`integrations/`](integrations/) | Справочники: [`KINESCOPE_API.md`](integrations/KINESCOPE_API.md), [`KINESCOPE_AUTH_BACKEND.md`](integrations/KINESCOPE_AUTH_BACKEND.md), [`PRODAMUS_API.md`](integrations/PRODAMUS_API.md) |
-| [`audit/`](audit/) | Аудиты на конкретную дату: [`landing-copy-audit-2026-05-10.md`](audit/landing-copy-audit-2026-05-10.md), [`audit-2026-06-26/`](audit/audit-2026-06-26/) (00-summary + тематические отчёты 01–06 + `BACKLOG.md`) |
+| [`audit/`](audit/) | Point-in-time аудиты; текущий источник go/no-go — [`production-readiness-2026-08-26/`](audit/production-readiness-2026-08-26/) |
 
 ## For AI Agents
 

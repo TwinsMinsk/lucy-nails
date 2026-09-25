@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { changePassword, getMe, isAuthError, logout, UserResponse } from "@/lib/api";
+import {
+    changePassword,
+    getMe,
+    isAuthError,
+    logout,
+    UserResponse,
+} from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { BookOpen, Loader2, LogOut, User } from "lucide-react";
@@ -10,6 +16,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { parseApiDate } from "@/lib/format";
 
 export default function ProfilePage() {
     const router = useRouter();
@@ -119,7 +126,7 @@ export default function ProfilePage() {
                         <Label htmlFor="created_at" className="text-text-secondary">Дата регистрации</Label>
                         <Input
                             id="created_at"
-                            value={new Date(user.created_at).toLocaleDateString('ru-RU')}
+                            value={parseApiDate(user.created_at).toLocaleDateString('ru-RU')}
                             readOnly
                             disabled
                             className="bg-muted/30 border-primary/20 text-text-primary h-12"
@@ -134,8 +141,9 @@ export default function ProfilePage() {
                         </Link>
                     </Button>
                     <div className="rounded-2xl bg-[#fff1f4] p-4 text-sm text-text-secondary leading-relaxed">
-                        Если вы оплатили курс без регистрации, используйте email и пароль из письма.
-                        Доступ обычно появляется в кабинете в течение пары минут после оплаты.
+                        Если вы оплатили курс без регистрации, входите с email покупки и паролем,
+                        который задали по ссылке из письма. Доступ обычно появляется в кабинете
+                        в течение пары минут после оплаты.
                     </div>
                     <Button
                         variant="destructive"

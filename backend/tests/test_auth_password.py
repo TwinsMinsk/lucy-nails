@@ -4,14 +4,14 @@ from datetime import datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
-from jose import jwt
+import jwt
 
 from app.core.config import settings
 from app.core.security import create_password_reset_token
 
 
 async def _register(client: AsyncClient, email: str, password: str) -> str:
-    r = await client.post("/api/auth/register", json={"email": email, "password": password})
+    r = await client.post("/api/auth/register", json={"email": email, "password": password, "offer_accepted": True, "personal_data_consent": True})
     assert r.status_code == 201, r.text
     return r.json()["id"]
 

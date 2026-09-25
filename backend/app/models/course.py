@@ -24,6 +24,7 @@ class Course(Base):
     price_self: Mapped[int] = mapped_column(Integer, nullable=False)  # в рублях
     price_support: Mapped[int] = mapped_column(Integer, nullable=False)  # в рублях
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
+    access_days: Mapped[int] = mapped_column(Integer, nullable=False, default=30, server_default="30")
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
     # Landing hero overrides. NULL → frontend falls back to course-content.ts.
@@ -39,7 +40,11 @@ class Course(Base):
     # Relationships
     modules: Mapped[list["Module"]] = relationship(back_populates="course", cascade="all, delete-orphan", order_by="Module.order_index")
     purchases: Mapped[list["Purchase"]] = relationship(back_populates="course", cascade="all, delete-orphan")
+    orders: Mapped[list["Order"]] = relationship(back_populates="course")
     certificates: Mapped[list["Certificate"]] = relationship(back_populates="course", cascade="all, delete-orphan")
+    entitlements: Mapped[list["Entitlement"]] = relationship(
+        back_populates="course", cascade="all, delete-orphan"
+    )
     
     def __repr__(self) -> str:
         return f"<Course {self.title}>"

@@ -100,6 +100,8 @@ async def verify_certificate(
     certificate = await CertificateService.get_by_number(db, certificate_number)
     if certificate is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Certificate not found")
+    if certificate.status == "revoked":
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Certificate revoked")
 
     return CertificateVerifyResponse(
         certificate_number=certificate.certificate_number,
@@ -124,6 +126,8 @@ async def download_certificate_file(
     certificate = await CertificateService.get_by_number(db, certificate_number)
     if certificate is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Certificate not found")
+    if certificate.status == "revoked":
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Certificate revoked")
 
     stored_url = certificate.pdf_url if format == "pdf" else certificate.png_url
     if not stored_url:

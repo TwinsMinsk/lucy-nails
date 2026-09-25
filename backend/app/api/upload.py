@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, status
 from pydantic import BaseModel
 
-from app.api.admin import require_admin
+from app.core.dependencies import require_permission
 from app.core.config import settings
 from app.core.uploads import public_upload_url as _public_upload_url
 from app.core.uploads import upload_dir as _upload_dir
@@ -36,7 +36,7 @@ def ensure_upload_dir():
 @router.post("/upload", response_model=UploadResponse)
 async def upload_file(
     file: UploadFile = File(...),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_permission("content.manage"))
 ):
     """
     Загрузить файл (только для админов).

@@ -126,7 +126,7 @@ async def get_course_modules(
 from app.api.auth import get_current_user
 from app.models.user import User
 from app.services.progress_service import ProgressService
-from app.services.purchase_service import PurchaseService
+from app.services.access_service import AccessService
 from pydantic import BaseModel
 
 class CourseProgressResponse(BaseModel):
@@ -144,7 +144,7 @@ async def get_my_course_progress(
     админ — без ограничения).
     """
     if current_user.role != "admin":
-        access = await PurchaseService.get_active_purchase(db, current_user.id, course_id)
+        access = await AccessService.has_active_access(db, current_user.id, course_id)
         if not access:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

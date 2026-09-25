@@ -37,7 +37,7 @@ export function Header() {
         { href: "#about", label: "О курсе" },
         { href: "#program", label: "Программа" },
         { href: "#gallery", label: "Галерея" },
-        { href: "#pricing", label: "Тарифы" },
+        { href: "#pricing", label: "Стоимость" },
     ];
 
     const dashboardLinks = [

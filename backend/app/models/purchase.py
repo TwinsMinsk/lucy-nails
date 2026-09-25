@@ -19,6 +19,9 @@ class Purchase(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     course_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), nullable=False, index=True)
+    order_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("orders.id", ondelete="SET NULL"), nullable=True, unique=True, index=True
+    )
     tariff: Mapped[str] = mapped_column(
         SQLEnum("self", "support", name="tariff_type"),
         nullable=False
@@ -38,6 +41,12 @@ class Purchase(Base):
     # Relationships
     user: Mapped["User"] = relationship(back_populates="purchases")
     course: Mapped["Course"] = relationship(back_populates="purchases")
+    order: Mapped["Order | None"] = relationship(back_populates="purchase")
+    entitlement: Mapped["Entitlement | None"] = relationship(
+        back_populates="source_purchase", uselist=False
+    )
+    payment_events: Mapped[list["PaymentEvent"]] = relationship(back_populates="purchase")
+    refund_requests: Mapped[list["RefundRequest"]] = relationship(back_populates="purchase")
     
     def __repr__(self) -> str:
         return f"<Purchase {self.id} ({self.tariff}, {self.payment_status})>"

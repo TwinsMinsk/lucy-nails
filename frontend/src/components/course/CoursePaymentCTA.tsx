@@ -2,7 +2,8 @@
 
 import { PaymentButton } from "@/components/landing/PaymentButton";
 
-type Tariff = "self" | "support";
+// Only the self-paced tariff is sold.
+type Tariff = "self";
 
 export function CoursePaymentCTA({
   courseId,

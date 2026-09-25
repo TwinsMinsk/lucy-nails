@@ -1,7 +1,9 @@
 import pytest
 from pydantic import ValidationError
+from starlette.requests import Request
 
 from app.core.config import Settings
+from app.core.rate_limit import client_ip
 from app.main import app
 
 
@@ -12,6 +14,7 @@ def _valid_prod(**overrides):
         ENVIRONMENT="production",
         DEBUG=False,
         JWT_SECRET_KEY="production-secret-that-is-32-chars-min",
+        MFA_ENCRYPTION_KEY="distinct-mfa-encryption-key-32-chars-min",
         KINESCOPE_API_KEY="kinescope-key",
         KINESCOPE_JWT_PRIVATE_KEY_PEM="dummy-pem",
         KINESCOPE_JWK_KID="kid-test",
@@ -23,7 +26,12 @@ def _valid_prod(**overrides):
         PRODAMUS_DEMO_MODE=False,
         FRONTEND_URL="https://lucysmirnova.ru",
         BACKEND_URL="https://api.lucysmirnova.ru",
+        COOKIE_DOMAIN="lucysmirnova.ru",
         TRUSTED_HOSTS="api.lucysmirnova.ru",
+        REDIS_URL="redis://shared-redis.internal:6379/0",
+        TELEGRAM_BOT_TOKEN="telegram-token",
+        TELEGRAM_BOT_USERNAME="lucy_nails_bot",
+        TELEGRAM_OWNER_CHAT_ID=123456789,
         SMTP_REQUIRED_FOR_PAYMENT_EMAIL=True,
         RESEND_API_KEY="re_default_key",
         SMTP_USER="",
@@ -80,6 +88,13 @@ def test_production_config_accepts_resend_api_key():
     assert settings.RESEND_API_KEY == "re_test_key"
 
 
+def test_production_config_requires_distinct_mfa_encryption_key():
+    with pytest.raises(ValidationError) as exc_info:
+        _valid_prod(MFA_ENCRYPTION_KEY="")
+
+    assert "MFA_ENCRYPTION_KEY must be at least 32 characters" in str(exc_info.value)
+
+
 def test_production_config_allows_smtp_disabled_for_registered_checkout_only():
     settings = _valid_prod(SMTP_REQUIRED_FOR_PAYMENT_EMAIL=False, RESEND_API_KEY="")
 
@@ -105,3 +120,51 @@ def test_production_config_requires_drm_basic_auth():
         _valid_prod(KINESCOPE_DRM_BASIC_USER="", KINESCOPE_DRM_BASIC_PASS="")
 
     assert "KINESCOPE_DRM_BASIC_USER and KINESCOPE_DRM_BASIC_PASS are required" in str(exc_info.value)
+
+
+def test_production_config_requires_shared_cookie_domain():
+    with pytest.raises(ValidationError) as exc_info:
+        _valid_prod(COOKIE_DOMAIN="")
+
+    assert "COOKIE_DOMAIN is required in production" in str(exc_info.value)
+
+
+def test_production_config_requires_shared_redis_rate_limit():
+    with pytest.raises(ValidationError) as exc_info:
+        _valid_prod(REDIS_URL="")
+
+    assert "REDIS_URL is required in production" in str(exc_info.value)
+
+
+def test_production_config_rejects_trusting_every_forwarded_sender():
+    with pytest.raises(ValidationError) as exc_info:
+        _valid_prod(FORWARDED_ALLOW_IPS="*")
+
+    assert "FORWARDED_ALLOW_IPS must list trusted proxy" in str(exc_info.value)
+
+
+def test_rate_limit_key_ignores_untrusted_forwarding_headers():
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "headers": [
+                (b"x-forwarded-for", b"203.0.113.44"),
+                (b"cf-connecting-ip", b"198.51.100.20"),
+            ],
+            "client": ("192.0.2.10", 12345),
+            "server": ("test", 80),
+            "scheme": "http",
+            "query_string": b"",
+        }
+    )
+
+    assert client_ip(request) == "192.0.2.10"
+
+
+def test_production_config_requires_telegram_operations_channel():
+    with pytest.raises(ValidationError) as exc_info:
+        _valid_prod(TELEGRAM_BOT_TOKEN="", TELEGRAM_BOT_USERNAME="")
+
+    assert "Telegram bot token and username are required" in str(exc_info.value)

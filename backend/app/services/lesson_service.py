@@ -1,16 +1,17 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select, and_
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.lesson import Lesson
 from app.models.module import Module
 from app.models.progress import Progress
-from app.models.purchase import Purchase
 from app.models.user import User
 from app.schemas.progress import ProgressUpdate
+from app.services.access_service import AccessService
+from app.services.analytics_service import AnalyticsService
 
 
 class LessonService:
@@ -51,22 +52,8 @@ class LessonService:
         if user.role == "admin":
             return True
             
-        # Проверка покупки
         course_id = lesson.module.course_id
-        now = datetime.utcnow()
-        
-        query = select(Purchase).where(
-            and_(
-                Purchase.user_id == user.id,
-                Purchase.course_id == course_id,
-                Purchase.payment_status == "success",  # Используем 'success' согласно ENUM
-                Purchase.expires_at > now
-            )
-        ).order_by(Purchase.expires_at.desc(), Purchase.created_at.desc())
-        result = await db.execute(query)
-        purchase = result.scalars().first()
-        
-        return purchase is not None
+        return await AccessService.has_active_access(db, user.id, course_id)
 
     @staticmethod
     async def get_lesson_with_access(
@@ -106,7 +93,11 @@ class LessonService:
         """
         Обновить или создать запись о прогрессе.
         """
-        lesson_result = await db.execute(select(Lesson).where(Lesson.id == lesson_id))
+        lesson_result = await db.execute(
+            select(Lesson)
+            .options(selectinload(Lesson.module))
+            .where(Lesson.id == lesson_id)
+        )
         lesson = lesson_result.scalars().first()
         max_watched_seconds = lesson.duration_seconds if lesson else data.watched_seconds
         watched_seconds = max(0, min(data.watched_seconds, max_watched_seconds))
@@ -121,6 +112,7 @@ class LessonService:
         result = await db.execute(query)
         progress = result.scalars().first()
         
+        newly_completed = False
         if progress:
             # Обновляем
             progress.watched_seconds = watched_seconds
@@ -129,6 +121,7 @@ class LessonService:
             if data.is_completed and not progress.is_completed:
                 progress.is_completed = True
                 progress.completed_at = datetime.utcnow()
+                newly_completed = True
             elif not data.is_completed:
                  # Если вдруг сбросили (редкий кейс, но пусть будет)
                  progress.is_completed = False
@@ -145,7 +138,48 @@ class LessonService:
                 completed_at=datetime.utcnow() if data.is_completed else None
             )
             db.add(progress)
-            
+            newly_completed = data.is_completed
+
+        await db.flush()
+        if newly_completed and lesson is not None:
+            course_id = lesson.module.course_id
+            await AnalyticsService.record_event(
+                db,
+                event_id=f"lesson_completed:{progress.id}",
+                event_name="lesson_completed",
+                source="server",
+                user_id=user_id,
+                course_id=course_id,
+                lesson_id=lesson.id,
+                properties={},
+            )
+            total_lessons = await db.scalar(
+                select(func.count(Lesson.id))
+                .join(Module, Module.id == Lesson.module_id)
+                .where(Module.course_id == course_id, Module.is_published.is_(True))
+            )
+            completed_lessons = await db.scalar(
+                select(func.count(Progress.id))
+                .join(Lesson, Lesson.id == Progress.lesson_id)
+                .join(Module, Module.id == Lesson.module_id)
+                .where(
+                    Progress.user_id == user_id,
+                    Progress.is_completed.is_(True),
+                    Module.course_id == course_id,
+                    Module.is_published.is_(True),
+                )
+            )
+            if total_lessons and completed_lessons and completed_lessons >= total_lessons:
+                await AnalyticsService.record_event(
+                    db,
+                    event_id=f"course_completed:{user_id}:{course_id}",
+                    event_name="course_completed",
+                    source="server",
+                    user_id=user_id,
+                    course_id=course_id,
+                    properties={},
+                )
+
         await db.commit()
         await db.refresh(progress)
         return progress

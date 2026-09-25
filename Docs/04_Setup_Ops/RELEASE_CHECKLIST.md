@@ -1,76 +1,138 @@
-# MVP Production Release Checklist
+# Lucy Nails production release checklist
 
-Этот чеклист закрывает релиз текущего MVP: покупка через Prodamus, доступ на 30 дней, кабинет ученика, уроки Kinescope и базовая админка.
+> **Версия:** 2.1
+> **Дата:** 25.09.2026 (обновлено после launch-fixes: только тариф «Самостоятельный», Telegram только для владельца)
+> **Текущее решение:** **NO-GO** — кодовый baseline готов, внешние P0/P1 из [`production-readiness audit`](../audit/production-readiness-2026-08-26/README.md) не закрыты.
 
-## 1. Pre-Release
+Каждый ручной пункт получает дату, исполнителя и ссылку/ID доказательства. `[x]` без доказательства не считается закрытым.
 
-- [ ] Git рабочее дерево чистое или все изменения осознанно включены в PR.
-- [ ] В CI зелёные проверки backend `ruff`, backend `pytest`, frontend `lint`, frontend `build`.
-- [ ] В CI или вручную выполнено `alembic upgrade head` на staging БД.
-- [ ] В релиз включена миграция `backend/alembic/versions/c8d41b2a9f01_production_user_phone_and_purchase_meta.py`.
-- [ ] Первый админ создан через `ADMIN_EMAIL=... ADMIN_PASSWORD=... python backend/scripts/create_admin.py` в Railway shell.
-- [ ] Production content проверен через `python backend/scripts/check_production_content.py`.
+## 1. Code baseline
 
-## 2. Railway Environment
+- [x] Ветка основана на `origin/master` с сертификатами.
+- [x] `ruff check backend/app backend/tests scripts/ops`.
+- [x] Полный pytest на PostgreSQL 15: 167 passed, 1 skipped.
+- [x] Alembic имеет одну head `4e9d0e1f2a3b`; latest downgrade/upgrade проходит.
+- [x] Frontend ESLint, Vitest, Next production build.
+- [x] Playwright: guest checkout, public/login и content-manager RBAC в Chromium + mobile WebKit (6 passed).
+- [x] `pip-audit --strict -r backend/requirements.lock`: нет известных уязвимостей.
+- [x] `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities.
+- [x] Git diff не содержит секретов, `.env`, backup dump, test result или тяжёлых media.
+- [x] Независимое четырёхпроходное code review: после `91b796b` нет открытых Critical/Important.
+- [ ] После launch-fixes 25.09.2026: Alembic head `5f6a7b8c9d0e` (email lower-case index), полный pytest/ESLint/build/Playwright зелёные. Evidence: ______
+- [ ] CI релизного PR зелёный. Evidence: ______
+- [ ] Code review релизного PR завершён. Evidence: ______
 
-Backend:
+## 2. Staging
 
-- [ ] `ENVIRONMENT=production`
-- [ ] `DEBUG=false`
-- [ ] `DATABASE_URL` указывает на production/staging PostgreSQL, не на локальную БД.
-- [ ] `JWT_SECRET_KEY` заменён на длинный уникальный секрет.
-- [ ] `FRONTEND_URL` и `BACKEND_URL` указывают на публичные HTTPS URL.
-- [ ] `CORS_ORIGINS` содержит только frontend origin.
-- [ ] `TRUSTED_HOSTS` содержит backend-домены без схемы.
-- [ ] `KINESCOPE_API_KEY` задан.
-- [ ] `PRODAMUS_URL`, `PRODAMUS_SECRET_KEY`, `PRODAMUS_SHOP_ID` заданы.
-- [ ] Checkout требует регистрацию/вход до оплаты; `SMTP_*` нужны только если включён guest checkout с отправкой credentials.
+- [ ] Созданы отдельные frontend, API, worker, bot, PostgreSQL 15, Redis и backup cron.
+- [ ] Staging не использует production DB/Redis/email recipients/Telegram chats/Prodamus form.
+- [ ] Перед миграцией на копии прод-БД нет дублей email без учёта регистра: `SELECT lower(email), count(*) FROM users GROUP BY 1 HAVING count(*) > 1;` пусто (иначе миграция `5f6a7b8c9d0e` остановится — слить аккаунты вручную).
+- [ ] `alembic upgrade head` выполнен; count/backfill сверены.
+- [ ] Production-like cookie domain, CORS, CSRF, trusted proxy и CSP проверены между staging-поддоменами.
+- [ ] Kinescope staging работает fail-closed без mock.
+- [ ] `scripts/smoke-production.ps1` зелёный. Evidence: ______
 
-Frontend:
+## 3. Environment и процессы
 
-- [ ] `NEXT_PUBLIC_API_URL` указывает на `BACKEND_URL + /api`.
-- [ ] `NEXT_PUBLIC_SITE_URL` указывает на публичный frontend URL.
+- [ ] `ENVIRONMENT=production`, `DEBUG=false`, Python 3.11 и Node 20+.
+- [ ] Уникальны JWT, MFA encryption, Prodamus, Kinescope, email, Telegram, DB, Redis и S3 secrets.
+- [ ] `FRONTEND_URL`, `BACKEND_URL`, `CORS_ORIGINS`, `TRUSTED_HOSTS`, `COOKIE_DOMAIN` точны и HTTPS-only.
+- [ ] `FORWARDED_ALLOW_IPS` содержит только подтверждённые адреса edge-proxy, не `*`; spoofed forwarding headers не обходят rate limit.
+- [ ] `REDIS_URL` общий для API replicas; distributed rate limit проверен.
+- [ ] Web и outbox worker запущены как отдельные Railway-сервисы с restart policy: worker — root `backend`, start `python -m app.workers.outbox`, те же env, что у web. Процесс `bot` не нужен: ученики Telegram не привязывают.
+- [ ] Telegram env: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` (бот из BotFather), `TELEGRAM_OWNER_CHAT_ID` (чат владельца, бот предварительно запущен командой /start). `TELEGRAM_SUPPORT_GROUP_*` не задаём.
+- [ ] `MFA_ENCRYPTION_KEY` ≥ 32 символов и отличается от `JWT_SECRET_KEY`; `REDIS_URL` указывает на Railway Redis.
+- [ ] Owner Telegram chat получает тестовый integration alert и сообщение «💰 Новая оплата» после demo-платежа на staging.
+- [ ] Checkout kill switch выключает новые ссылки без deploy и не закрывает webhook.
+- [ ] Секреты и PII отсутствуют в структурированных логах/событиях.
 
-## 3. Prodamus
+## 4. Payments и delivery
 
-- [ ] В личном кабинете Prodamus webhook указывает на `BACKEND_URL + /api/payments/webhook`.
-- [ ] Подпись webhook соответствует `PRODAMUS_SECRET_KEY`.
-- [ ] Тестовый платёж создаёт или обновляет одну покупку даже при повторной доставке webhook.
-- [ ] Неверная сумма или подпись не выдаёт доступ.
+- [ ] В кабинете Prodamus URL уведомлений = `{BACKEND_URL}/api/payments/webhook`; тестовый вебхук кнопкой 🔁 («Настройки уведомлений») проходит подпись (multipart с `products[0][...]`); тело сохранено как фикстура теста.
+- [ ] Продаётся только тариф «Самостоятельный»: на лендинге одна карточка, `tariff=support` при создании ссылки → 400.
+- [ ] Guest checkout создаёт immutable order с фактической ценой/валютой/сроком/UTM.
+- [ ] Authenticated checkout использует существующего пользователя.
+- [ ] Изменение цены после создания order не вызывает mismatch и не меняет snapshot.
+- [ ] Неверная подпись, сумма, валюта и статус отклоняются без доступа.
+- [ ] Повторный, переставленный и конкурентный webhook не создаёт дублей.
+- [ ] Оплата атомарно создаёт Purchase + Entitlement + analytics event + outbox.
+- [ ] Новый гость получает одноразовую activation link; страница `/auth/activate` задаёт пароль; token одноразовый и истекает через 24 часа.
+- [ ] Вход работает при email с заглавной буквы (`Maria@…` для аккаунта `maria@…`).
+- [ ] Существующий пользователь получает access notification.
+- [ ] Resend/SMTP и Telegram retry/dead-letter/manual resend проверены при искусственном отказе.
+- [ ] Payment status показывает pending/paid/help и удаляет token из URL без WebKit race.
+- [ ] Refund request создан в админке, возврат выполнен в Prodamus, provider reference и net revenue обновлены.
 
-## 4. Kinescope
+## 5. Content и student flow
 
-- [ ] У всех production-уроков задан `kinescope_video_id`.
-- [ ] В Kinescope включены нужные ограничения домена, watermark/DRM согласно тарифу сервиса.
-- [ ] Ученик с активной покупкой получает embed URL.
-- [ ] Ученик без покупки не получает доступ к закрытому уроку.
+- [ ] Production показывает ровно 11 уроков и 17 136 секунд; лендинг обещает около 5 часов и 30 дней.
+- [ ] Каждый урок проверен на desktop Chrome/Safari, реальном iOS и Android.
+- [ ] Для каждого видео проверены Kinescope status, duration, DRM, domain restriction, seek и отсутствие публичной download link.
+- [ ] Ученик с активным entitlement смотрит урок; без/после expiry получает отказ.
+- [ ] Progress сохраняется, завершение курса корректно.
+- [ ] Кнопка «Play» работает после 6+ минут на странице урока (TTL DRM-токена `KINESCOPE_DRM_TOKEN_TTL_SECONDS`); при отказе поднять TTL и перепроверить.
+- [ ] Истёкший доступ показан в кабинете с датой и кнопкой «Продлить доступ».
+- [ ] Сертификат создаётся, скачивается, повторно выдаётся и отзывается.
+- [ ] Email-напоминания 7/3/1 и письмо об окончании доступа проверены (Telegram ученикам не используется).
 
-## 5. Manual Smoke Test
+## 6. Admin и security
 
-- [ ] Гость видит лендинг, страницу курса, тарифы и юридические страницы.
-- [ ] Без опубликованного курса кнопки оплаты не ведут на `default`.
-- [ ] Пользователь регистрируется, входит, попадает в кабинет.
-- [ ] Авторизованный пользователь стартует оплату, Prodamus получает email аккаунта и course/tariff order id.
-- [ ] После webhook покупка появляется в `/admin/purchases`.
-- [ ] В кабинете отображается курс, срок доступа и прогресс.
-- [ ] Страница урока открывает видео и сохраняет прогресс.
-- [ ] Истёкшая покупка не даёт доступ.
-- [ ] Админ может выдать доступ вручную и увидеть покупку.
-- [ ] Автоматический smoke `.\scripts\smoke-production.ps1 -FrontendUrl <url> -BackendUrl <url>` пройден.
+- [ ] Owner/admin проходят MFA; backup code одноразовый; session revoke завершает доступ.
+- [ ] Проверены отрицательные сценарии каждой роли: owner/admin/content_manager/curator/analyst.
+- [ ] Нельзя снять последнего owner.
+- [ ] User card показывает заказы, оплаты, доступы, прогресс, сертификаты, notes/tags и уведомления.
+- [ ] Grant/extend/suspend/revoke требуют причину и попадают в AuditLog.
+- [ ] «Добавить ученика» создаёт аккаунт, выдаёт доступ и отправляет письмо; «Отправить ссылку для входа» приходит и открывает `/auth/activate`.
+- [ ] Карточка ученика показывает прогресс по каждому уроку.
+- [ ] Удаление курса с оплатами/доступами отклоняется (409) с понятным сообщением.
+- [ ] Order/payment/refund, content/video readiness, notification и system screens работают с pagination/filters.
+- [ ] CSV не раскрывает данные сверх permission роли.
+- [ ] Upload проверяет тип/размер/имя; удаление используемого media безопасно.
+- [ ] Полный keyboard/focus/contrast/screen-reader smoke критических потоков пройден.
 
-## 6. Production Go/No-Go
+## 7. Analytics и legal
 
-Go только если:
+- [ ] Проверены event dedupe и отсутствие email/phone/payment payload в analytics.
+- [ ] Gross/refund/net совпадают с контрольной выборкой orders/purchases/refunds.
+- [ ] Funnel, first/last UTM, tariffs, cohorts, progress и delivery отчёты сверены вручную.
+- [ ] Яндекс Метрика не загружается до consent и не работает в кабинете/админке.
+- [ ] Withdrawal consent прекращает analytics; Webvisor исключает контактные формы.
+- [ ] В форме оплаты и регистрации есть обязательное согласие на обработку ПДн со ссылками на оферту и политику.
+- [ ] Юрист/бухгалтер согласовали оферту, privacy/cookie policy, consent, refund, retention, чеки и налоги. Evidence: ______
 
-- [ ] Нет известных P0/P1 security blockers.
-- [ ] Staging smoke-test пройден.
-- [ ] Prodamus webhook проверен на реальном staging/prod URL.
-- [ ] Есть план отката: предыдущий Railway deploy и DB backup/snapshot.
+## 8. Reliability и performance
 
-Post-MVP не блокирует релиз:
+- [ ] Ежедневный backup загружен в отдельный versioned encrypted S3; weekly immutable retention настроен.
+- [ ] Внешняя копия восстановлена в отдельную DB; зафиксированы RPO ≤ 24 ч и RTO ≤ 4 ч.
+- [ ] Rollback предыдущего deploy выполнен на staging и после него проходит smoke.
+- [ ] k6 staging gate: 100 reads, 20 checkout, 10 webhook/s; errors < 1%, p95 < 500 ms. Evidence: ______
+- [ ] Alert проверен для webhook, outbox dead letter, integration failure и backup failure.
+- [ ] Runbooks оплаты, webhook, delivery, video, refund, rollback, secret leak и DB restore доступны дежурному.
 
-- Telegram-бот и уведомления.
-- Сертификаты.
-- PWA.
-- Расширенная аналитика.
-- Полноценные E2E/component tests.
+## 9. Final production smoke
+
+- [ ] Автоматический production smoke: дата/исполнитель/evidence ______
+- [ ] Один согласованный реальный платёж: order/payment/purchase/entitlement IDs ______
+- [ ] Доступ открыт не более чем за 60 секунд; уведомление не более чем за 2 минуты.
+- [ ] Вход по activation link, просмотр защищённого урока, progress и certificate успешны.
+- [ ] Реальный возврат выполнен и отражён в admin/analytics; доступ скорректирован по политике.
+- [ ] Prodamus ↔ internal reconciliation не имеет необъяснённых расхождений.
+
+## 10. Go / No-Go
+
+Решение `GO` подписывают business owner и tech owner только если:
+
+- [ ] все P0/P1 закрыты;
+- [ ] пункты 1–9 с доказательствами закрыты;
+- [ ] checkout kill switch доступен дежурному;
+- [ ] назначены дежурные и канал инцидентов на первые 72 часа.
+
+**Решение:** NO-GO / GO
+
+**Business owner:** ______
+
+**Tech owner:** ______
+
+**Дата/время:** ______
+
+**Release commit/deploy:** ______

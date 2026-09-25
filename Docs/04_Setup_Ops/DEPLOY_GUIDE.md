@@ -1,5 +1,7 @@
 # 🚀 Deployment Guide: Railway + GitHub
 
+> **Обновлено:** 26.08.2026. Этот технический гайд дополняется обязательными [`STAGING.md`](STAGING.md) и [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md); deploy без закрытого checklist остаётся NO-GO.
+
 Этот гайд поможет развернуть и запустить проект на платформе [Railway](https://railway.app/).
 Твой репозиторий: [https://github.com/TwinsMinsk/lucy-nails](https://github.com/TwinsMinsk/lucy-nails)
 
@@ -39,14 +41,14 @@ git push -u origin main
 2.  Нажми **"New Project"** → **"Deploy from GitHub repo"**.
 3.  Выбери репозиторий: `TwinsMinsk/lucy-nails`.
 4.  Нажми **"Deploy Now"**.
-    *Railway увидит файл `railway.toml` и автоматически создаст два сервиса: `backend` и `frontend`.*
+    Создайте frontend, backend web, outbox worker и Telegram bot как отдельные сервисы/процессы. PostgreSQL, Redis и backup job также раздельны — точная topology в [`STAGING.md`](STAGING.md).
 
 ### Добавление Базы Данных
 1.  В открывшемся проекте нажми `Cmd+K` (или `Ctrl+K` или кнопку "New").
 2.  Выбери **Database** → **PostgreSQL**.
 3.  Подожди, пока она создастся.
 
-### Добавление Redis (Опционально)
+### Добавление Redis (Обязательно для staging/production)
 1.  Нажми "New" → **Database** → **Redis**.
 
 ---
@@ -70,6 +72,7 @@ git push -u origin main
 | `DEBUG` | `false` |
 | `JWT_SECRET_KEY` | *Придумай новый сложный длинный пароль* |
 | `JWT_ALGORITHM` | `HS256` |
+| `MFA_ENCRYPTION_KEY` | Отдельный случайный секрет не менее 32 символов |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` |
 | `KINESCOPE_API_KEY` | *(Взять из Kinescope ЛК)* |
@@ -77,15 +80,18 @@ git push -u origin main
 | `PRODAMUS_URL` | URL платёжной формы Prodamus, например `https://...prodamus.ru` |
 | `PRODAMUS_SECRET_KEY` | *(Взять из Prodamus)* |
 | `PRODAMUS_SHOP_ID` | *(Взять из Prodamus)* |
-| `SMTP_USER` | Опционально: SMTP-логин, если включаете guest checkout с отправкой credentials |
-| `SMTP_PASSWORD` | Опционально: SMTP-пароль / app password |
-| `SMTP_FROM_NAME` | Опционально: `Lucy Nails Academy` |
+| `RESEND_API_KEY` | Production HTTP email transport; SMTP только fallback |
+| `EMAIL_FROM` | Верифицированный sender domain |
 | `FRONTEND_URL` | `https://<твое-frontend-домен>.up.railway.app` |
 | `BACKEND_URL` | `https://<твой-backend-домен>.up.railway.app` |
 | `CORS_ORIGINS` | Production frontend origin, например `https://lucysmirnova.ru` |
 | `TRUSTED_HOSTS` | Домены backend без схемы, через запятую |
-| `TELEGRAM_BOT_TOKEN` | *(Post-MVP; можно не задавать для MVP)* |
-| `TELEGRAM_SUPPORT_GROUP_INVITE`| *(Post-MVP; можно не задавать для MVP)* |
+| `FORWARDED_ALLOW_IPS` | Только CIDR/IP доверенного edge-proxy Railway; `*` и пустое значение запрещены в production |
+| `COOKIE_DOMAIN` | Общий parent domain для frontend/API cookies |
+| `TELEGRAM_BOT_TOKEN` | Обязательный production bot token |
+| `TELEGRAM_BOT_USERNAME` | Username production bot |
+| `TELEGRAM_OWNER_CHAT_ID` | Обязательный канал operational alerts |
+| `TELEGRAM_SUPPORT_GROUP_INVITE`| Ссылка support-тарифа |
 | `NEXT_PUBLIC_SITE_URL` | `https://<твое-frontend-домен>.up.railway.app` (появится после деплоя фронта) |
 | `NEXT_PUBLIC_API_URL` | `https://<твой-backend-домен>.up.railway.app/api` |
 

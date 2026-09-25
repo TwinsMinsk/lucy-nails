@@ -110,7 +110,7 @@ async def test_lesson_detail(client: AsyncClient, db: AsyncSession):
     # So we MUST be logged in.
     
     # Register & Login
-    await client.post("/api/auth/register", json={"email": "u1@t.com", "password": "password123", "password_confirm": "password123"})
+    await client.post("/api/auth/register", json={"email": "u1@t.com", "password": "password123", "password_confirm": "password123", "offer_accepted": True, "personal_data_consent": True})
     login = await client.post("/api/auth/login", json={"email": "u1@t.com", "password": "password123"})
     token = login.json()["access_token"]
     
@@ -147,7 +147,7 @@ async def test_lesson_detail_hides_content_without_purchase(client: AsyncClient,
 
     await client.post(
         "/api/auth/register",
-        json={"email": "no-access@t.com", "password": "password123", "password_confirm": "password123"},
+        json={"email": "no-access@t.com", "password": "password123", "password_confirm": "password123", "offer_accepted": True, "personal_data_consent": True},
     )
     login = await client.post("/api/auth/login", json={"email": "no-access@t.com", "password": "password123"})
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
@@ -176,7 +176,7 @@ async def test_course_progress_counts_only_published_modules(client: AsyncClient
 
     await client.post(
         "/api/auth/register",
-        json={"email": "progress@t.com", "password": "password123", "password_confirm": "password123"},
+        json={"email": "progress@t.com", "password": "password123", "password_confirm": "password123", "offer_accepted": True, "personal_data_consent": True},
     )
     login = await client.post("/api/auth/login", json={"email": "progress@t.com", "password": "password123"})
     token = login.json()["access_token"]
@@ -229,7 +229,7 @@ async def test_lesson_progress_caps_watched_seconds_to_lesson_duration(client: A
 
     await client.post(
         "/api/auth/register",
-        json={"email": "cap@t.com", "password": "password123", "password_confirm": "password123"},
+        json={"email": "cap@t.com", "password": "password123", "password_confirm": "password123", "offer_accepted": True, "personal_data_consent": True},
     )
     login = await client.post("/api/auth/login", json={"email": "cap@t.com", "password": "password123"})
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}

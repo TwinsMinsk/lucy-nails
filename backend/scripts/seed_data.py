@@ -17,6 +17,10 @@ from uuid import uuid4
 import psycopg2
 from psycopg2.extras import Json, execute_values
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT / "backend"))
@@ -24,6 +28,13 @@ if str(_REPO_ROOT) not in sys.path:
 from app.core.security import get_password_hash
 
 PROGRAM_JSON = _REPO_ROOT / "scripts" / "promo" / "program.json"
+
+
+def required_seed_password(name: str) -> str:
+    value = os.getenv(name, "")
+    if len(value) < 12:
+        raise RuntimeError(f"{name} must be set to at least 12 characters for dev seeding")
+    return value
 
 
 def get_connection():
@@ -57,12 +68,14 @@ def seed_users(cur):
     """Создаёт тестовых пользователей."""
     admin_id = str(uuid4())
     student_id = str(uuid4())
+    admin_password = required_seed_password("SEED_ADMIN_PASSWORD")
+    student_password = required_seed_password("SEED_STUDENT_PASSWORD")
 
     users = [
         (
             admin_id,
             "admin@nails-course.ru",
-            get_password_hash("admin123"),
+            get_password_hash(admin_password),
             None,
             "admin",
             datetime.utcnow(),
@@ -71,7 +84,7 @@ def seed_users(cur):
         (
             student_id,
             "student@test.ru",
-            get_password_hash("student123"),
+            get_password_hash(student_password),
             None,
             "student",
             datetime.utcnow(),
@@ -88,8 +101,17 @@ def seed_users(cur):
         users,
     )
 
-    print("✓ Создан админ: admin@nails-course.ru (пароль: admin123)")
-    print("✓ Создан студент: student@test.ru (пароль: student123)")
+    cur.execute(
+        """
+        INSERT INTO user_role_assignments (id, user_id, role_id, assigned_by_id, created_at)
+        SELECT %s, %s, id, NULL, %s FROM roles WHERE name = 'owner'
+        ON CONFLICT (user_id, role_id) DO NOTHING
+        """,
+        (str(uuid4()), admin_id, datetime.utcnow()),
+    )
+
+    print("✓ Создан owner: admin@nails-course.ru (пароль взят из SEED_ADMIN_PASSWORD)")
+    print("✓ Создан студент: student@test.ru (пароль взят из SEED_STUDENT_PASSWORD)")
 
     return admin_id, student_id
 
@@ -142,22 +164,23 @@ def seed_course(cur):
     cur.execute(
         """
         INSERT INTO courses (id, title, description, preview_video_url, cover_image_url,
-                            price_self, price_support, is_published, created_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            price_self, price_support, is_published, access_days, created_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             course_id,
-            "Дизайн ногтей: От А до Я",
-            "Полный курс по дизайну ногтей для начинающих и опытных мастеров.",
+            "Nail Design PRO: 11 продающих техник для мастера",
+            "Практический курс по современному nail art из 11 уроков.",
             None,
             None,
-            5000,
-            20000,
+            5900,
+            11900,
             True,
+            30,
             datetime.utcnow(),
         ),
     )
-    print("✓ Создан курс: Дизайн ногтей: От А до Я")
+    print("✓ Создан курс: Nail Design PRO")
 
     modules_rows = []
     module_ids: list[str] = []
@@ -225,27 +248,41 @@ def seed_course(cur):
 def seed_purchase(cur, user_id, course_id, user_email):
     """Создаёт тестовую покупку."""
     purchase_id = str(uuid4())
+    now = datetime.utcnow()
+    expires_at = now + timedelta(days=30)
 
     cur.execute(
         """
         INSERT INTO purchases (id, user_id, course_id, tariff, amount_kopecks,
-                              payment_id, payment_status, expires_at, created_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                              payment_id, payment_status, paid_at, expires_at, created_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             purchase_id,
             user_id,
             course_id,
             "self",
-            500000,
+            590000,
             f"test_payment_{user_id[:8]}",
             "success",
-            datetime.utcnow() + timedelta(days=365),
-            datetime.utcnow(),
+            now,
+            expires_at,
+            now,
         ),
     )
 
-    print(f"✓ Создана покупка для {user_email} (тариф: self, доступ: 365 дней)")
+    cur.execute(
+        """
+        INSERT INTO entitlements (
+            id, user_id, course_id, source_purchase_id, granted_by_id,
+            source, tariff, status, starts_at, expires_at, reason,
+            revoked_at, created_at, updated_at
+        ) VALUES (%s, %s, %s, %s, NULL, 'purchase', 'self', 'active', %s, %s, NULL, NULL, %s, %s)
+        """,
+        (str(uuid4()), user_id, course_id, purchase_id, now, expires_at, now, now),
+    )
+
+    print(f"✓ Созданы покупка и entitlement для {user_email} (доступ: 30 дней)")
 
 
 def seed_progress(cur, student_id, first_lesson_id):
@@ -320,13 +357,11 @@ def main():
         print("   - Курсов: 1")
         print(f"   - Модулей: {len(LANDING_MODULES)}")
         print(f"   - Уроков: {len(LANDING_MODULES)}")
-        print("   - Покупок: 2 (обе с доступом на 365 дней)")
+        print("   - Покупок/доступов: 2 (30 дней)")
         print("   - Прогресс: 1")
 
-        print("\n🔑 Учётные данные:")
-        print("   Админ: admin@nails-course.ru / admin123")
-        print("   Студент: student@test.ru / student123")
-        print("\n💡 Оба пользователя имеют доступ к курсу!")
+        print("\n🔑 Пароли заданы через SEED_ADMIN_PASSWORD/SEED_STUDENT_PASSWORD и не логируются.")
+        print("\n💡 Оба пользователя имеют активный entitlement к курсу!")
 
     except Exception as e:
         conn.rollback()

@@ -27,12 +27,24 @@ import {
     FormLabel,
     FormMessage,
 } from "@/components/ui/form"
+import {
+    type ConsentState,
+    focusFirstMissingConsent,
+    hasFullConsent,
+    NO_CONSENT,
+    PersonalDataConsent,
+} from "@/components/legal/PersonalDataConsent"
 import { RegisterSchema } from "@/lib/schemas"
 import { register, login } from "@/lib/api"
+import { CONSENT_VERSION } from "@/lib/legal"
 import { safeNextPath } from "@/lib/navigation"
+
+const CONSENT_ID = "register-consent"
 
 export default function RegisterPage() {
     const [isLoading, setIsLoading] = useState(false)
+    const [consent, setConsent] = useState<ConsentState>(NO_CONSENT)
+    const [consentError, setConsentError] = useState(false)
     const router = useRouter()
 
     const form = useForm<z.infer<typeof RegisterSchema>>({
@@ -44,14 +56,31 @@ export default function RegisterPage() {
         },
     })
 
+    const consentGiven = hasFullConsent(consent)
+
+    function handleConsentChange(value: ConsentState) {
+        setConsent(value)
+        if (hasFullConsent(value)) setConsentError(false)
+    }
+
     async function onSubmit(values: z.infer<typeof RegisterSchema>) {
+        if (!consentGiven) {
+            setConsentError(true)
+            focusFirstMissingConsent(CONSENT_ID, consent)
+            return
+        }
         setIsLoading(true)
 
         try {
+            const email = values.email.trim()
+
             // 1. Регистрация
             await register({
-                email: values.email,
+                email,
                 password: values.password,
+                offer_accepted: consent.offer,
+                personal_data_consent: consent.personalData,
+                consent_version: CONSENT_VERSION,
             })
 
             toast.success("Регистрация успешна!", {
@@ -60,7 +89,7 @@ export default function RegisterPage() {
 
             // 2. Auto-login после успешной регистрации
             await login({
-                email: values.email,
+                email,
                 password: values.password,
             })
 
@@ -91,7 +120,14 @@ export default function RegisterPage() {
                 </CardHeader>
                 <CardContent>
                     <Form {...form}>
-                        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                        {/* method="post": a native submit before hydration must never put the password in the URL */}
+                        <form
+                            method="post"
+                            onSubmit={form.handleSubmit(onSubmit, () => {
+                                if (!consentGiven) setConsentError(true)
+                            })}
+                            className="space-y-4"
+                        >
                             <FormField
                                 control={form.control}
                                 name="email"
@@ -99,7 +135,15 @@ export default function RegisterPage() {
                                     <FormItem>
                                         <FormLabel>Email</FormLabel>
                                         <FormControl>
-                                            <Input placeholder="name@example.com" {...field} />
+                                            <Input
+                                                type="email"
+                                                autoComplete="email"
+                                                autoCapitalize="none"
+                                                autoCorrect="off"
+                                                spellCheck={false}
+                                                placeholder="name@example.com"
+                                                {...field}
+                                            />
                                         </FormControl>
                                         <FormMessage />
                                     </FormItem>
@@ -131,7 +175,20 @@ export default function RegisterPage() {
                                     </FormItem>
                                 )}
                             />
-                            <Button type="submit" className="w-full" disabled={isLoading}>
+                            <PersonalDataConsent
+                                id={CONSENT_ID}
+                                value={consent}
+                                onChange={handleConsentChange}
+                                showError={consentError}
+                                disabled={isLoading}
+                            />
+                            {/* aria-disabled (not disabled) keeps the click alive so we can explain why it is blocked */}
+                            <Button
+                                type="submit"
+                                className="w-full aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
+                                disabled={isLoading}
+                                aria-disabled={!consentGiven}
+                            >
                                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                 Зарегистрироваться
                             </Button>

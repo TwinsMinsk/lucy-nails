@@ -25,8 +25,8 @@ from pathlib import Path
 from typing import Any
 
 from cryptography.hazmat.primitives import serialization
-from jose import JWTError, jwt
-from jose.constants import ALGORITHMS
+import jwt
+from jwt.exceptions import PyJWTError as JWTError
 
 from app.core.config import settings
 
@@ -67,7 +67,7 @@ def _load_private_key_pem() -> str | None:
 class KinescopeJwtService:
     """Подписывает / верифицирует RS256 JWT для DRM webhook."""
 
-    ALGORITHM = ALGORITHMS.RS256
+    ALGORITHM = "RS256"
 
     def __init__(self) -> None:
         self._private_key_pem = _load_private_key_pem()
@@ -149,7 +149,7 @@ class KinescopeJwtService:
             algorithms=[self.ALGORITHM],
             audience=_JWT_AUDIENCE,
             issuer=self._issuer,
-            options={"require_exp": True, "require_iat": True, "require_nbf": False},
+            options={"require": ["exp", "iat"]},
         )
 
         user_id = str(decoded.get("user_id") or "").strip()

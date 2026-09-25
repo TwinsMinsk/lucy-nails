@@ -1,243 +1,36 @@
-# Auth Integration & Database Seeding - Complete
+# Auth integration
 
-**Дата:** 23.01.2026  
-**Статус:** ✅ Завершено
+> **Версия:** 2.0
+> **Дата:** 26.08.2026
+> **Статус:** реализовано; живой межподдоменный smoke обязателен перед GO
 
----
+## Контракт
 
-## Выполненные задачи
+- Ученик использует email + пароль.
+- Access/refresh находятся в HttpOnly Secure cookies; несекретный `auth_session` marker используется frontend только для UX.
+- Изменяющие запросы с cookie требуют CSRF token.
+- Refresh token связан с записью `AuthSession`, поэтому отдельную сессию можно отозвать.
+- Смена/сброс пароля инвалидирует прежние токены согласно token version/session policy.
+- Owner/admin обязаны завершить TOTP MFA setup/login; резервные коды хранятся только в виде хешей и одноразовы.
 
-### 1. ✅ Обновлен Seed скрипт (`backend/scripts/seed_data.py`)
+## Guest checkout activation
 
-**Изменения:**
-- Добавлена функция `clear_database()` для очистки таблиц перед вставкой
-- Все уроки получили `kinescope_video_id` (dummy-video-id-1 до dummy-video-id-8)
-- Создаются покупки для ОБОИХ пользователей (админ + студент)
-- Доступ к курсу: 365 дней (вместо 30)
-- Исправлен `payment_status`: используется 'success' (согласно ENUM)
+После подтверждённой оплаты нового email backend создаёт аккаунт без известного пароля и ставит в outbox одноразовую ссылку установки пароля. Срок ссылки — 24 часа. Для существующего аккаунта приходит уведомление об открытом доступе без изменения пароля.
 
-**Данные в БД:**
-```
-✓ Пользователей: 2
-  - admin@nails-course.ru / admin123 (роль: admin)
-  - student@test.ru / student123 (роль: student)
+Редирект Prodamus не авторизует пользователя и не создаёт доступ. Источник истины — валидный webhook и `Entitlement`.
 
-✓ Курсов: 1
-  - "Дизайн ногтей: От А до Я"
+## Срок доступа
 
-✓ Модулей: 3
-  - Все возможности фольги (4 урока)
-  - Градиент (2 урока)
-  - Френч (2 урока)
+Срок не является свойством auth. Он читается из активного `Entitlement`; значение снимка берётся из `Course.access_days` при checkout. Каноническое значение текущего курса — 30 дней. Старое тестовое обещание 365 дней удалено.
 
-✓ Уроков: 8 (все с kinescope_video_id)
+## Development seed
 
-✓ Покупок: 2
-  - Обе с доступом на 365 дней
-  - Статус: success
-  - Тариф: self
+Startup seed выполняется только при `ENVIRONMENT=development`. Пароли задаются `SEED_ADMIN_PASSWORD`/`SEED_STUDENT_PASSWORD`; CLI `seed_data.py` требует значения не короче 12 символов и не логирует их. В staging/production seed запрещён конфигурацией.
 
-✓ Прогресс: 1 (для student@test.ru)
-```
+## Обязательный staging smoke
 
----
-
-### 2. ✅ Расширен API Client (`frontend/src/lib/api.ts`)
-
-**Добавленные методы:**
-
-```typescript
-// Auth
-login(credentials) -> TokenResponse
-register(credentials) -> UserResponse
-getMe() -> UserResponse
-logout() -> void
-
-// Lessons (уже были)
-getLessonPlayUrl(lessonId) -> VideoPlayResponse
-getLesson(lessonId) -> LessonResponse
-```
-
-**Ключевые особенности:**
-- `login()` автоматически сохраняет токены в `localStorage`
-- `logout()` удаляет токены
-- `apiFetch()` auto подставляет `Authorization: Bearer {token}`
-
----
-
-### 3. ✅ Обновлена страница Login (`frontend/src/app/(public)/auth/login/page.tsx`)
-
-**Изменения:**
-- Замен mock `console.log()` на реальный `api.login()`
-- Добавлен редирект на `/dashboard` при успехе
-- Обработка ошибок с `toast.error()`
-- Loading state во время запроса
-
-**Поток:**
-```
-User вводит email + password
-  ↓
-Валидация (Zod schema)
-  ↓
-API: POST /auth/login
-  ↓
-Success: Сохранить токен → Redirect /dashboard
-Error: Показать toast с ошибкой
-```
-
----
-
-### 4. ✅ Исправлен Bug в LessonService
-
-**Проблема:**
-- В `LessonService.check_access()` использовался `payment_status == "paid"`
-- В модели Purchase ENUM: `["pending", "success", "failed"]`
-- Ошибка: "paid" не существует в ENUM
-
-**Решение:**
-- Изменён на `payment_status == "success"`
-- Обновлен seed скрипт аналогично
-
----
-
-## Как протестировать
-
-### 1. Запустить серверы
-
-```powershell
-# Backend (если не запущен)
-.\scripts\dev.ps1
-
-# Frontend
-cd frontend
-npm run dev
-```
-
-### 2. Открыть Login
-
-```
-http://localhost:3000/auth/login
-```
-
-### 3. Войти как админ
-
-```
-Email: admin@nails-course.ru
-Password: admin123
-```
-
-**Ожидаемый результат:**
-- ✅ Успешный вход
-- ✅ Toast: "Вход выполнен успешно!"
-- ✅ Редирект на `/dashboard`
-- ✅ Токен сохранён в localStorage
-
-### 4. Открыть урок
-
-Перейти на любой урок (ID из seed данных).
-
-**Ожидаемый результат:**
-- ✅ Видео загружается (YouTube iframe в Mock-режиме)
-- ✅ Нет ошибки 403 (т.к. есть активная покупка)
-
----
-
-## Учётные данные (Test)
-
-| Email | Password | Роль | Доступ к курсу |
-|-------|----------|------|----------------|
-| admin@nails-course.ru | admin123 | admin | ✅ 365 дней |
-| student@test.ru | student123 | student | ✅ 365 дней |
-
----
-
-## Технические детали
-
-### payment_status ENUM
-
-**Модель** (Purchase):
-```python
-payment_status: Mapped[str] = mapped_column(
-    SQLEnum("pending", "success", "failed", name="payment_status"),
-    nullable=False,
-    default="pending"
-)
-```
-
-**Используемые значения:**
-- `pending` - Ожидает оплаты
-- `success` - Оплачено ✅ (активен доступ)
-- `failed` - Ошибка оплаты
-
-### kinescope_video_id
-
-Все уроки имеют dummy ID:
-- `dummy-video-id-1`
-- `dummy-video-id-2`
-- ...
-- `dummy-video-id-8`
-
-В Mock-режиме KinescopeService игнорирует этот ID и возвращает YouTube тест-видео.
-
----
-
-## Следующие шаги
-
-### ✅ Completed
-- [x] Seed скрипт обновлён
-- [x] API Client расширен
-- [x] Login page интегрирован
-- [x] Bug payment_status исправлен
-- [x] БД заполнена
-
-### 🔄 Next (Optional)
-- [ ] Register page integration
-- [ ] Dashboard: замнить Mock на реальные API
-- [ ] Logout кнопка в Header
-- [ ] Protected route middleware
-
----
-
-## Troubleshooting
-
-### Проблема: "Email already registered"
-**Решение:** БД уже содержит данные. Запусти seed скрипт снова:
-```powershell
-.\backend\venv\Scripts\python.exe .\backend\scripts\seed_data.py
-```
-
-### Проблема: 401 Unauthorized при запросе к /lessons/{id}/play
-**Причина:** Токен не сохранён или истёк.
-**Решение:** Залогинься снова через UI.
-
-### Проблема: 403 Forbidden при запросе к /lessons/{id}/play
-**Причина:** Нет активной покупки курса.
-**Решение:** Проверь что в БД есть запись в `purchases` с `payment_status="success"` и `expires_at > now`.
-
----
-
-## Статистика
-
-```
-✅ Backend изменений: 2 файла
-  - seed_data.py (обновлён)
-  - lesson_service.py (исправлен bug)
-
-✅ Frontend изменений: 2 файла
-  - lib/api.ts (расширен)
-  - auth/login/page.tsx (интегрирован)
-
-✅ Seed данных:
-  - 2 пользователя
-  - 1 курс  
-  - 3 модуля
-  - 8 уроков
-  - 2 покупки
-  - 1 прогресс
-
-✅ Время выполнения: ~30 мин
-```
-
----
-
-**Интеграция авторизации завершена! Можно тестировать real login → dashboard → video player! 🚀**
+1. Login/refresh/logout между frontend и API subdomains.
+2. CSRF rejection без token и success с token.
+3. Guest activation: одноразовость и expiry.
+4. Mandatory MFA owner/admin, backup code и session revoke.
+5. Student/analyst не получают административные permissions.

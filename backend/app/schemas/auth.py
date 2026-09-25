@@ -5,21 +5,38 @@ Pydantic схемы для аутентификации.
 from uuid import UUID
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+
+def _normalize_email(value: object) -> object:
+    """Strip whitespace and lowercase email input so lookups are case-insensitive."""
+    if isinstance(value, str):
+        return value.strip().lower()
+    return value
 
 
 class UserRegister(BaseModel):
     """Схема регистрации пользователя."""
-    
+
     email: EmailStr = Field(..., description="Email пользователя")
     password: str = Field(..., min_length=6, description="Пароль (минимум 6 символов)")
+    # Both must be true; checked in the endpoint to return a readable Russian 422.
+    offer_accepted: bool = Field(False, description="Принял условия оферты")
+    personal_data_consent: bool = Field(False, description="Дал согласие на обработку персональных данных")
+
+    _normalize_email = field_validator("email", mode="before")(_normalize_email)
 
 
 class UserLogin(BaseModel):
     """Схема входа пользователя."""
-    
+
     email: EmailStr = Field(..., description="Email пользователя")
     password: str = Field(..., description="Пароль")
+
+
+    mfa_code: str | None = Field(None, min_length=6, max_length=32)
+
+    _normalize_email = field_validator("email", mode="before")(_normalize_email)
 
 
 class ChangePasswordRequest(BaseModel):
@@ -33,6 +50,8 @@ class ForgotPasswordRequest(BaseModel):
     """Запрос ссылки на сброс пароля."""
 
     email: EmailStr = Field(..., description="Email аккаунта")
+
+    _normalize_email = field_validator("email", mode="before")(_normalize_email)
 
 
 class ResetPasswordRequest(BaseModel):

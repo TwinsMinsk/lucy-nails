@@ -1,15 +1,28 @@
 import uuid
 from datetime import datetime, timedelta
+from urllib.parse import parse_qs, urlparse
 
 import pytest
+from fastapi import HTTPException
 from httpx import AsyncClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.payments import _build_prodamus_order_id, parse_checkout_order_id
-from app.core.security import get_password_hash, verify_password
+from app.api.payments import (
+    _build_prodamus_order_id,
+    _checkout_link_for_course,
+    parse_checkout_order_id,
+)
+from app.core.config import Settings, settings
+from app.core.legal import CONSENT_REQUIRED_DETAIL, CONSENT_VERSION
+from app.core.security import get_password_hash
+from app.models.audit_log import AuditLog
 from app.models.course import Course
+from app.models.entitlement import Entitlement
+from app.models.order import Order
+from app.models.outbox import OutboxMessage
+from app.models.payment_event import PaymentEvent
 from app.models.purchase import Purchase
 from app.models.user import User
 from app.services.prodamus_service import _make_signature
@@ -63,7 +76,7 @@ async def test_create_and_list_purchases(client: AsyncClient, db: AsyncSession):
 
     await client.post(
         "/api/auth/register",
-        json={"email": "buyer@t.com", "password": "password123", "password_confirm": "password123"},
+        json={"email": "buyer@t.com", "password": "password123", "password_confirm": "password123", "offer_accepted": True, "personal_data_consent": True},
     )
     login = await client.post("/api/auth/login", json={"email": "buyer@t.com", "password": "password123"})
     token = login.json()["access_token"]
@@ -91,7 +104,7 @@ async def test_create_and_list_purchases(client: AsyncClient, db: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_prodamus_webhook_uses_order_id_as_stable_fallback_payment_id(
+async def test_prodamus_webhook_uses_documented_provider_callback_fields(
     client: AsyncClient,
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -99,7 +112,7 @@ async def test_prodamus_webhook_uses_order_id_as_stable_fallback_payment_id(
     async def fake_send_credentials(*args, **kwargs):
         return None
 
-    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", fake_send_credentials)
+    monkeypatch.setattr("app.services.email_service.EmailService.send_credentials", fake_send_credentials)
 
     course = Course(
         title="Webhook Course",
@@ -112,10 +125,13 @@ async def test_prodamus_webhook_uses_order_id_as_stable_fallback_payment_id(
     await db.commit()
     await db.refresh(course)
 
-    order_id = _build_prodamus_order_id(course.id, "self")
+    merchant_order_reference = _build_prodamus_order_id(course.id, "self")
     payload, headers = _signed_payload(
         {
-            "order_id": order_id,
+            # Prodamus callback contract: order_id belongs to Prodamus, while
+            # order_num is the merchant reference supplied during checkout.
+            "order_id": "300155",
+            "order_num": merchant_order_reference,
             "customer_email": "webhook-buyer@example.com",
             "customer_phone": "+79990000000",
             "sum": "5000",
@@ -132,13 +148,118 @@ async def test_prodamus_webhook_uses_order_id_as_stable_fallback_payment_id(
 
     result = await db.execute(select(Purchase))
     purchase = result.scalar_one()
-    assert purchase.payment_id == f"order_id:{order_id}"
+    assert purchase.payment_id == "300155"
     assert purchase.payment_status == "success"
     assert purchase.amount_kopecks == 500000
     assert purchase.customer_phone == "+79990000000"
 
+    event = (await db.execute(select(PaymentEvent))).scalar_one()
+    assert event.external_event_id == "300155"
+    assert event.order_reference == merchant_order_reference
+
     count_result = await db.execute(select(func.count(Purchase.id)))
     assert count_result.scalar_one() == 1
+
+
+def _prodamus_notification(order_reference: str, email: str, product_name: str) -> dict:
+    """Webhook body modelled on the Prodamus documentation sample."""
+    return {
+        "date": "2026-09-25T12:31:01+03:00",
+        "order_id": "300155",
+        "order_num": order_reference,
+        "domain": "lucy-nails.payform.ru",
+        "sum": "5000.00",
+        "customer_phone": "+79999999999",
+        "customer_email": email,
+        "customer_extra": "тест",
+        "payment_type": "Пластиковая карта Visa, MasterCard, МИР",
+        "commission": "3.5",
+        "commission_sum": "175.00",
+        "attempt": "1",
+        "sys": "lucy_nails",
+        "products": [
+            {
+                "name": product_name,
+                "price": "5000.00",
+                "quantity": "1",
+                "sum": "5000.00",
+            }
+        ],
+        "payment_init": "manual",
+        "payment_status": "success",
+        "payment_status_description": "Успешная оплата",
+    }
+
+
+def _bracket_form_fields(payload: dict) -> list[tuple[str, str]]:
+    fields: list[tuple[str, str]] = []
+    for key, value in payload.items():
+        if isinstance(value, list):
+            for index, item in enumerate(value):
+                for item_key, item_value in item.items():
+                    fields.append((f"{key}[{index}][{item_key}]", item_value))
+        else:
+            fields.append((key, value))
+    return fields
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("encoding", ["multipart", "urlencoded"])
+async def test_prodamus_form_webhook_with_nested_products_grants_access(
+    client: AsyncClient,
+    db: AsyncSession,
+    encoding: str,
+):
+    course = await _published_course(db, "Form Webhook Course")
+    email = f"form-{encoding}@example.com"
+    checkout = await client.post(
+        "/api/payments/guest-link",
+        json={"course_id": str(course.id), "tariff": "self", "customer_email": email, "offer_accepted": True, "personal_data_consent": True},
+    )
+    assert checkout.status_code == 200, checkout.text
+    order_reference = checkout.json()["order_id"]
+
+    # Prodamus signs the nested structure and posts it with bracket keys.
+    payload, headers = _signed_payload(
+        _prodamus_notification(order_reference, email, f"{course.title} — Самостоятельный")
+    )
+    fields = _bracket_form_fields(payload)
+    assert ("products[0][name]", f"{course.title} — Самостоятельный") in fields
+    if encoding == "multipart":
+        request = client.build_request(
+            "POST",
+            "/api/payments/webhook",
+            files=[(key, (None, value)) for key, value in fields],
+            headers=headers,
+        )
+        assert request.headers["content-type"].startswith("multipart/form-data")
+    else:
+        request = client.build_request(
+            "POST", "/api/payments/webhook", data=dict(fields), headers=headers
+        )
+        assert request.headers["content-type"] == "application/x-www-form-urlencoded"
+
+    response = await client.send(request)
+
+    assert response.status_code == 200, response.text
+    purchase = (
+        await db.execute(select(Purchase).where(Purchase.payment_id == "300155"))
+    ).scalar_one()
+    assert purchase.amount_kopecks == 500000
+    assert purchase.tariff == "self"
+    entitlement = (
+        await db.execute(
+            select(Entitlement).where(Entitlement.source_purchase_id == purchase.id)
+        )
+    ).scalar_one()
+    assert entitlement.status == "active"
+    order = await db.get(Order, uuid.UUID(order_reference.split("|", 1)[1]))
+    await db.refresh(order)
+    assert order.status == "paid"
+    event = (await db.execute(select(PaymentEvent))).scalar_one()
+    assert event.processing_status == "processed"
+    assert event.external_event_id == "300155"
+    assert event.order_reference == order_reference
 
 
 @pytest.mark.asyncio
@@ -150,7 +271,7 @@ async def test_prodamus_webhook_keeps_repeat_payments_idempotent(
     async def fake_send_credentials(*args, **kwargs):
         return None
 
-    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", fake_send_credentials)
+    monkeypatch.setattr("app.services.email_service.EmailService.send_credentials", fake_send_credentials)
 
     course = Course(
         title="Repeat Payment Course",
@@ -175,10 +296,10 @@ async def test_prodamus_webhook_keeps_repeat_payments_idempotent(
     )
     payload_two, headers_two = _signed_payload(
         {
-            "order_id": _build_prodamus_order_id(course.id, "support"),
+            "order_id": _build_prodamus_order_id(course.id, "self"),
             "order_num": "payment-two",
             "customer_email": "repeat-buyer@example.com",
-            "sum": "10000",
+            "sum": "5000",
             "currency": "rub",
             "payment_status": "success",
         }
@@ -200,11 +321,19 @@ async def test_prodamus_webhook_keeps_repeat_payments_idempotent(
     purchases_result = await db.execute(select(Purchase).order_by(Purchase.payment_id))
     purchases = purchases_result.scalars().all()
     assert [purchase.payment_id for purchase in purchases] == ["payment-one", "payment-two"]
-    assert [purchase.tariff for purchase in purchases] == ["self", "support"]
+    assert [purchase.tariff for purchase in purchases] == ["self", "self"]
+    event_count = await db.scalar(select(func.count(PaymentEvent.id)))
+    assert event_count == 2
 
 
 @pytest.mark.asyncio
-async def test_prodamus_webhook_rejects_non_success_status(client: AsyncClient, db: AsyncSession):
+async def test_prodamus_webhook_rejects_non_success_status(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", 555000111)
     course = Course(
         title="Webhook Failed Course",
         price_self=5000,
@@ -216,19 +345,33 @@ async def test_prodamus_webhook_rejects_non_success_status(client: AsyncClient, 
     await db.commit()
     await db.refresh(course)
 
+    reference = _build_prodamus_order_id(course.id, "self")
     payload, headers = _signed_payload(
         {
-            "order_id": _build_prodamus_order_id(course.id, "self"),
+            "order_id": reference,
             "customer_email": "failed-webhook@example.com",
             "sum": "5000",
             "currency": "rub",
-            "payment_status": "failed",
+            "payment_status": "order_denied",
         }
     )
 
     response = await client.post("/api/payments/webhook", json=payload, headers=headers)
 
     assert response.status_code == 422
+    event = (await db.execute(select(PaymentEvent))).scalar_one()
+    assert event.processing_status == "ignored"
+    assert event.error_code == "payment_not_successful"
+    assert "customer_email" not in event.sanitized_payload
+    assert "failed-webhook@example.com" not in str(event.sanitized_payload)
+    # A decline took no money, so the owner gets an informational note only.
+    alerts = await _owner_messages(db, "owner_payment_rejected")
+    assert len(alerts) == 1
+    assert alerts[0].payload["text"] == (
+        "ℹ️ Неуспешная попытка оплаты (статус: order_denied)\n"
+        "Email: failed-webhook@example.com\n"
+        f"Заказ: {reference}"
+    )
 
 
 @pytest.mark.asyncio
@@ -260,7 +403,7 @@ async def test_prodamus_webhook_rejects_non_rub_currency(client: AsyncClient, db
 
 
 @pytest.mark.asyncio
-async def test_webhook_creates_user_and_sends_credentials(
+async def test_webhook_creates_user_and_queues_single_use_activation(
     client: AsyncClient,
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -270,7 +413,7 @@ async def test_webhook_creates_user_and_sends_credentials(
     async def capture_send(email: str, password: str) -> None:
         sent.append((email, password))
 
-    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", capture_send)
+    monkeypatch.setattr("app.services.email_service.EmailService.send_credentials", capture_send)
 
     course = Course(
         title="Webhook Creates User Course",
@@ -300,10 +443,35 @@ async def test_webhook_creates_user_and_sends_credentials(
     user_result = await db.execute(select(User).where(User.email == "brand-new@example.com"))
     user = user_result.scalar_one()
     assert user.phone == "+79991112233"
-    assert len(sent) == 1
-    assert sent[0][0] == "brand-new@example.com"
-    assert len(sent[0][1]) >= 8
-    assert verify_password(sent[0][1], user.password_hash)
+    assert sent == []
+
+    outbox_result = await db.execute(
+        text(
+            "SELECT kind, recipient, payload FROM outbox_messages "
+            "WHERE recipient = :recipient"
+        ),
+        {"recipient": "brand-new@example.com"},
+    )
+    outbox = outbox_result.mappings().one()
+    assert outbox["kind"] == "account_activation"
+    activation_url = outbox["payload"]["activation_url"]
+    activation_token = parse_qs(urlparse(activation_url).query)["token"][0]
+
+    activated = await client.post(
+        "/api/auth/activate",
+        json={"token": activation_token, "new_password": "new-secure-password"},
+    )
+    assert activated.status_code == 200
+    replay = await client.post(
+        "/api/auth/activate",
+        json={"token": activation_token, "new_password": "another-password"},
+    )
+    assert replay.status_code == 400
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "brand-new@example.com", "password": "new-secure-password"},
+    )
+    assert login.status_code == 200
 
     purchase_result = await db.execute(select(Purchase).where(Purchase.payment_id == f"order_id:{order_id}"))
     purchase = purchase_result.scalar_one()
@@ -312,15 +480,17 @@ async def test_webhook_creates_user_and_sends_credentials(
 
 
 @pytest.mark.asyncio
-async def test_webhook_existing_user_does_not_resend_credentials(
+async def test_webhook_existing_user_queues_access_notification(
     client: AsyncClient,
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    async def must_not_send(*_args: object, **_kwargs: object) -> None:
-        raise AssertionError("send_credentials must not be called for existing user")
+    sent: list[tuple[object, ...]] = []
 
-    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", must_not_send)
+    async def capture_send(*args: object, **_kwargs: object) -> None:
+        sent.append(args)
+
+    monkeypatch.setattr("app.services.email_service.EmailService.send_credentials", capture_send)
 
     course = Course(
         title="Webhook Existing User Course",
@@ -346,21 +516,196 @@ async def test_webhook_existing_user_does_not_resend_credentials(
 
     response = await client.post("/api/payments/webhook", json=payload, headers=wh_headers)
     assert response.status_code == 200
+    assert sent == []
 
-    purchase_result = await db.execute(select(Purchase).where(Purchase.payment_id == f"order_id:{order_id}"))
+    outbox_table = await db.scalar(text("SELECT to_regclass('public.outbox_messages')"))
+    assert outbox_table == "outbox_messages"
+    outbox_result = await db.execute(
+        text(
+            "SELECT kind, recipient FROM outbox_messages "
+            "WHERE recipient = :recipient"
+        ),
+        {"recipient": "existing-webhook@example.com"},
+    )
+    outbox = outbox_result.mappings().one()
+    assert outbox["kind"] == "access_granted"
+
+    purchase_result = await db.execute(
+        select(Purchase).where(Purchase.payment_id == f"order_id:{order_id}")
+    )
     assert purchase_result.scalar_one_or_none() is not None
 
 
 @pytest.mark.asyncio
-async def test_webhook_email_failure_does_not_break_idempotency(
+async def test_successful_webhook_creates_purchase_entitlement(
+    client: AsyncClient,
+    db: AsyncSession,
+):
+    course = await _published_course(db, "Entitled Course")
+    await _create_user(db, "entitled-buyer@example.com")
+    await db.commit()
+
+    order_id = _build_prodamus_order_id(course.id, "self")
+    payload, headers = _signed_payload(
+        {
+            "order_id": order_id,
+            "customer_email": "entitled-buyer@example.com",
+            "sum": "5000",
+            "currency": "rub",
+            "payment_status": "success",
+        }
+    )
+
+    response = await client.post("/api/payments/webhook", json=payload, headers=headers)
+    assert response.status_code == 200, response.text
+
+    purchase = (
+        await db.execute(select(Purchase).where(Purchase.payment_id == f"order_id:{order_id}"))
+    ).scalar_one()
+    entitlement = (
+        await db.execute(
+            select(Entitlement).where(Entitlement.source_purchase_id == purchase.id)
+        )
+    ).scalar_one()
+    assert entitlement.user_id == purchase.user_id
+    assert entitlement.course_id == purchase.course_id
+    assert entitlement.source == "purchase"
+    assert entitlement.status == "active"
+    assert entitlement.tariff == "self"
+    assert entitlement.expires_at == purchase.expires_at
+
+
+@pytest.mark.asyncio
+async def test_admin_grant_creates_entitlement_without_fake_purchase(
+    client: AsyncClient,
+    db: AsyncSession,
+):
+    admin = User(
+        email="access-admin@example.com",
+        password_hash=get_password_hash("adminpass1"),
+        role="admin",
+    )
+    student = await _create_user(db, "manual-access@example.com")
+    course = await _published_course(db, "Manual Access Course")
+    course.access_days = 30
+    db.add(admin)
+    await db.commit()
+    await db.refresh(admin)
+    await db.refresh(student)
+
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": admin.email, "password": "adminpass1"},
+    )
+    token = login.json()["access_token"]
+    client.cookies.clear()
+
+    response = await client.post(
+        "/api/admin/grant-access",
+        json={
+            "user_id": str(student.id),
+            "course_id": str(course.id),
+            "tariff": "self",
+            "reason": "Доступ для участника тестовой группы",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["entitlement_id"]
+    assert "purchase_id" not in body
+
+    purchases_count = (
+        await db.execute(select(func.count(Purchase.id)).where(Purchase.user_id == student.id))
+    ).scalar_one()
+    assert purchases_count == 0
+
+    entitlement = await db.get(Entitlement, uuid.UUID(body["entitlement_id"]))
+    assert entitlement is not None
+    assert entitlement.source == "manual"
+    assert entitlement.granted_by_id == admin.id
+    assert entitlement.reason == "Доступ для участника тестовой группы"
+    assert timedelta(days=29, hours=23) < entitlement.expires_at - entitlement.starts_at <= timedelta(days=30)
+
+    student_login = await client.post(
+        "/api/auth/login",
+        json={"email": student.email, "password": "password123"},
+    )
+    student_token = student_login.json()["access_token"]
+    client.cookies.clear()
+    courses_response = await client.get(
+        "/api/purchases/my",
+        headers={"Authorization": f"Bearer {student_token}"},
+    )
+    assert courses_response.status_code == 200, courses_response.text
+    assert [item["id"] for item in courses_response.json()] == [str(course.id)]
+
+    original_expiry = entitlement.expires_at
+    extend_response = await client.post(
+        f"/api/admin/entitlements/{entitlement.id}/extend",
+        json={"days": 7, "reason": "Approved course access extension"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert extend_response.status_code == 200, extend_response.text
+    await db.refresh(entitlement)
+    assert entitlement.expires_at >= original_expiry + timedelta(days=7)
+
+    suspend_response = await client.post(
+        f"/api/admin/entitlements/{entitlement.id}/suspend",
+        json={"reason": "Temporary suspension requested by student"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert suspend_response.status_code == 200, suspend_response.text
+    assert suspend_response.json()["status"] == "suspended"
+    suspended_courses = await client.get(
+        "/api/purchases/my",
+        headers={"Authorization": f"Bearer {student_token}"},
+    )
+    assert suspended_courses.json() == []
+
+    restore_response = await client.post(
+        f"/api/admin/entitlements/{entitlement.id}/restore",
+        json={"reason": "Temporary suspension completed"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert restore_response.status_code == 200, restore_response.text
+    assert restore_response.json()["status"] == "active"
+    restored_courses = await client.get(
+        "/api/purchases/my",
+        headers={"Authorization": f"Bearer {student_token}"},
+    )
+    assert [item["id"] for item in restored_courses.json()] == [str(course.id)]
+
+    revoke_response = await client.post(
+        "/api/admin/revoke-entitlement",
+        json={
+            "entitlement_id": body["entitlement_id"],
+            "reason": "Тестовый доступ завершён",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert revoke_response.status_code == 200, revoke_response.text
+    await db.refresh(entitlement)
+    assert entitlement.status == "revoked"
+    assert entitlement.reason == "Тестовый доступ завершён"
+
+    revoked_courses_response = await client.get(
+        "/api/purchases/my",
+        headers={"Authorization": f"Bearer {student_token}"},
+    )
+    assert revoked_courses_response.status_code == 200
+    assert revoked_courses_response.json() == []
+
+@pytest.mark.asyncio
+async def test_webhook_retry_does_not_duplicate_outbox_message(
     client: AsyncClient,
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    async def boom_send(*args: object, **kwargs: object) -> None:
-        raise RuntimeError("smtp down")
+    async def capture_send(*_args: object, **_kwargs: object) -> None:
+        return None
 
-    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", boom_send)
+    monkeypatch.setattr("app.services.email_service.EmailService.send_credentials", capture_send)
 
     course = Course(
         title="Webhook Email Fail Course",
@@ -391,6 +736,50 @@ async def test_webhook_email_failure_does_not_break_idempotency(
 
     count_result = await db.execute(select(func.count(Purchase.id)))
     assert count_result.scalar_one() == 1
+    outbox_table = await db.scalar(text("SELECT to_regclass('public.outbox_messages')"))
+    assert outbox_table == "outbox_messages"
+    outbox_count = await db.execute(
+        text(
+            "SELECT count(*) FROM outbox_messages "
+            "WHERE recipient = :recipient"
+        ),
+        {"recipient": "email-fail@example.com"},
+    )
+    assert outbox_count.scalar_one() == 1
+
+
+@pytest.mark.asyncio
+async def test_prodamus_webhook_rejects_missing_provider_order_id(
+    client: AsyncClient,
+    db: AsyncSession,
+):
+    course = await _published_course(db, "Missing Provider ID")
+    await _create_user(db, "missing-provider@example.com")
+    await db.commit()
+
+    responses = []
+    for tariff, amount in (("self", "5000"), ("support", "10000")):
+        payload, headers = _signed_payload(
+            {
+                "order_num": _build_prodamus_order_id(course.id, tariff),
+                "customer_email": "missing-provider@example.com",
+                "sum": amount,
+                "currency": "rub",
+                "payment_status": "success",
+            }
+        )
+        responses.append(
+            await client.post("/api/payments/webhook", json=payload, headers=headers)
+        )
+
+    assert [response.status_code for response in responses] == [422, 422]
+    assert await db.scalar(select(func.count(Purchase.id))) == 0
+    events = (
+        await db.execute(select(PaymentEvent).order_by(PaymentEvent.received_at))
+    ).scalars().all()
+    assert len(events) == 2
+    assert all(event.processing_status == "rejected" for event in events)
+    assert all(event.error_code == "missing_provider_order_id" for event in events)
 
 
 @pytest.mark.asyncio
@@ -411,14 +800,231 @@ async def test_guest_payment_link_returns_url(client: AsyncClient, db: AsyncSess
             "course_id": str(course.id),
             "tariff": "self",
             "customer_email": "guest@example.com",
+            "offer_accepted": True,
+            "personal_data_consent": True,
             "customer_phone": "+79990001122",
         },
     )
 
     assert response.status_code == 200
-    url = response.json()["url"]
+    response_data = response.json()
+    url = response_data["url"]
     assert "signature=" in url
     assert ("guest%40example.com" in url) or ("guest@example.com" in url)
+    success_url = parse_qs(urlparse(url).query)["urlSuccess"][0]
+    success_query = parse_qs(urlparse(success_url).query)
+    assert success_query["order_id"] == [response_data["order_id"]]
+    assert success_query["token"] == [response_data["status_token"]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "consent",
+    [
+        {},
+        {"offer_accepted": True},
+        {"personal_data_consent": True},
+        {"offer_accepted": True, "personal_data_consent": False},
+    ],
+)
+async def test_guest_payment_link_requires_offer_and_personal_data_consent(
+    client: AsyncClient, db: AsyncSession, consent: dict
+):
+    course = await _published_course(db, "Consent Required Course")
+
+    response = await client.post(
+        "/api/payments/guest-link",
+        json={
+            "course_id": str(course.id),
+            "tariff": "self",
+            "customer_email": "no-consent@example.com",
+            **consent,
+        },
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"] == CONSENT_REQUIRED_DETAIL
+    assert (await db.execute(select(func.count(Order.id)))).scalar_one() == 0
+
+
+@pytest.mark.asyncio
+async def test_guest_checkout_records_consent_and_copies_it_to_the_new_account(
+    client: AsyncClient, db: AsyncSession
+):
+    course = await _published_course(db, "Consent Proof Course")
+    email = "consent-proof@example.com"
+    before = datetime.utcnow()
+
+    checkout = await client.post(
+        "/api/payments/guest-link",
+        json={
+            "course_id": str(course.id),
+            "tariff": "self",
+            "customer_email": email,
+            "offer_accepted": True,
+            "personal_data_consent": True,
+        },
+    )
+
+    assert checkout.status_code == 200, checkout.text
+    order_reference = checkout.json()["order_id"]
+    order = await db.get(Order, uuid.UUID(order_reference.split("|", 1)[1]))
+    assert order.consent_version == CONSENT_VERSION
+    assert order.offer_accepted_at is not None and order.offer_accepted_at >= before
+    assert order.personal_data_consent_at is not None
+    assert order.personal_data_consent_at >= before
+
+    payload, headers = _signed_payload(
+        _prodamus_notification(order_reference, email, f"{course.title} — Самостоятельный")
+    )
+    webhook = await client.post("/api/payments/webhook", json=payload, headers=headers)
+
+    assert webhook.status_code == 200, webhook.text
+    user = (await db.execute(select(User).where(User.email == email))).scalar_one()
+    assert user.offer_accepted_at == order.offer_accepted_at
+    assert user.personal_data_consent_at == order.personal_data_consent_at
+    assert user.consent_version == CONSENT_VERSION
+
+
+@pytest.mark.asyncio
+async def test_guest_checkout_is_blocked_by_kill_switch(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    course = await _published_course(db, "Disabled Checkout Course")
+    monkeypatch.setenv("CHECKOUT_ENABLED", "false")
+    monkeypatch.setattr("app.api.payments.settings", Settings())
+
+    response = await client.post(
+        "/api/payments/guest-link",
+        json={
+            "course_id": str(course.id),
+            "tariff": "self",
+            "customer_email": "disabled-checkout@example.com",
+            "offer_accepted": True,
+            "personal_data_consent": True,
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Checkout is temporarily unavailable"
+
+
+@pytest.mark.asyncio
+async def test_admin_can_toggle_checkout_without_deploy(
+    client: AsyncClient,
+    db: AsyncSession,
+):
+    course = await _published_course(db, "Runtime Disabled Checkout Course")
+    admin = User(
+        email="checkout-operator@example.com",
+        password_hash=get_password_hash("checkout-operator-pass"),
+        role="admin",
+    )
+    db.add(admin)
+    await db.commit()
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": admin.email, "password": "checkout-operator-pass"},
+    )
+    client.cookies.clear()
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    disabled = await client.put(
+        "/api/admin/system/checkout",
+        json={"enabled": False, "reason": "Provider webhook incident"},
+        headers=headers,
+    )
+    assert disabled.status_code == 200, disabled.text
+    assert disabled.json()["checkout_enabled"] is False
+
+    checkout = await client.post(
+        "/api/payments/guest-link",
+        json={
+            "course_id": str(course.id),
+            "tariff": "self",
+            "customer_email": "runtime-disabled@example.com",
+            "offer_accepted": True,
+            "personal_data_consent": True,
+        },
+    )
+    assert checkout.status_code == 503
+
+    enabled = await client.put(
+        "/api/admin/system/checkout",
+        json={"enabled": True, "reason": "Webhook processing restored"},
+        headers=headers,
+    )
+    assert enabled.status_code == 200, enabled.text
+    assert enabled.json()["checkout_enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_checkout_order_keeps_original_price_when_course_price_changes(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def fake_send_credentials(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr("app.services.email_service.EmailService.send_credentials", fake_send_credentials)
+    course = await _published_course(db, "Immutable Checkout Price")
+    course.access_days = 45
+    await db.commit()
+
+    checkout = await client.post(
+        "/api/payments/guest-link",
+        json={
+            "course_id": str(course.id),
+            "tariff": "self",
+            "customer_email": "snapshot-buyer@example.com",
+            "offer_accepted": True,
+            "personal_data_consent": True,
+        },
+    )
+    assert checkout.status_code == 200
+    checkout_data = checkout.json()
+    order_id = checkout_data["order_id"]
+    status_token = checkout_data["status_token"]
+
+    pending = await client.get(
+        f"/api/payments/orders/{order_id}/status",
+        params={"token": status_token},
+    )
+    assert pending.status_code == 200
+    assert pending.json()["status"] == "pending"
+
+    course.price_self = 7000
+    course.access_days = 5
+    await db.commit()
+
+    payload, headers = _signed_payload(
+        {
+            "order_id": order_id,
+            "customer_email": "snapshot-buyer@example.com",
+            "sum": "5000",
+            "currency": "rub",
+            "payment_status": "success",
+        }
+    )
+    webhook = await client.post("/api/payments/webhook", json=payload, headers=headers)
+
+    assert webhook.status_code == 200
+    paid = await client.get(
+        f"/api/payments/orders/{order_id}/status",
+        params={"token": status_token},
+    )
+    assert paid.status_code == 200
+    assert paid.json()["status"] == "paid"
+
+    purchase_result = await db.execute(
+        select(Purchase).where(Purchase.user.has(email="snapshot-buyer@example.com"))
+    )
+    purchase = purchase_result.scalar_one()
+    assert purchase.amount_kopecks == 500000
+    assert timedelta(days=44, hours=23) < purchase.expires_at - purchase.paid_at <= timedelta(days=45)
 
 
 @pytest.mark.asyncio
@@ -439,6 +1045,178 @@ async def test_payment_link_requires_authenticated_user(client: AsyncClient, db:
     )
 
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_checkout_rejects_discontinued_support_tariff(client: AsyncClient, db: AsyncSession):
+    course = await _published_course(db, "Self Only Course")
+    await _create_user(db, "support-buyer@example.com")
+    await db.commit()
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "support-buyer@example.com", "password": "password123"},
+    )
+    client.cookies.clear()
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    responses = [
+        await client.post(
+            "/api/payments/guest-link",
+            json={
+                "course_id": str(course.id),
+                "tariff": "support",
+                "customer_email": "support-guest@example.com",
+                "offer_accepted": True,
+                "personal_data_consent": True,
+            },
+        ),
+        await client.post(
+            "/api/payments/link",
+            json={"course_id": str(course.id), "tariff": "support"},
+            headers=headers,
+        ),
+        await client.post(
+            "/api/purchases/create",
+            json={"course_id": str(course.id), "tariff": "support"},
+            headers=headers,
+        ),
+    ]
+
+    for response in responses:
+        assert response.status_code == 400, response.text
+        assert response.json()["detail"] == "Invalid tariff"
+    assert await db.scalar(select(func.count(Order.id))) == 0
+    with pytest.raises(HTTPException) as link_error:
+        _checkout_link_for_course(course, "support")
+    assert link_error.value.status_code == 400
+
+    self_link = await client.post(
+        "/api/payments/link",
+        json={"course_id": str(course.id), "tariff": "self"},
+        headers=headers,
+    )
+    assert self_link.status_code == 200, self_link.text
+
+
+@pytest.mark.asyncio
+async def test_webhook_still_accepts_historical_support_order(
+    client: AsyncClient,
+    db: AsyncSession,
+):
+    course = await _published_course(db, "Historical Support Course")
+    order = Order(
+        course_id=course.id,
+        course_title=course.title,
+        tariff="support",
+        customer_email="historical-support@example.com",
+        amount_kopecks=1000000,
+        currency="RUB",
+        access_days=course.access_days,
+        status="pending",
+        status_token_hash="0" * 64,
+    )
+    db.add(order)
+    await db.commit()
+
+    payload, headers = _signed_payload(
+        {
+            "order_id": "400200",
+            "order_num": f"order|{order.id}",
+            "customer_email": "historical-support@example.com",
+            "sum": "10000",
+            "currency": "rub",
+            "payment_status": "success",
+        }
+    )
+    response = await client.post("/api/payments/webhook", json=payload, headers=headers)
+
+    assert response.status_code == 200, response.text
+    purchase = (
+        await db.execute(select(Purchase).where(Purchase.payment_id == "400200"))
+    ).scalar_one()
+    assert purchase.tariff == "support"
+
+
+@pytest.mark.asyncio
+async def test_webhook_rejects_legacy_reference_for_discontinued_tariff(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A hand-crafted payform link must not buy the discontinued support tariff."""
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", 555000111)
+    course = await _published_course(db, "Crafted Support Course")
+    reference = _build_prodamus_order_id(course.id, "support")
+    payload, headers = _signed_payload(
+        {
+            "order_id": "400300",
+            "order_num": reference,
+            "customer_email": "crafted-support@example.com",
+            "sum": "10000",
+            "currency": "rub",
+            "payment_status": "success",
+        }
+    )
+
+    response = await client.post("/api/payments/webhook", json=payload, headers=headers)
+
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"] == "Tariff not sellable"
+    assert await db.scalar(select(func.count(Purchase.id))) == 0
+    assert await db.scalar(select(func.count(Entitlement.id))) == 0
+    event = (await db.execute(select(PaymentEvent))).scalar_one()
+    assert event.processing_status == "rejected"
+    assert event.error_code == "tariff_not_sellable"
+    alerts = await _owner_messages(db, "owner_payment_rejected")
+    assert [alert.payload["text"] for alert in alerts] == [
+        "⚠️ Платёж не обработан: tariff_not_sellable\n"
+        "Сумма: 10 000 ₽\n"
+        "Email: crafted-support@example.com\n"
+        f"Заказ: {reference}"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_webhook_retry_of_recorded_legacy_support_payment_stays_ok(
+    client: AsyncClient,
+    db: AsyncSession,
+):
+    """Support payments recorded before the tariff was retired still dedupe to 200."""
+    course = await _published_course(db, "Recorded Support Course")
+    buyer = await _create_user(db, "recorded-support@example.com")
+    now = datetime.utcnow()
+    db.add(
+        Purchase(
+            user_id=buyer.id,
+            course_id=course.id,
+            tariff="support",
+            amount_kopecks=1000000,
+            payment_id="400400",
+            payment_status="success",
+            paid_at=now,
+            expires_at=now + timedelta(days=30),
+        )
+    )
+    await db.commit()
+    payload, headers = _signed_payload(
+        {
+            "order_id": "400400",
+            "order_num": _build_prodamus_order_id(course.id, "support"),
+            "customer_email": "recorded-support@example.com",
+            "sum": "10000",
+            "currency": "rub",
+            "payment_status": "success",
+            "attempt": "3",
+        }
+    )
+
+    response = await client.post("/api/payments/webhook", json=payload, headers=headers)
+
+    assert response.status_code == 200, response.text
+    assert await db.scalar(select(func.count(Purchase.id))) == 1
+    event = (await db.execute(select(PaymentEvent))).scalar_one()
+    assert event.processing_status == "duplicate"
 
 
 # --- Webhook hardening (audit round 2: B1 status, B2 race, signature/amount) ---
@@ -473,6 +1251,37 @@ async def test_webhook_invalid_signature_rejected(client: AsyncClient, db: Async
 
 
 @pytest.mark.asyncio
+async def test_webhook_deeply_nested_body_is_rejected_without_server_error(
+    client: AsyncClient, db: AsyncSession
+):
+    deep_form = {"a" + "[0]" * 5000: "x"}
+    deep_json_array = "[" * 5000 + "]" * 5000
+    deep_json_object = '{"a":' * 600 + "1" + "}" * 600
+    json_headers = {"Content-Type": "application/json"}
+
+    responses = [
+        await client.post("/api/payments/webhook", data=deep_form),
+        await client.post(
+            "/api/payments/webhook", data=deep_form, headers={"Sign": "deadbeef"}
+        ),
+        await client.post(
+            "/api/payments/webhook",
+            content=deep_json_array,
+            headers={**json_headers, "Sign": "deadbeef"},
+        ),
+        await client.post(
+            "/api/payments/webhook",
+            content=deep_json_object,
+            headers={**json_headers, "Sign": "deadbeef"},
+        ),
+    ]
+
+    assert [response.status_code for response in responses] == [400, 400, 400, 400]
+    assert responses[0].json()["detail"] == "Missing signature"
+    assert await db.scalar(select(func.count(PaymentEvent.id))) == 0
+
+
+@pytest.mark.asyncio
 async def test_webhook_amount_mismatch_rejected(client: AsyncClient, db: AsyncSession):
     course = await _published_course(db, "Amount Mismatch Course")
     payload, headers = _signed_payload(
@@ -489,6 +1298,9 @@ async def test_webhook_amount_mismatch_rejected(client: AsyncClient, db: AsyncSe
 
     count = await db.execute(select(func.count(Purchase.id)))
     assert count.scalar_one() == 0
+    event = (await db.execute(select(PaymentEvent))).scalar_one()
+    assert event.processing_status == "rejected"
+    assert event.error_code == "amount_mismatch"
 
 
 @pytest.mark.asyncio
@@ -517,7 +1329,7 @@ async def test_webhook_two_payments_same_new_email_keeps_both(
     async def fake_send_credentials(*args, **kwargs):
         return None
 
-    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", fake_send_credentials)
+    monkeypatch.setattr("app.services.email_service.EmailService.send_credentials", fake_send_credentials)
 
     course = await _published_course(db, "Two Payments Course")
 
@@ -533,10 +1345,10 @@ async def test_webhook_two_payments_same_new_email_keeps_both(
     )
     p2, h2 = _signed_payload(
         {
-            "order_id": _build_prodamus_order_id(course.id, "support"),
+            "order_id": _build_prodamus_order_id(course.id, "self"),
             "order_num": "race-two",
             "customer_email": "racebuyer@example.com",
-            "sum": "10000",
+            "sum": "5000",
             "currency": "rub",
             "payment_status": "success",
         }
@@ -563,7 +1375,7 @@ async def test_webhook_retries_on_integrity_error(
     async def fake_send_credentials(*args, **kwargs):
         return None
 
-    monkeypatch.setattr("app.api.payments.EmailService.send_credentials", fake_send_credentials)
+    monkeypatch.setattr("app.services.email_service.EmailService.send_credentials", fake_send_credentials)
 
     course = await _published_course(db, "Retry Course")
 
@@ -636,11 +1448,314 @@ async def test_admin_revoke_access(client: AsyncClient, db: AsyncSession):
 
     r = await client.post(
         "/api/admin/revoke-access",
-        json={"purchase_id": str(purchase.id)},
-        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "purchase_id": str(purchase.id),
+            "reason": "Confirmed chargeback in provider cabinet",
+        },
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Correlation-ID": "legacy-revoke-test",
+        },
     )
     assert r.status_code == 200, r.text
+    assert r.json()["payment_status"] == "success"
+    assert r.json()["access_status"] == "revoked"
 
     await db.refresh(purchase)
-    assert purchase.payment_status == "failed"
-    assert purchase.expires_at <= datetime.utcnow()
+    assert purchase.payment_status == "success"
+    assert purchase.expires_at > datetime.utcnow()
+    entitlement = await db.scalar(
+        select(Entitlement).where(Entitlement.source_purchase_id == purchase.id)
+    )
+    assert entitlement is not None
+    assert entitlement.status == "revoked"
+    audit = await db.scalar(
+        select(AuditLog).where(AuditLog.action == "entitlement.revoke_by_purchase")
+    )
+    assert audit is not None
+    assert audit.reason == "Confirmed chargeback in provider cabinet"
+    assert audit.correlation_id == "legacy-revoke-test"
+
+    purchases = await client.get(
+        "/api/admin/purchases",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert purchases.status_code == 200, purchases.text
+    item = next(row for row in purchases.json() if row["id"] == str(purchase.id))
+    assert item["payment_status"] == "success"
+    assert item["access_status"] == "revoked"
+    assert item["entitlement_id"] == str(entitlement.id)
+
+
+# --- Owner Telegram notifications ---
+
+
+async def _owner_messages(db: AsyncSession, kind: str) -> list[OutboxMessage]:
+    result = await db.execute(select(OutboxMessage).where(OutboxMessage.kind == kind))
+    return list(result.scalars().all())
+
+
+@pytest.mark.asyncio
+async def test_successful_webhook_queues_single_owner_payment_alert(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", 555000111)
+    course = Course(
+        title="Owner Alert Course", price_self=5900, price_support=11900, is_published=True
+    )
+    db.add(course)
+    await db.commit()
+    await db.refresh(course)
+    checkout = await client.post(
+        "/api/payments/guest-link",
+        json={
+            "course_id": str(course.id),
+            "tariff": "self",
+            "customer_email": "owner-alert@example.com",
+            "offer_accepted": True,
+            "personal_data_consent": True,
+        },
+    )
+    assert checkout.status_code == 200, checkout.text
+    order_reference = checkout.json()["order_id"]
+    notification = {
+        "order_id": "300777",
+        "order_num": order_reference,
+        "customer_email": "owner-alert@example.com",
+        "sum": "5900.00",
+        "currency": "rub",
+        "payment_status": "success",
+        "attempt": "1",
+    }
+
+    first = await client.post(
+        "/api/payments/webhook", json=notification, headers=_signed_payload(notification)[1]
+    )
+    identical_retry = await client.post(
+        "/api/payments/webhook", json=notification, headers=_signed_payload(notification)[1]
+    )
+    next_attempt = {**notification, "attempt": "2"}
+    attempt_retry = await client.post(
+        "/api/payments/webhook", json=next_attempt, headers=_signed_payload(next_attempt)[1]
+    )
+
+    assert [first.status_code, identical_retry.status_code, attempt_retry.status_code] == [
+        200,
+        200,
+        200,
+    ]
+    alerts = await _owner_messages(db, "owner_payment_alert")
+    assert len(alerts) == 1
+    alert = alerts[0]
+    assert alert.channel == "telegram"
+    assert alert.recipient == "555000111"
+    assert alert.dedupe_key.startswith("payment:") and alert.dedupe_key.endswith(":owner")
+    assert alert.payload["text"] == (
+        "💰 Новая оплата\n"
+        "Сумма: 5 900 ₽\n"
+        "Курс: Owner Alert Course\n"
+        "Тариф: Самостоятельный\n"
+        "Email: owner-alert@example.com\n"
+        f"Заказ: {order_reference}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_successful_webhook_without_owner_chat_queues_no_owner_alert(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", None)
+    course = await _published_course(db, "No Owner Chat Course")
+    payload, headers = _signed_payload(
+        {
+            "order_id": "300778",
+            "order_num": _build_prodamus_order_id(course.id, "self"),
+            "customer_email": "no-owner-chat@example.com",
+            "sum": "5000",
+            "currency": "rub",
+            "payment_status": "success",
+        }
+    )
+
+    response = await client.post("/api/payments/webhook", json=payload, headers=headers)
+
+    assert response.status_code == 200, response.text
+    assert await db.scalar(select(func.count(Purchase.id))) == 1
+    telegram_count = await db.scalar(
+        select(func.count(OutboxMessage.id)).where(OutboxMessage.channel == "telegram")
+    )
+    assert telegram_count == 0
+
+
+@pytest.mark.asyncio
+async def test_rejected_signed_webhook_alerts_owner_once(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", 555000111)
+    course = await _published_course(db, "Rejected Alert Course")
+    reference = _build_prodamus_order_id(course.id, "self")
+    notification = {
+        "order_id": "300888",
+        "order_num": reference,
+        "customer_email": "mismatch-alert@example.com",
+        "sum": "9999",
+        "currency": "rub",
+        "payment_status": "success",
+        "attempt": "1",
+    }
+    next_attempt = {**notification, "attempt": "2"}
+
+    first = await client.post(
+        "/api/payments/webhook", json=notification, headers=_signed_payload(notification)[1]
+    )
+    retry = await client.post(
+        "/api/payments/webhook", json=next_attempt, headers=_signed_payload(next_attempt)[1]
+    )
+    forged = await client.post(
+        "/api/payments/webhook",
+        json={**notification, "order_id": "300999"},
+        headers={"Sign": "deadbeef"},
+    )
+
+    assert [first.status_code, retry.status_code, forged.status_code] == [422, 422, 400]
+    assert await db.scalar(select(func.count(PaymentEvent.id))) == 2
+    alerts = await _owner_messages(db, "owner_payment_rejected")
+    assert len(alerts) == 1
+    assert alerts[0].recipient == "555000111"
+    assert alerts[0].payload["text"] == (
+        "⚠️ Платёж не обработан: amount_mismatch\n"
+        "Сумма: 9 999 ₽\n"
+        "Email: mismatch-alert@example.com\n"
+        f"Заказ: {reference}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_rejected_webhook_alert_race_keeps_422(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A concurrent delivery committing the same alert must not turn 422 into 500."""
+    from app.services.outbox_service import enqueue_outbox_message
+
+    async def unchecked_alert(session, *, kind, text, dedupe_key):
+        # Emulate losing the race: the existence check passed, then the other
+        # delivery committed the same dedupe key before this insert.
+        enqueue_outbox_message(
+            session,
+            kind=kind,
+            channel="telegram",
+            recipient="555000111",
+            payload={"text": text},
+            dedupe_key=dedupe_key,
+        )
+        return True
+
+    monkeypatch.setattr("app.api.payments.enqueue_owner_telegram_alert", unchecked_alert)
+    course = await _published_course(db, "Alert Race Course")
+    notification = {
+        "order_id": "300889",
+        "order_num": _build_prodamus_order_id(course.id, "self"),
+        "customer_email": "alert-race@example.com",
+        "sum": "9999",
+        "currency": "rub",
+        "payment_status": "success",
+        "attempt": "1",
+    }
+    next_attempt = {**notification, "attempt": "2"}
+
+    first = await client.post(
+        "/api/payments/webhook", json=notification, headers=_signed_payload(notification)[1]
+    )
+    second = await client.post(
+        "/api/payments/webhook", json=next_attempt, headers=_signed_payload(next_attempt)[1]
+    )
+
+    assert [first.status_code, second.status_code] == [422, 422]
+    assert second.json()["detail"] == "Amount mismatch"
+    assert len(await _owner_messages(db, "owner_payment_rejected")) == 1
+    assert await db.scalar(select(func.count(PaymentEvent.id))) == 2
+
+
+@pytest.mark.asyncio
+async def test_rejected_webhook_without_order_ids_alerts_once_across_attempts(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", 555000111)
+    notification = {
+        "customer_email": "no-ids@example.com",
+        "sum": "5000",
+        "currency": "rub",
+        "payment_status": "success",
+        "attempt": "1",
+    }
+
+    responses = [
+        await client.post(
+            "/api/payments/webhook", json=attempt, headers=_signed_payload(attempt)[1]
+        )
+        for attempt in (notification, {**notification, "attempt": "2"})
+    ]
+
+    assert [response.status_code for response in responses] == [422, 422]
+    assert await db.scalar(select(func.count(PaymentEvent.id))) == 2
+    alerts = await _owner_messages(db, "owner_payment_rejected")
+    assert len(alerts) == 1
+    assert alerts[0].payload["text"].startswith(
+        "⚠️ Платёж не обработан: missing_provider_order_id\n"
+    )
+
+
+@pytest.mark.asyncio
+async def test_webhook_matches_legacy_mixed_case_buyer_and_order(
+    client: AsyncClient,
+    db: AsyncSession,
+):
+    course = await _published_course(db, "Legacy Case Course")
+    buyer = await _create_user(db, "Legacy.Buyer@Example.com")
+    order = Order(
+        user_id=buyer.id,
+        course_id=course.id,
+        course_title=course.title,
+        tariff="self",
+        customer_email="Legacy.Buyer@Example.com",
+        amount_kopecks=500000,
+        currency="RUB",
+        access_days=course.access_days,
+        status="pending",
+        status_token_hash="0" * 64,
+    )
+    db.add(order)
+    await db.commit()
+
+    payload, headers = _signed_payload(
+        {
+            "order_id": "300555",
+            "order_num": f"order|{order.id}",
+            "customer_email": "legacy.buyer@example.com",
+            "sum": "5000",
+            "currency": "rub",
+            "payment_status": "success",
+        }
+    )
+    response = await client.post("/api/payments/webhook", json=payload, headers=headers)
+
+    assert response.status_code == 200, response.text
+    purchase = (
+        await db.execute(select(Purchase).where(Purchase.payment_id == "300555"))
+    ).scalar_one()
+    assert purchase.user_id == buyer.id
+    assert await db.scalar(select(func.count(User.id))) == 1

@@ -10,6 +10,18 @@ from app.models.purchase import Purchase
 from app.models.progress import Progress
 from app.models.certificate import Certificate
 from app.models.gallery import GalleryItem
+from app.models.order import Order
+from app.models.outbox import DeliveryAttempt, OutboxMessage
+from app.models.entitlement import Entitlement
+from app.models.payment_event import PaymentEvent
+from app.models.refund import RefundRequest
+from app.models.rbac import Permission, Role, UserRoleAssignment
+from app.models.audit_log import AuditLog
+from app.models.auth_security import AuthSession, MfaCredential
+from app.models.crm import StudentNote, StudentTag, StudentTagAssignment
+from app.models.analytics_event import AnalyticsEvent
+from app.models.telegram_link import TelegramLinkToken
+from app.models.runtime_setting import RuntimeSetting
 
 __all__ = [
     "User",
@@ -20,4 +32,22 @@ __all__ = [
     "Progress",
     "Certificate",
     "GalleryItem",
+    "Order",
+    "OutboxMessage",
+    "DeliveryAttempt",
+    "Entitlement",
+    "PaymentEvent",
+    "RefundRequest",
+    "Permission",
+    "Role",
+    "UserRoleAssignment",
+    "AuditLog",
+    "AuthSession",
+    "MfaCredential",
+    "StudentNote",
+    "StudentTag",
+    "StudentTagAssignment",
+    "AnalyticsEvent",
+    "TelegramLinkToken",
+    "RuntimeSetting",
 ]

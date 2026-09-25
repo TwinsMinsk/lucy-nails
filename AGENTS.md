@@ -23,7 +23,7 @@
 
 - **Frontend:** Next.js **16** (App Router), React **19**, TypeScript, Tailwind CSS, Radix/shadcn-паттерн — [`frontend/`](frontend/), [`frontend/components.json`](frontend/components.json).
 - **Backend:** Python **3.11+**, FastAPI, SQLAlchemy 2 **async**, Alembic, Pydantic v2 — [`backend/app/`](backend/app/).
-- **БД:** PostgreSQL 15 (asyncpg), Redis опционально.
+- **БД:** PostgreSQL 15 (asyncpg); Redis обязателен в production для общего rate-limit.
 - **Интеграции:** Kinescope, Prodamus, Telegram — см. сервисы в [`backend/app/services/`](backend/app/services/).
 
 ## Обязательно прочитать перед существенными изменениями
@@ -70,7 +70,9 @@ npm ci
 npm run lint
 $env:NEXT_PUBLIC_API_URL = "http://127.0.0.1:8000/api"
 $env:NEXT_PUBLIC_SITE_URL = "http://localhost:3000"
+npm test -- --run
 npm run build
+npm run test:e2e
 ```
 
 Полный пайплайн: [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
@@ -105,5 +107,5 @@ npm run build
 
 ## Известный техдолг (не ломать неосторожно)
 
-- В [`backend/app/main.py`](backend/app/main.py): стартовый seed пользователей с известными паролями и широкий CORS — для production нужна отдельная политика (env-only origins, выключить seed или только `development`).
-- Во frontend нет скрипта `npm test` — регрессии ловятся lint + build + backend pytest.
+- В [`backend/app/main.py`](backend/app/main.py) dev seed разрешён только при `ENVIRONMENT=development`; не расширять его на staging/production.
+- Frontend имеет Vitest и Playwright; при изменении critical flow обновлять оба уровня тестов.

@@ -6,13 +6,17 @@ import { Loader2 } from "lucide-react";
 import { getMe, getPaymentLink, isAuthError } from "@/lib/api";
 import { toast } from "sonner";
 import { GuestCheckoutDialog } from "@/components/landing/GuestCheckoutDialog";
+import { captureCheckoutAttribution } from "@/lib/attribution";
+import { sendYandexGoal, trackPublicEvent } from "@/lib/analytics-client";
 
 interface PaymentButtonProps {
   /** UUID курса с API или `"default"` — первый опубликованный курс на бэкенде */
   courseId: string | null;
-  tariff: "self" | "support";
+  tariff: "self";
   children?: React.ReactNode;
   className?: string;
+  /** Where the CTA sits, for the cta_click analytics event */
+  location?: "pricing" | "dashboard_renewal";
 }
 
 function resolveCourseIdForCheckout(raw: string | null): string {
@@ -21,17 +25,18 @@ function resolveCourseIdForCheckout(raw: string | null): string {
   return s;
 }
 
-export function PaymentButton({ courseId, tariff, children, className }: PaymentButtonProps) {
+export function PaymentButton({ courseId, tariff, children, className, location = "pricing" }: PaymentButtonProps) {
   const [loading, setLoading] = useState(false);
   const [guestOpen, setGuestOpen] = useState(false);
   const effectiveCourseId = resolveCourseIdForCheckout(courseId);
 
   const handlePayment = async () => {
+    void trackPublicEvent("cta_click", { tariff, location }, effectiveCourseId);
     const hasSession = typeof document !== "undefined" && document.cookie.includes("auth_session=1");
 
     if (!hasSession) {
       toast.info("Можно оплатить без регистрации", {
-        description: "Укажите email, и после оплаты мы отправим данные для входа.",
+        description: "Укажите email — после оплаты пришлём ссылку для входа в кабинет.",
       });
       setGuestOpen(true);
       return;
@@ -45,9 +50,11 @@ export function PaymentButton({ courseId, tariff, children, className }: Payment
         course_id: effectiveCourseId,
         tariff,
         customer_email: user.email,
+        attribution: captureCheckoutAttribution(),
       });
 
       if (data.url) {
+        sendYandexGoal("checkout");
         window.location.href = data.url;
       } else {
         toast.error("Ошибка при генерации ссылки", {
@@ -58,7 +65,7 @@ export function PaymentButton({ courseId, tariff, children, className }: Payment
       console.error("Payment link error:", e);
       if (isAuthError(e)) {
         toast.info("Можно оплатить без регистрации", {
-          description: "Укажите email, и после оплаты мы отправим данные для входа.",
+          description: "Укажите email — после оплаты пришлём ссылку для входа в кабинет.",
         });
         setGuestOpen(true);
         return;

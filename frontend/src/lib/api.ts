@@ -2,6 +2,7 @@
  * API Client для взаимодействия с Backend
  */
 import { getPublicApiUrl } from "@/lib/env";
+import type { CheckoutAttribution } from "@/lib/attribution";
 
 const getBaseUrl = () => {
     return getPublicApiUrl();
@@ -73,11 +74,35 @@ const parseErrorDetail = (detail: unknown, fallback: string): string => {
     return fallback;
 };
 
+export class ApiError extends Error {
+    constructor(
+        public readonly status: number,
+        public readonly detail: unknown,
+        fallback: string,
+    ) {
+        super(parseErrorDetail(detail, fallback));
+        this.name = "ApiError";
+    }
+}
+
 export const isAuthError = (error: unknown): boolean => (
     error instanceof Error && error.message === "Требуется вход в аккаунт"
 );
 
-async function refreshAccessToken(): Promise<string | null> {
+// The backend rotates the refresh token on every use and revokes the session when
+// an already-used one is presented again, so parallel 401s must share one refresh.
+let refreshPromise: Promise<string | null> | null = null;
+
+function refreshAccessToken(): Promise<string | null> {
+    if (!refreshPromise) {
+        refreshPromise = requestTokenRefresh().finally(() => {
+            refreshPromise = null;
+        });
+    }
+    return refreshPromise;
+}
+
+async function requestTokenRefresh(): Promise<string | null> {
     const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
         method: "POST",
         credentials: "include",
@@ -140,7 +165,11 @@ export async function apiFetch<T>(endpoint: string, options?: RequestInit, retry
 
         const errorData = await response.json().catch(() => ({ detail: `HTTP error ${response.status} at ${fullUrl}` }));
         console.error(`❌ API Error [${response.status}] ${fullUrl}:`, errorData);
-        throw new Error(parseErrorDetail(errorData.detail, `HTTP ${response.status}`));
+        throw new ApiError(response.status, errorData.detail, `HTTP ${response.status}`);
+    }
+
+    if (response.status === 204) {
+        return undefined as T;
     }
 
     return response.json();
@@ -217,9 +246,26 @@ export interface TokenResponse {
 export interface LoginCredentials {
     email: string;
     password: string;
+    mfa_code?: string;
 }
 
-export interface RegisterCredentials {
+export interface MfaSetupResponse {
+    secret: string;
+    provisioning_uri: string;
+}
+
+export interface MfaConfirmResponse extends TokenResponse {
+    backup_codes: string[];
+}
+
+/** Offer and personal-data consent are separate checkboxes; the backend requires both. */
+export interface ConsentFields {
+    offer_accepted: boolean;
+    personal_data_consent: boolean;
+    consent_version: string;
+}
+
+export interface RegisterCredentials extends ConsentFields {
     email: string;
     password: string;
 }
@@ -244,6 +290,25 @@ export const login = async (credentials: LoginCredentials): Promise<TokenRespons
     return response;
 };
 
+export const setupMfa = async (setupToken: string): Promise<MfaSetupResponse> => {
+    return apiFetch<MfaSetupResponse>("/auth/mfa/setup", {
+        method: "POST",
+        body: JSON.stringify({ setup_token: setupToken }),
+    });
+};
+
+export const confirmMfa = async (
+    setupToken: string,
+    code: string,
+): Promise<MfaConfirmResponse> => {
+    const response = await apiFetch<MfaConfirmResponse>("/auth/mfa/confirm", {
+        method: "POST",
+        body: JSON.stringify({ setup_token: setupToken, code }),
+    });
+    saveTokens(response);
+    return response;
+};
+
 /**
  * Регистрация нового пользователя
  */
@@ -259,6 +324,28 @@ export const register = async (credentials: RegisterCredentials): Promise<UserRe
  */
 export const getMe = async (): Promise<UserResponse> => {
     return apiFetch<UserResponse>("/auth/me");
+};
+
+export interface TelegramStatusResponse {
+    connected: boolean;
+    username?: string | null;
+}
+
+export interface TelegramLinkResponse extends TelegramStatusResponse {
+    url: string;
+    expires_at: string;
+}
+
+export const getTelegramStatus = async (): Promise<TelegramStatusResponse> => {
+    return apiFetch<TelegramStatusResponse>("/telegram/status");
+};
+
+export const createTelegramLink = async (): Promise<TelegramLinkResponse> => {
+    return apiFetch<TelegramLinkResponse>("/telegram/link", { method: "POST" });
+};
+
+export const disconnectTelegram = async (): Promise<void> => {
+    await apiFetch<void>("/telegram/link", { method: "DELETE" });
 };
 
 /**
@@ -310,6 +397,19 @@ export const resetPassword = async (
 };
 
 /**
+ * Задать первый пароль по ссылке активации из письма после оплаты
+ */
+export const activateAccount = async (
+    token: string,
+    newPassword: string
+): Promise<{ message: string }> => {
+    return apiFetch<{ message: string }>("/auth/activate", {
+        method: "POST",
+        body: JSON.stringify({ token, new_password: newPassword }),
+    });
+};
+
+/**
  * ============================================
  * LESSONS METHODS
  * ============================================
@@ -343,7 +443,11 @@ export interface CourseResponse {
     price_support: number;
     cover_image_url?: string | null;
     is_published: boolean;
-    duration_seconds?: number;
+    access_days: number;
+    modules_count?: number | null;
+    lessons_count?: number | null;
+    /** Sum of lesson durations in seconds */
+    total_duration?: number | null;
     created_at?: string;
 }
 
@@ -385,6 +489,21 @@ export interface MyCourseResponse {
  */
 export const getMyCourses = async (): Promise<MyCourseResponse[]> => {
     return apiFetch<MyCourseResponse[]>("/purchases/my");
+};
+
+export interface ExpiredCourseResponse {
+    course_id: string;
+    course_title: string;
+    cover_image_url?: string | null;
+    price_self: number;
+    expired_at: string;
+}
+
+/**
+ * Курсы, доступ к которым закончился и не продлён (для продления из кабинета)
+ */
+export const getMyExpiredCourses = async (): Promise<ExpiredCourseResponse[]> => {
+    return apiFetch<ExpiredCourseResponse[]>("/purchases/my/expired");
 };
 
 /**
@@ -442,17 +561,43 @@ export interface AdminCourseResponse {
     price_self: number;
     price_support: number;
     is_published: boolean;
+    access_days: number;
+}
+
+export interface VideoHealthItem {
+    lesson_id: string;
+    lesson_title: string;
+    module_title: string;
+    course_id: string;
+    course_title: string;
+    video_id?: string | null;
+    expected_duration_seconds: number;
+    provider_duration_seconds?: number | null;
+    provider_status?: string | null;
+    progress?: number | null;
+    privacy_type?: string | null;
+    status: "ready" | "missing_video_id" | "duration_mismatch" | "processing" | "provider_error";
+    detail?: string | null;
+}
+
+export interface VideoHealthResponse {
+    total: number;
+    ready: number;
+    problems: number;
+    items: VideoHealthItem[];
 }
 
 export interface GrantAccessRequest {
     user_id: string;
     course_id: string;
     tariff?: "self" | "support";
+    access_days?: number;
+    reason: string;
 }
 
 export interface GrantAccessResponse {
     message: string;
-    purchase_id: string;
+    entitlement_id: string;
     expires_at: string;
 }
 
@@ -476,7 +621,9 @@ export const getAllCourses = async (): Promise<AdminCourseResponse[]> => {
 export const adminGrantAccess = async (
     userId: string,
     courseId: string,
-    tariff: "self" | "support" = "self"
+    tariff: "self" | "support" = "self",
+    reason: string,
+    accessDays?: number,
 ): Promise<GrantAccessResponse> => {
     return apiFetch<GrantAccessResponse>("/admin/grant-access", {
         method: "POST",
@@ -484,6 +631,8 @@ export const adminGrantAccess = async (
             user_id: userId,
             course_id: courseId,
             tariff,
+            reason,
+            access_days: accessDays,
         }),
     });
 };
@@ -492,17 +641,20 @@ export interface RevokeAccessResponse {
     message: string;
     purchase_id: string;
     payment_status: string;
+    entitlement_id: string;
+    access_status: "active" | "suspended" | "revoked" | "expired" | "missing";
 }
 
 /**
  * Отозвать доступ по покупке (возврат/chargeback) — только для админов
  */
 export const adminRevokeAccess = async (
-    purchaseId: string
+    purchaseId: string,
+    reason: string,
 ): Promise<RevokeAccessResponse> => {
     return apiFetch<RevokeAccessResponse>("/admin/revoke-access", {
         method: "POST",
-        body: JSON.stringify({ purchase_id: purchaseId }),
+        body: JSON.stringify({ purchase_id: purchaseId, reason }),
     });
 };
 
@@ -523,6 +675,7 @@ export interface AdminCourseFullResponse {
     price_self: number;
     price_support: number;
     is_published: boolean;
+    access_days: number;
     created_at: string;
     modules_count: number;
     lessons_count: number;
@@ -591,6 +744,9 @@ export interface AdminPurchaseResponse {
     paid_at?: string | null;
     created_at: string;
     customer_phone?: string | null;
+    entitlement_id?: string | null;
+    access_status: "active" | "suspended" | "revoked" | "expired" | "missing";
+    access_expires_at?: string | null;
 }
 
 // --- Course CRUD ---
@@ -602,6 +758,7 @@ export interface CourseCreateRequest {
     price_self?: number;
     price_support?: number;
     is_published?: boolean;
+    access_days?: number;
 }
 
 export interface CourseUpdateRequest {
@@ -611,6 +768,7 @@ export interface CourseUpdateRequest {
     price_self?: number;
     price_support?: number;
     is_published?: boolean;
+    access_days?: number;
 }
 
 export const adminGetCourses = async (): Promise<AdminCourseFullResponse[]> => {
@@ -742,6 +900,457 @@ export const adminGetAnalytics = async (): Promise<AnalyticsResponse> => {
 export const adminGetPurchases = async (): Promise<AdminPurchaseResponse[]> => {
     return apiFetch<AdminPurchaseResponse[]>("/admin/purchases");
 };
+
+export const adminCheckVideoHealth = async (courseId?: string): Promise<VideoHealthResponse> => {
+    const query = courseId ? `?course_id=${encodeURIComponent(courseId)}` : "";
+    return apiFetch<VideoHealthResponse>(`/admin/content/video-health${query}`, {
+        method: "POST",
+    });
+};
+
+// --- Operational CRM ---
+
+export interface AdminDashboardResponse {
+    total_students: number;
+    active_entitlements: number;
+    gross_revenue_kopecks: number;
+    refunded_kopecks: number;
+    net_revenue_kopecks: number;
+    pending_orders: number;
+    payment_errors: number;
+    notification_dead_letters: number;
+    expiring_entitlements_7d: number;
+}
+
+export interface PageResponse<T> {
+    items: T[];
+    total: number;
+    limit: number;
+    offset: number;
+}
+
+export interface AdminStudentListItem {
+    id: string;
+    email: string;
+    full_name?: string | null;
+    phone?: string | null;
+    role: string;
+    created_at: string;
+    active_entitlements: number;
+}
+
+export interface AdminEntitlement {
+    id: string;
+    user_id?: string;
+    user_email?: string;
+    course_id: string;
+    course_title: string;
+    source: string;
+    tariff: string;
+    status: string;
+    starts_at: string;
+    expires_at: string;
+    reason?: string | null;
+    revoked_at?: string | null;
+}
+
+export interface AdminStudentDetail {
+    id: string;
+    email: string;
+    full_name?: string | null;
+    phone?: string | null;
+    role: string;
+    created_at: string;
+    telegram_id?: number | null;
+    telegram_username?: string | null;
+    completed_lessons: number;
+    tracked_lessons: number;
+    last_activity_at?: string | null;
+    purchases: AdminPurchaseResponse[];
+    entitlements: AdminEntitlement[];
+    certificates: Array<{
+        id: string;
+        course_id: string;
+        certificate_number: string;
+        student_name: string;
+        issued_at: string;
+    }>;
+    notes: Array<{ id: string; author_id: string; body: string; created_at: string }>;
+    tags: string[];
+    lesson_progress: AdminStudentLessonProgress[];
+}
+
+export interface AdminStudentLessonProgress {
+    course_id: string;
+    course_title: string;
+    module_title: string;
+    module_order: number;
+    lesson_id: string;
+    lesson_title: string;
+    lesson_order: number;
+    is_completed: boolean;
+    watched_seconds?: number | null;
+    updated_at?: string | null;
+}
+
+export interface AdminOrder {
+    id: string;
+    customer_email: string;
+    customer_phone?: string | null;
+    course_id: string;
+    course_title: string;
+    tariff: string;
+    amount_kopecks: number;
+    currency: string;
+    access_days: number;
+    status: string;
+    purchase_id?: string | null;
+    paid_at?: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface AdminNotification {
+    id: string;
+    kind: string;
+    channel: string;
+    recipient: string;
+    status: string;
+    attempts: number;
+    max_attempts: number;
+    next_attempt_at: string;
+    sent_at?: string | null;
+    last_error?: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface AdminPaymentEvent {
+    id: string;
+    external_event_id?: string | null;
+    order_reference?: string | null;
+    order_id?: string | null;
+    purchase_id?: string | null;
+    event_type: string;
+    processing_status: string;
+    amount_kopecks?: number | null;
+    currency?: string | null;
+    error_code?: string | null;
+    error_detail?: string | null;
+    received_at: string;
+    processed_at?: string | null;
+}
+
+export interface AdminReconciliation {
+    stale_pending_orders: number;
+    processed_payment_errors: number;
+    successful_purchases_without_active_entitlement: number;
+    dead_letter_notifications: number;
+}
+
+export interface AdminRefund {
+    id: string;
+    purchase_id: string;
+    amount_kopecks: number;
+    reason: string;
+    status: "requested" | "submitted" | "processed" | "rejected";
+    provider_reference?: string | null;
+    note?: string | null;
+    created_by_id: string;
+    processed_by_id?: string | null;
+    processed_at?: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface AdminCapabilities {
+    roles: string[];
+    permissions: string[];
+}
+
+export interface AdminRole {
+    id: string;
+    name: string;
+    description: string;
+    permissions: string[];
+}
+
+export interface AdminTeamUser {
+    id: string;
+    email: string;
+    full_name?: string | null;
+    roles: string[];
+    mfa_enabled: boolean;
+    active_sessions: number;
+}
+
+export interface AdminAuditLog {
+    id: string;
+    actor_user_id?: string | null;
+    action: string;
+    object_type: string;
+    object_id?: string | null;
+    old_value?: Record<string, unknown> | null;
+    new_value?: Record<string, unknown> | null;
+    reason?: string | null;
+    correlation_id: string;
+    created_at: string;
+}
+
+export interface AdminSystemStatus {
+    checkout_enabled: boolean;
+    environment: string;
+    integrations: Record<string, boolean>;
+    outbox_pending: number;
+    outbox_dead_letter: number;
+    last_payment_event_at?: string | null;
+}
+
+export interface AdminCertificate {
+    id: string;
+    user_id: string;
+    student_email: string;
+    course_id: string;
+    course_title: string;
+    certificate_number: string;
+    student_name: string;
+    pdf_url?: string | null;
+    png_url?: string | null;
+    status: string;
+    revoke_reason?: string | null;
+    revoked_at?: string | null;
+    issued_at: string;
+}
+
+export interface ReportOverview {
+    date_from: string;
+    date_to: string;
+    gross_revenue_kopecks: number;
+    refunded_kopecks: number;
+    net_revenue_kopecks: number;
+    paid_orders: number;
+    pending_orders: number;
+    new_students: number;
+}
+
+export interface ReportTimeseriesPoint {
+    date: string;
+    orders: number;
+    gross_revenue_kopecks: number;
+    refunded_kopecks: number;
+    net_revenue_kopecks: number;
+}
+
+export interface ReportFunnelStage {
+    event_name: string;
+    label: string;
+    count: number;
+    conversion_from_previous_pct?: number | null;
+}
+
+export interface ReportSource {
+    source: string;
+    orders: number;
+    paid_orders: number;
+    gross_revenue_kopecks: number;
+    conversion_pct: number;
+}
+
+export interface ReportTariff {
+    tariff: string;
+    paid_orders: number;
+    gross_revenue_kopecks: number;
+}
+
+export interface ReportCohort {
+    cohort: string;
+    students: number;
+    purchasers: number;
+    certified_students: number;
+}
+
+export interface ReportProgress {
+    active_students: number;
+    completed_lessons: number;
+    certificates_issued: number;
+}
+
+export interface ReportRefund {
+    status: string;
+    requests: number;
+    amount_kopecks: number;
+}
+
+export interface ReportDelivery {
+    total: number;
+    sent: number;
+    pending: number;
+    retry: number;
+    dead_letter: number;
+    success_rate_pct: number;
+}
+
+const queryString = (params: Record<string, string | number | boolean | undefined | null>) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+    });
+    const suffix = query.toString();
+    return suffix ? `?${suffix}` : "";
+};
+
+export const adminGetDashboard = () => apiFetch<AdminDashboardResponse>("/admin/dashboard");
+export const adminGetCapabilities = () => apiFetch<AdminCapabilities>("/admin/team/me");
+export const adminGetRoles = () => apiFetch<AdminRole[]>("/admin/team/roles");
+export const adminGetTeamUsers = () => apiFetch<AdminTeamUser[]>("/admin/team/users");
+export const adminUpdateTeamRoles = (userId: string, roles: string[], reason: string) =>
+    apiFetch<{ user_id: string; roles: string[] }>(`/admin/team/users/${userId}/roles`, {
+        method: "PUT",
+        body: JSON.stringify({ roles, reason }),
+    });
+export const adminGetAuditLogs = (params: { limit?: number; offset?: number; action?: string } = {}) =>
+    apiFetch<AdminAuditLog[]>(`/admin/audit-logs${queryString(params)}`);
+export const adminGetSystemStatus = () => apiFetch<AdminSystemStatus>("/admin/system/status");
+export const adminSetCheckoutEnabled = (enabled: boolean, reason: string) =>
+    apiFetch<{ checkout_enabled: boolean }>("/admin/system/checkout", {
+        method: "PUT",
+        body: JSON.stringify({ enabled, reason }),
+    });
+export const adminGetCertificates = (params: {
+    search?: string; status?: string; limit?: number; offset?: number;
+} = {}) => apiFetch<PageResponse<AdminCertificate>>(`/admin/certificates${queryString(params)}`);
+export const adminReissueCertificate = (certificateId: string, reason: string) =>
+    apiFetch<AdminCertificate>(`/admin/certificates/${certificateId}/reissue`, {
+        method: "POST", body: JSON.stringify({ reason }),
+    });
+export const adminRevokeCertificate = (certificateId: string, reason: string) =>
+    apiFetch<AdminCertificate>(`/admin/certificates/${certificateId}/revoke`, {
+        method: "POST", body: JSON.stringify({ reason }),
+    });
+
+export const adminGetReportOverview = (params: { date_from?: string; date_to?: string } = {}) =>
+    apiFetch<ReportOverview>(`/admin/reports/overview${queryString(params)}`);
+export const adminGetReportTimeseries = (params: { date_from?: string; date_to?: string } = {}) =>
+    apiFetch<ReportTimeseriesPoint[]>(`/admin/reports/timeseries${queryString(params)}`);
+export const adminGetReportFunnel = (params: { date_from?: string; date_to?: string } = {}) =>
+    apiFetch<{ stages: ReportFunnelStage[] }>(`/admin/reports/funnel${queryString(params)}`);
+export const adminGetReportSources = (params: { date_from?: string; date_to?: string } = {}) =>
+    apiFetch<ReportSource[]>(`/admin/reports/sources${queryString(params)}`);
+export const adminGetReportTariffs = (params: { date_from?: string; date_to?: string } = {}) =>
+    apiFetch<ReportTariff[]>(`/admin/reports/tariffs${queryString(params)}`);
+export const adminGetReportCohorts = (params: { date_from?: string; date_to?: string } = {}) =>
+    apiFetch<ReportCohort[]>(`/admin/reports/cohorts${queryString(params)}`);
+export const adminGetReportProgress = (params: { date_from?: string; date_to?: string } = {}) =>
+    apiFetch<ReportProgress>(`/admin/reports/progress${queryString(params)}`);
+export const adminGetReportRefunds = (params: { date_from?: string; date_to?: string } = {}) =>
+    apiFetch<ReportRefund[]>(`/admin/reports/refunds${queryString(params)}`);
+export const adminGetReportDelivery = (params: { date_from?: string; date_to?: string } = {}) =>
+    apiFetch<ReportDelivery>(`/admin/reports/delivery${queryString(params)}`);
+export const adminReportSourcesCsvUrl = (params: { date_from?: string; date_to?: string } = {}) =>
+    `${API_BASE_URL}/admin/reports/sources${queryString({ ...params, format: "csv" })}`;
+
+export const adminGetStudents = (params: {
+    search?: string; active_access?: boolean; limit?: number; offset?: number;
+} = {}) => apiFetch<PageResponse<AdminStudentListItem>>(`/admin/students${queryString(params)}`);
+
+export const adminGetStudent = (userId: string) =>
+    apiFetch<AdminStudentDetail>(`/admin/students/${userId}`);
+
+export interface AdminCreateStudentRequest {
+    email: string;
+    full_name?: string;
+    phone?: string;
+    course_id: string;
+    access_days: number;
+    reason: string;
+}
+
+export interface AdminCreateStudentResponse {
+    user_id: string;
+    user_created: boolean;
+    entitlement_id: string;
+    expires_at: string;
+}
+
+export const adminCreateStudent = (data: AdminCreateStudentRequest) =>
+    apiFetch<AdminCreateStudentResponse>("/admin/students", {
+        method: "POST",
+        body: JSON.stringify(data),
+    });
+
+export const adminSendStudentLoginLink = (userId: string) =>
+    apiFetch<{ message: string; notification_id: string }>(`/admin/students/${userId}/send-login-link`, {
+        method: "POST",
+    });
+
+export const adminCreateStudentNote = (userId: string, body: string) =>
+    apiFetch(`/admin/students/${userId}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ body }),
+    });
+
+export const adminUpdateStudentTags = (userId: string, tags: string[], reason: string) =>
+    apiFetch<string[]>(`/admin/students/${userId}/tags`, {
+        method: "PUT",
+        body: JSON.stringify({ tags, reason }),
+    });
+
+export const adminGetEntitlements = (params: {
+    search?: string; status?: string; expiring_days?: number; limit?: number; offset?: number;
+} = {}) => apiFetch<PageResponse<AdminEntitlement>>(`/admin/entitlements${queryString(params)}`);
+
+export const adminRevokeEntitlement = (entitlementId: string, reason: string) =>
+    apiFetch<{ message: string; entitlement_id: string; status: string }>("/admin/revoke-entitlement", {
+        method: "POST",
+        body: JSON.stringify({ entitlement_id: entitlementId, reason }),
+    });
+
+export const adminExtendEntitlement = (entitlementId: string, days: number, reason: string) =>
+    apiFetch<{ entitlement_id: string; status: string; expires_at: string }>(`/admin/entitlements/${entitlementId}/extend`, {
+        method: "POST",
+        body: JSON.stringify({ days, reason }),
+    });
+
+export const adminChangeEntitlementState = (
+    entitlementId: string,
+    action: "suspend" | "restore",
+    reason: string,
+) => apiFetch<{ entitlement_id: string; status: string; expires_at: string }>(`/admin/entitlements/${entitlementId}/${action}`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+});
+
+export const adminGetOrders = (params: {
+    search?: string; status?: string; limit?: number; offset?: number;
+} = {}) => apiFetch<PageResponse<AdminOrder>>(`/admin/orders${queryString(params)}`);
+
+export const adminGetNotifications = (params: {
+    status?: string; channel?: string; limit?: number; offset?: number;
+} = {}) => apiFetch<PageResponse<AdminNotification>>(`/admin/notifications${queryString(params)}`);
+
+export const adminRetryNotification = (messageId: string, reason: string) =>
+    apiFetch<AdminNotification>(`/admin/notifications/${messageId}/retry`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+    });
+
+export const adminGetPaymentEvents = (params: {
+    status?: string; limit?: number; offset?: number;
+} = {}) => apiFetch<PageResponse<AdminPaymentEvent>>(`/admin/payment-events${queryString(params)}`);
+
+export const adminGetReconciliation = () =>
+    apiFetch<AdminReconciliation>("/admin/reconciliation");
+
+export const adminGetRefunds = () => apiFetch<AdminRefund[]>("/admin/refunds");
+
+export const adminCreateRefund = (data: {
+    purchase_id: string; amount_kopecks: number; reason: string;
+}) => apiFetch<AdminRefund>("/admin/refunds", { method: "POST", body: JSON.stringify(data) });
+
+export const adminUpdateRefund = (
+    refundId: string,
+    data: { status: AdminRefund["status"]; provider_reference?: string; note?: string; reason: string },
+) => apiFetch<AdminRefund>(`/admin/refunds/${refundId}`, { method: "PUT", body: JSON.stringify(data) });
 
 // --- File Upload ---
 
@@ -908,13 +1517,17 @@ export const adminReorderGallery = async (
 
 export interface PaymentLinkRequest {
     course_id: string;
-    tariff: "self" | "support";
+    // Checkout sells only the self-paced tariff; "support" is rejected by the backend.
+    tariff: "self";
     customer_email?: string;
     customer_phone?: string;
+    attribution?: CheckoutAttribution;
 }
 
 export interface PaymentLinkResponse {
     url: string;
+    order_id: string;
+    status_token: string;
 }
 
 /**
@@ -927,12 +1540,34 @@ export const getPaymentLink = async (data: PaymentLinkRequest): Promise<PaymentL
     });
 };
 
-export interface GuestPaymentLinkRequest {
+export interface GuestPaymentLinkRequest extends ConsentFields {
     course_id: string;
-    tariff: "self" | "support";
+    tariff: "self";
     customer_email: string;
     customer_phone?: string;
+    attribution?: CheckoutAttribution;
 }
+
+export interface PublicAnalyticsEvent {
+    event_id: string;
+    event_name: "landing_view" | "cta_click";
+    source: "web";
+    happened_at?: string;
+    anonymous_id: string;
+    course_id?: string;
+    utm_source?: string;
+    utm_medium?: string;
+    utm_campaign?: string;
+    utm_content?: string;
+    utm_term?: string;
+    properties?: Record<string, string | number | boolean | null>;
+}
+
+export const postAnalyticsEvent = (event: PublicAnalyticsEvent) =>
+    apiFetch<{ accepted: boolean; duplicate: boolean }>("/analytics/events", {
+        method: "POST",
+        body: JSON.stringify(event),
+    });
 
 /**
  * Ссылка на оплату без регистрации (email в форме; после оплаты придёт пароль на почту).

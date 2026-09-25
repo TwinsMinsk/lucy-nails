@@ -77,7 +77,7 @@ export function VideoPlayer({ lessonId, title, className }: VideoPlayerProps) {
                                 </h3>
                                 <p className="text-slate-300 text-sm leading-relaxed">
                                     Для просмотра этого урока необходимо приобрести курс.
-                                    Вернитесь на страницу курса и выберите подходящий тариф.
+                                    Вернитесь на страницу курса, чтобы оформить доступ.
                                 </p>
                             </div>
                         </>
