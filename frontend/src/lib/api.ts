@@ -1191,6 +1191,33 @@ export const adminGetStudents = (params: {
 export const adminGetStudent = (userId: string) =>
     apiFetch<AdminStudentDetail>(`/admin/students/${userId}`);
 
+export interface AdminCreateStudentRequest {
+    email: string;
+    full_name?: string;
+    phone?: string;
+    course_id: string;
+    access_days: number;
+    reason: string;
+}
+
+export interface AdminCreateStudentResponse {
+    user_id: string;
+    user_created: boolean;
+    entitlement_id: string;
+    expires_at: string;
+}
+
+export const adminCreateStudent = (data: AdminCreateStudentRequest) =>
+    apiFetch<AdminCreateStudentResponse>("/admin/students", {
+        method: "POST",
+        body: JSON.stringify(data),
+    });
+
+export const adminSendStudentLoginLink = (userId: string) =>
+    apiFetch<{ message: string; notification_id: string }>(`/admin/students/${userId}/send-login-link`, {
+        method: "POST",
+    });
+
 export const adminCreateStudentNote = (userId: string, body: string) =>
     apiFetch(`/admin/students/${userId}/notes`, {
         method: "POST",

@@ -1,7 +1,7 @@
 "use client"
 
 import { FormEvent, useEffect, useState } from "react"
-import { KeyRound, Loader2, Search, UserRound } from "lucide-react"
+import { KeyRound, Loader2, Mail, Search, UserPlus, UserRound } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -13,11 +13,13 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import {
+    adminCreateStudent,
     adminCreateStudentNote,
     adminGetCourses,
     adminGetStudent,
     adminGetStudents,
     adminGrantAccess,
+    adminSendStudentLoginLink,
     adminUpdateStudentTags,
     AdminCourseFullResponse,
     AdminStudentDetail,
@@ -25,6 +27,9 @@ import {
 } from "@/lib/api"
 
 const date = (value?: string | null) => value ? new Date(value).toLocaleString("ru-RU") : "—"
+const errorText = (error: unknown) => error instanceof Error ? error.message : undefined
+
+const emptyStudentForm = { email: "", full_name: "", phone: "", course_id: "", access_days: 30, reason: "" }
 
 export default function AdminUsersPage() {
     const [items, setItems] = useState<AdminStudentListItem[]>([])
@@ -40,6 +45,14 @@ export default function AdminUsersPage() {
     const [grantDays, setGrantDays] = useState(30)
     const [grantReason, setGrantReason] = useState("")
     const [saving, setSaving] = useState(false)
+    const [createOpen, setCreateOpen] = useState(false)
+    const [studentForm, setStudentForm] = useState(emptyStudentForm)
+    const canCreateStudent = Boolean(studentForm.email.trim())
+        && Boolean(studentForm.course_id)
+        && Number.isInteger(studentForm.access_days)
+        && studentForm.access_days >= 1
+        && studentForm.access_days <= 3650
+        && studentForm.reason.trim().length >= 5
 
     const load = async (query = search) => {
         setLoading(true)
@@ -107,13 +120,50 @@ export default function AdminUsersPage() {
         } finally { setSaving(false) }
     }
 
+    const createStudent = async (event: FormEvent) => {
+        event.preventDefault()
+        if (!canCreateStudent) return
+        setSaving(true)
+        try {
+            await adminCreateStudent({
+                email: studentForm.email.trim(),
+                full_name: studentForm.full_name.trim() || undefined,
+                phone: studentForm.phone.trim() || undefined,
+                course_id: studentForm.course_id,
+                access_days: studentForm.access_days,
+                reason: studentForm.reason.trim(),
+            })
+            setCreateOpen(false)
+            setStudentForm(emptyStudentForm)
+            await load()
+            toast.success("Ученик добавлен, письмо со ссылкой отправлено")
+        } catch (error) {
+            toast.error("Не удалось добавить ученика", { description: errorText(error) })
+        } finally { setSaving(false) }
+    }
+
+    const sendLoginLink = async () => {
+        if (!selected) return
+        if (!window.confirm(`Отправить на ${selected.email} ссылку для входа? По ней ученик сможет задать новый пароль.`)) return
+        setSaving(true)
+        try {
+            await adminSendStudentLoginLink(selected.id)
+            toast.success("Ссылка для входа отправлена", { description: selected.email })
+        } catch (error) {
+            toast.error("Не удалось отправить ссылку", { description: errorText(error) })
+        } finally { setSaving(false) }
+    }
+
     const submitSearch = (event: FormEvent) => { event.preventDefault(); void load() }
 
     return (
         <div className="container max-w-7xl space-y-6 px-4 py-8 md:px-6">
-            <div>
-                <h1 className="text-3xl font-bold">Ученики</h1>
-                <p className="mt-1 text-muted-foreground">Серверный поиск, доступы, прогресс, сертификаты, заметки и теги.</p>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h1 className="text-3xl font-bold">Ученики</h1>
+                    <p className="mt-1 text-muted-foreground">Серверный поиск, доступы, прогресс, сертификаты, заметки и теги.</p>
+                </div>
+                <Button className="gap-2" onClick={() => setCreateOpen(true)}><UserPlus className="h-4 w-4" />Добавить ученика</Button>
             </div>
             <Card>
                 <CardHeader className="gap-4 md:flex-row md:items-center md:justify-between">
@@ -183,8 +233,57 @@ export default function AdminUsersPage() {
                                 <div className="flex flex-wrap gap-2">{selected.tags.map((tag) => <Badge key={tag} variant="secondary">{tag}</Badge>)}</div>
                             </section>
                         </div>
-                        <DialogFooter><Button variant="outline" onClick={() => setSelected(null)}>Закрыть</Button></DialogFooter>
+                        <DialogFooter className="gap-2">
+                            <Button variant="outline" className="gap-2" disabled={saving} onClick={sendLoginLink}><Mail className="h-4 w-4" />Отправить ссылку для входа</Button>
+                            <Button variant="outline" onClick={() => setSelected(null)}>Закрыть</Button>
+                        </DialogFooter>
                     </>}
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+                <DialogContent className="max-w-lg">
+                    <form className="space-y-4" onSubmit={createStudent}>
+                        <DialogHeader>
+                            <DialogTitle>Добавить ученика</DialogTitle>
+                            <DialogDescription>Для ручной продажи или подарка. Если аккаунта ещё нет, он будет создан, а на почту уйдёт ссылка для установки пароля.</DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="student-email">Email *</Label>
+                            <Input id="student-email" type="email" required value={studentForm.email} onChange={(event) => setStudentForm({ ...studentForm, email: event.target.value })} placeholder="student@example.com" />
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="student-name">Имя</Label>
+                                <Input id="student-name" value={studentForm.full_name} onChange={(event) => setStudentForm({ ...studentForm, full_name: event.target.value })} />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="student-phone">Телефон</Label>
+                                <Input id="student-phone" type="tel" value={studentForm.phone} onChange={(event) => setStudentForm({ ...studentForm, phone: event.target.value })} />
+                            </div>
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label>Курс *</Label>
+                            <Select value={studentForm.course_id} onValueChange={(value) => setStudentForm({ ...studentForm, course_id: value })}>
+                                <SelectTrigger><SelectValue placeholder="Выберите курс" /></SelectTrigger>
+                                <SelectContent>{courses.map((course) => <SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>)}</SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="student-days">Дней доступа</Label>
+                            <Input id="student-days" type="number" min={1} max={3650} value={studentForm.access_days} onChange={(event) => setStudentForm({ ...studentForm, access_days: Number(event.target.value) })} />
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="student-reason">Причина *</Label>
+                            <Textarea id="student-reason" value={studentForm.reason} onChange={(event) => setStudentForm({ ...studentForm, reason: event.target.value })} placeholder="Например: оплата переводом, подарок" />
+                        </div>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Отмена</Button>
+                            <Button type="submit" disabled={saving || !canCreateStudent}>
+                                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Добавить
+                            </Button>
+                        </DialogFooter>
+                    </form>
                 </DialogContent>
             </Dialog>
         </div>

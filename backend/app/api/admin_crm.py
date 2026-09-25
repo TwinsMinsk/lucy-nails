@@ -1,16 +1,23 @@
 """Operational CRM endpoints for students, commerce, and delivery queues."""
 
+import secrets
 from datetime import datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import delete, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.dependencies import require_permission, user_has_permission
+from app.core.security import (
+    create_account_activation_token,
+    create_password_reset_token,
+    get_password_hash,
+)
 from app.models.certificate import Certificate
 from app.models.course import Course
 from app.models.crm import StudentNote, StudentTag, StudentTagAssignment
@@ -22,7 +29,9 @@ from app.models.progress import Progress
 from app.models.purchase import Purchase
 from app.models.refund import RefundRequest
 from app.models.user import User
+from app.services.access_service import AccessService
 from app.services.audit_service import append_audit_log
+from app.services.outbox_service import enqueue_outbox_message
 from app.services.runtime_settings_service import RuntimeSettingsService
 
 
@@ -140,6 +149,29 @@ class StudentDetail(BaseModel):
     certificates: list[StudentCertificate]
     notes: list[StudentNoteResponse]
     tags: list[str]
+
+
+class StudentCreateRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    email: EmailStr
+    full_name: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=64)
+    course_id: UUID
+    access_days: int = Field(default=settings.COURSE_ACCESS_DAYS, ge=1, le=3650)
+    reason: str = Field(..., min_length=5, max_length=1000)
+
+
+class StudentCreateResponse(BaseModel):
+    user_id: UUID
+    user_created: bool
+    entitlement_id: UUID
+    expires_at: datetime
+
+
+class LoginLinkResponse(BaseModel):
+    message: str
+    notification_id: UUID
 
 
 class StudentNoteCreate(BaseModel):
@@ -501,6 +533,154 @@ async def student_detail(
         notes=list(notes),
         tags=list(tags),
     )
+
+
+@router.post(
+    "/students",
+    response_model=StudentCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_student_with_access(
+    data: StudentCreateRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_permission("access.manage")),
+):
+    """Create (or reuse) a student account, grant manual access and email them."""
+    course = await db.get(Course, data.course_id)
+    if course is None:
+        raise HTTPException(status_code=404, detail="Course not found")
+    email = data.email.strip().lower()
+    user = await db.scalar(select(User).where(func.lower(User.email) == email).limit(1))
+    user_created = user is None
+    if user is None:
+        user = User(
+            email=email,
+            # Unusable until the student sets a password via the activation link.
+            password_hash=get_password_hash(secrets.token_urlsafe(32)),
+            full_name=data.full_name or None,
+            phone=data.phone or None,
+            role="student",
+        )
+        db.add(user)
+        try:
+            await db.flush()
+        except IntegrityError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="Пользователь с таким email уже существует — повторите запрос",
+            ) from exc
+
+    entitlement = await AccessService.grant_manual_access(
+        db,
+        user_id=user.id,
+        course_id=course.id,
+        tariff="self",
+        access_days=data.access_days,
+        granted_by_id=admin.id,
+        reason=data.reason,
+    )
+    frontend_url = settings.FRONTEND_URL.rstrip("/")
+    if user_created:
+        activation_token = create_account_activation_token(user.id, user.token_version)
+        notification_kind = "account_activation"
+        enqueue_outbox_message(
+            db,
+            kind=notification_kind,
+            recipient=user.email,
+            payload={
+                "activation_url": f"{frontend_url}/auth/activate?token={activation_token}",
+                "course_title": course.title,
+                "expires_at": entitlement.expires_at.isoformat(),
+            },
+            dedupe_key=f"admin-student:{entitlement.id}:activation",
+        )
+        append_audit_log(
+            db,
+            actor_user_id=admin.id,
+            action="student.create",
+            object_type="user",
+            object_id=str(user.id),
+            reason=data.reason,
+            correlation_id=request.state.correlation_id,
+            new_value={"role": "student", "course_id": str(course.id)},
+        )
+    else:
+        notification_kind = "access_granted"
+        enqueue_outbox_message(
+            db,
+            kind=notification_kind,
+            recipient=user.email,
+            payload={
+                "login_url": f"{frontend_url}/auth/login",
+                "course_title": course.title,
+                "expires_at": entitlement.expires_at.isoformat(),
+            },
+            dedupe_key=f"admin-student:{entitlement.id}:access",
+        )
+    append_audit_log(
+        db,
+        actor_user_id=admin.id,
+        action="entitlement.grant",
+        object_type="entitlement",
+        object_id=str(entitlement.id),
+        reason=data.reason,
+        correlation_id=request.state.correlation_id,
+        new_value={
+            "user_id": str(user.id),
+            "course_id": str(course.id),
+            "tariff": "self",
+            "access_days": data.access_days,
+            "expires_at": entitlement.expires_at.isoformat(),
+            "notification": notification_kind,
+        },
+    )
+    await db.commit()
+    return StudentCreateResponse(
+        user_id=user.id,
+        user_created=user_created,
+        entitlement_id=entitlement.id,
+        expires_at=entitlement.expires_at,
+    )
+
+
+@router.post("/students/{user_id}/send-login-link", response_model=LoginLinkResponse)
+async def send_student_login_link(
+    user_id: UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_permission("users.manage")),
+):
+    """Email the student a one-time link to set a password and sign in."""
+    user = await db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    token = create_password_reset_token(user.id, user.token_version)
+    message = enqueue_outbox_message(
+        db,
+        kind="login_link",
+        recipient=user.email,
+        payload={
+            "login_url": (
+                f"{settings.FRONTEND_URL.rstrip('/')}/auth/reset-password?token={token}"
+            ),
+        },
+        # Every admin request is a deliberate resend, so it must never be deduplicated.
+        dedupe_key=f"admin-login-link:{user.id}:{uuid4().hex}",
+    )
+    await db.flush()
+    append_audit_log(
+        db,
+        actor_user_id=admin.id,
+        action="student.login_link.send",
+        object_type="user",
+        object_id=str(user.id),
+        reason="Admin sent a login link",
+        correlation_id=request.state.correlation_id,
+        new_value={"outbox_message_id": str(message.id)},
+    )
+    await db.commit()
+    return LoginLinkResponse(message="Login link queued", notification_id=message.id)
 
 
 @router.post(

@@ -245,6 +245,19 @@ class EmailService:
         await EmailService._send(email, "Доступ к курсу открыт — Lucy Nails Academy", html)
 
     @staticmethod
+    async def send_login_link(email: str, login_url: str) -> None:
+        safe_url = escape(login_url, quote=True)
+        html = (
+            "<h1>Вход в личный кабинет</h1>"
+            "<p>Служба поддержки отправила вам ссылку для входа в кабинет Lucy Nails Academy.</p>"
+            f'<p><a href="{safe_url}">Задать пароль и войти</a></p>'
+            f"<p>Ссылка действует {settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} мин. "
+            "и может быть использована один раз. Если вы не обращались в поддержку, "
+            "просто проигнорируйте это письмо.</p>"
+        )
+        await EmailService._send(email, "Ссылка для входа — Lucy Nails Academy", html)
+
+    @staticmethod
     async def send_access_expiry_reminder(
         email: str, course_title: str, days: int, expires_at: str
     ) -> None:
