@@ -5,7 +5,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Enum as SQLEnum
+from sqlalchemy import Index, String, func, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -13,11 +13,18 @@ from app.core.database import Base
 
 class User(Base):
     """Пользователи системы (ученики и админы)."""
-    
+
     __tablename__ = "users"
-    
+
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+
+    __table_args__ = (
+        # Enforces email case-insensitivity at the DB level; lookups also use
+        # func.lower(email) so legacy mixed-case rows still match.
+        Index("ix_users_email_lower", func.lower(email), unique=True),
+    )
+
     phone: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     telegram_id: Mapped[int | None] = mapped_column(unique=True, index=True)

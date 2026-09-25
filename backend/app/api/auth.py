@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 import jwt
 from jwt.exceptions import PyJWTError as JWTError
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -410,7 +410,7 @@ async def forgot_password(
     Ответ всегда одинаковый (не раскрывает наличие email — защита от enumeration).
     """
     email = data.email.strip().lower()
-    result = await db.execute(select(User).where(User.email == email))
+    result = await db.execute(select(User).where(func.lower(User.email) == email))
     user = result.scalar_one_or_none()
     if user:
         token = create_password_reset_token(user.id, user.token_version)

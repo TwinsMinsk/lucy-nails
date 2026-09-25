@@ -1,6 +1,6 @@
 """Utilities for one-off production admin bootstrap."""
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_password_hash
@@ -30,7 +30,7 @@ async def ensure_admin_user(db: AsyncSession, email: str, password: str) -> User
     if len(password) < 12:
         raise ValueError("Admin password must be at least 12 characters")
 
-    result = await db.execute(select(User).where(User.email == normalized_email))
+    result = await db.execute(select(User).where(func.lower(User.email) == normalized_email))
     user = result.scalar_one_or_none()
 
     if user is None:

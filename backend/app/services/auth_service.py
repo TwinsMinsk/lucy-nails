@@ -5,7 +5,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_password_hash, verify_password, create_access_token, create_refresh_token
@@ -31,9 +31,10 @@ class AuthService:
         Raises:
             ValueError: Если email уже существует
         """
-        # Проверка существования email
+        # Проверка существования email (case-insensitive: сравниваем по lower(),
+        # чтобы легаси-записи со смешанным регистром тоже находились)
         result = await db.execute(
-            select(User).where(User.email == data.email)
+            select(User).where(func.lower(User.email) == data.email)
         )
         existing_user = result.scalar_one_or_none()
         
@@ -68,10 +69,10 @@ class AuthService:
             User если аутентификация успешна, None если нет
         """
         result = await db.execute(
-            select(User).where(User.email == data.email)
+            select(User).where(func.lower(User.email) == data.email)
         )
         user = result.scalar_one_or_none()
-        
+
         if not user:
             return None
         
