@@ -446,7 +446,9 @@ async def delete_course(
     admin: User = Depends(require_permission("content.manage"))
 ):
     """Удалить курс."""
-    query = select(Course).where(Course.id == course_id)
+    # Lock the row first: inserts referencing the course take a key-share lock
+    # on it, so no purchase/order can appear between the checks and the delete.
+    query = select(Course).where(Course.id == course_id).with_for_update()
     result = await db.execute(query)
     course = result.scalar_one_or_none()
     

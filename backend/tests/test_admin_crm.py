@@ -562,11 +562,15 @@ async def test_send_login_link_enqueues_a_message_every_time(
         f"/api/admin/students/{uuid4()}/send-login-link", headers=headers
     )
     assert unknown.status_code == 404
+    # The admin UI posts without a body; an explicit reason is optional.
     first = await client.post(
-        f"/api/admin/students/{student.id}/send-login-link", headers=headers
+        f"/api/admin/students/{student.id}/send-login-link",
+        headers={**headers, "Content-Type": "application/json"},
     )
     second = await client.post(
-        f"/api/admin/students/{student.id}/send-login-link", headers=headers
+        f"/api/admin/students/{student.id}/send-login-link",
+        json={"reason": "Student asked support for a new link"},
+        headers=headers,
     )
 
     assert first.status_code == 200, first.text
@@ -582,13 +586,53 @@ async def test_send_login_link_enqueues_a_message_every_time(
         assert "/auth/activate?token=" in url
         token_payload = verify_account_activation_token(url.split("token=", 1)[1])
         assert token_payload["sub"] == str(student.id)
-    audits = await db.scalar(
-        select(func.count(AuditLog.id)).where(
-            AuditLog.action == "student.login_link.send",
-            AuditLog.object_id == str(student.id),
+    reasons = (
+        await db.execute(
+            select(AuditLog.reason).where(
+                AuditLog.action == "student.login_link.send",
+                AuditLog.object_id == str(student.id),
+            )
         )
+    ).scalars().all()
+    assert sorted(reasons) == sorted(
+        ["Отправлена ссылка для входа", "Student asked support for a new link"]
     )
-    assert audits == 2
+
+
+@pytest.mark.asyncio
+async def test_send_login_link_refuses_team_accounts(client: AsyncClient, db: AsyncSession):
+    headers = await _admin_headers(client, db)
+    legacy_admin = User(
+        email="legacy-admin@example.com",
+        password_hash=get_password_hash("adminpass2"),
+        role="admin",
+    )
+    team_member = User(
+        email="support-agent@example.com",
+        password_hash=get_password_hash("staffpass2"),
+        role="student",
+    )
+    role = Role(name="support_agent", description="support_agent", is_system=True)
+    db.add_all([legacy_admin, team_member, role])
+    await db.flush()
+    db.add(UserRoleAssignment(user_id=team_member.id, role_id=role.id))
+    await db.commit()
+
+    responses = [
+        await client.post(f"/api/admin/students/{target.id}/send-login-link", headers=headers)
+        for target in (legacy_admin, team_member)
+    ]
+
+    for response in responses:
+        assert response.status_code == 409, response.text
+        assert response.json()["detail"] == "Ссылку для входа можно отправить только ученику"
+    assert await db.scalar(select(func.count(OutboxMessage.id))) == 0
+    assert (
+        await db.scalar(
+            select(func.count(AuditLog.id)).where(AuditLog.action == "student.login_link.send")
+        )
+        == 0
+    )
 
 
 @pytest.mark.asyncio

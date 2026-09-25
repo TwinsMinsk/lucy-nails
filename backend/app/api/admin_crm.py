@@ -28,6 +28,7 @@ from app.models.outbox import OutboxMessage
 from app.models.payment_event import PaymentEvent
 from app.models.progress import Progress
 from app.models.purchase import Purchase
+from app.models.rbac import UserRoleAssignment
 from app.models.refund import RefundRequest
 from app.models.user import User
 from app.services.access_service import AccessService
@@ -182,6 +183,10 @@ class StudentCreateResponse(BaseModel):
     user_created: bool
     entitlement_id: UUID
     expires_at: datetime
+
+
+class LoginLinkRequest(BaseModel):
+    reason: str = Field(default="Отправлена ссылка для входа", min_length=5, max_length=1000)
 
 
 class LoginLinkResponse(BaseModel):
@@ -704,13 +709,25 @@ async def create_student_with_access(
 async def send_student_login_link(
     user_id: UUID,
     request: Request,
+    data: LoginLinkRequest | None = None,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("users.manage")),
 ):
     """Email the student a one-time link to set a password and sign in."""
+    data = data or LoginLinkRequest()
     user = await db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
+    # The link sets a new password, so it must never reach a team account
+    # (legacy admin role or any RBAC role assignment).
+    team_assignment = await db.scalar(
+        select(UserRoleAssignment.id).where(UserRoleAssignment.user_id == user.id).limit(1)
+    )
+    if user.role != "student" or team_assignment is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Ссылку для входа можно отправить только ученику",
+        )
     # Activation tokens live for hours (not minutes), so a student can open the
     # support email later; /auth/activate sets the password for any account.
     token = create_account_activation_token(user.id, user.token_version)
@@ -733,7 +750,7 @@ async def send_student_login_link(
         action="student.login_link.send",
         object_type="user",
         object_id=str(user.id),
-        reason="Admin sent a login link",
+        reason=data.reason,
         correlation_id=request.state.correlation_id,
         new_value={"outbox_message_id": str(message.id)},
     )
