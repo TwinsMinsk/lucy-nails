@@ -187,6 +187,17 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
         [lesson?.content]
     );
 
+    // Sorted copies for the outline; module numbers are positions, not raw order_index.
+    const outlineModules = useMemo(
+        () => [...modules]
+            .sort((a, b) => a.order_index - b.order_index)
+            .map((module) => ({
+                ...module,
+                lessons: [...(module.lessons ?? [])].sort((a, b) => a.order_index - b.order_index),
+            })),
+        [modules]
+    );
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-[calc(100vh-64px)]">
@@ -220,13 +231,13 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
     const isLessonCompleted = completedLessonIds.includes(lesson.id);
     const courseOutline = (
         <div className="p-4 space-y-6">
-            {modules.map((module) => (
+            {outlineModules.map((module, moduleIndex) => (
                 <div key={module.id} className="space-y-2">
                     <h3 className="text-sm font-medium text-text-secondary uppercase tracking-wider pl-2">
-                        Модуль {module.order_index}: {module.title}
+                        Модуль {moduleIndex + 1}: {module.title}
                     </h3>
                     <div className="space-y-1">
-                        {module.lessons?.sort((a, b) => a.order_index - b.order_index).map((l) => {
+                        {module.lessons.map((l) => {
                             const isCurrent = l.id === lessonId;
                             const isCompleted = completedLessonIds.includes(l.id);
 
