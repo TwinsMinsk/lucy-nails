@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Suspense, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 
@@ -38,7 +38,12 @@ function LinkHelp() {
 function ActivateAccountForm() {
     const router = useRouter()
     const searchParams = useSearchParams()
-    const token = searchParams.get("token") ?? ""
+    // Read the token once, then drop it from the address bar and history.
+    const [token] = useState(() => searchParams.get("token") ?? "")
+
+    useEffect(() => {
+        if (token) window.history.replaceState({}, "", "/auth/activate")
+    }, [token])
 
     const [password, setPassword] = useState("")
     const [confirm, setConfirm] = useState("")
@@ -59,9 +64,10 @@ function ActivateAccountForm() {
         try {
             await activateAccount(token, password)
             toast.success("Пароль сохранён. Войдите с вашим email и новым паролем")
-            router.push("/auth/login")
+            router.replace("/auth/login")
         } catch (error) {
-            if (error instanceof ApiError && error.status === 400) {
+            // 422 is a malformed token; never show raw validation text to the user.
+            if (error instanceof ApiError && (error.status === 400 || error.status === 422)) {
                 setLinkInvalid(true)
                 toast.error(INVALID_LINK_MESSAGE)
                 return
@@ -79,7 +85,7 @@ function ActivateAccountForm() {
                 <CardHeader className="space-y-1">
                     <CardTitle className="text-2xl font-bold text-center">Создайте пароль</CardTitle>
                     <CardDescription className="text-center">
-                        В ссылке не хватает кода активации. Откройте ссылку из письма целиком
+                        Код активации не найден. Откройте ссылку из письма ещё раз
                         или запросите новую через «Забыли пароль?» — укажите email, на который оформлен курс.
                     </CardDescription>
                 </CardHeader>
