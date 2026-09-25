@@ -1,0 +1,3 @@
+# False positives: test-only fixture secrets and a localStorage key name.
+a95d891998282d5780e3d7d703928c1a11e18fb6:backend/tests/test_production_hardening.py:generic-api-key:15
+2543e62f0a38969142a7682fe913ff0a46317070:frontend/src/lib/attribution.ts:generic-api-key:1
