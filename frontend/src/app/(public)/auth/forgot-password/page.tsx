@@ -26,7 +26,7 @@ export default function ForgotPasswordPage() {
         event.preventDefault()
         setIsLoading(true)
         try {
-            await forgotPassword(email)
+            await forgotPassword(email.trim())
         } catch {
             // Не раскрываем, существует ли аккаунт — показываем тот же результат.
         } finally {
@@ -57,6 +57,10 @@ export default function ForgotPasswordPage() {
                                 <Input
                                     id="email"
                                     type="email"
+                                    autoComplete="email"
+                                    autoCapitalize="none"
+                                    autoCorrect="off"
+                                    spellCheck={false}
                                     placeholder="name@example.com"
                                     value={email}
                                     onChange={(event) => setEmail(event.target.value)}

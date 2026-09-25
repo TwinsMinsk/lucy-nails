@@ -48,9 +48,11 @@ export default function RegisterPage() {
         setIsLoading(true)
 
         try {
+            const email = values.email.trim()
+
             // 1. Регистрация
             await register({
-                email: values.email,
+                email,
                 password: values.password,
             })
 
@@ -60,7 +62,7 @@ export default function RegisterPage() {
 
             // 2. Auto-login после успешной регистрации
             await login({
-                email: values.email,
+                email,
                 password: values.password,
             })
 
@@ -99,7 +101,15 @@ export default function RegisterPage() {
                                     <FormItem>
                                         <FormLabel>Email</FormLabel>
                                         <FormControl>
-                                            <Input placeholder="name@example.com" {...field} />
+                                            <Input
+                                                type="email"
+                                                autoComplete="email"
+                                                autoCapitalize="none"
+                                                autoCorrect="off"
+                                                spellCheck={false}
+                                                placeholder="name@example.com"
+                                                {...field}
+                                            />
                                         </FormControl>
                                         <FormMessage />
                                     </FormItem>

@@ -101,7 +101,7 @@ export default function LoginPage() {
 
     async function onSubmit(values: z.infer<typeof LoginSchema>) {
         setIsLoading(true)
-        const pending = { email: values.email, password: values.password }
+        const pending = { email: values.email.trim(), password: values.password }
         setCredentials(pending)
         try {
             await login(pending)
@@ -182,7 +182,15 @@ export default function LoginPage() {
                                         <FormItem>
                                             <FormLabel>Email</FormLabel>
                                             <FormControl>
-                                                <Input autoComplete="email" placeholder="name@example.com" {...field} />
+                                                <Input
+                                                    type="email"
+                                                    autoComplete="email"
+                                                    autoCapitalize="none"
+                                                    autoCorrect="off"
+                                                    spellCheck={false}
+                                                    placeholder="name@example.com"
+                                                    {...field}
+                                                />
                                             </FormControl>
                                             <FormMessage />
                                         </FormItem>

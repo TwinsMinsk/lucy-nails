@@ -97,6 +97,9 @@ export function GuestCheckoutDialog({
               id="guest-checkout-email"
               type="email"
               autoComplete="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
