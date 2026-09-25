@@ -295,10 +295,10 @@ async def test_prodamus_webhook_keeps_repeat_payments_idempotent(
     )
     payload_two, headers_two = _signed_payload(
         {
-            "order_id": _build_prodamus_order_id(course.id, "support"),
+            "order_id": _build_prodamus_order_id(course.id, "self"),
             "order_num": "payment-two",
             "customer_email": "repeat-buyer@example.com",
-            "sum": "10000",
+            "sum": "5000",
             "currency": "rub",
             "payment_status": "success",
         }
@@ -320,13 +320,19 @@ async def test_prodamus_webhook_keeps_repeat_payments_idempotent(
     purchases_result = await db.execute(select(Purchase).order_by(Purchase.payment_id))
     purchases = purchases_result.scalars().all()
     assert [purchase.payment_id for purchase in purchases] == ["payment-one", "payment-two"]
-    assert [purchase.tariff for purchase in purchases] == ["self", "support"]
+    assert [purchase.tariff for purchase in purchases] == ["self", "self"]
     event_count = await db.scalar(select(func.count(PaymentEvent.id)))
     assert event_count == 2
 
 
 @pytest.mark.asyncio
-async def test_prodamus_webhook_rejects_non_success_status(client: AsyncClient, db: AsyncSession):
+async def test_prodamus_webhook_rejects_non_success_status(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", 555000111)
     course = Course(
         title="Webhook Failed Course",
         price_self=5000,
@@ -338,13 +344,14 @@ async def test_prodamus_webhook_rejects_non_success_status(client: AsyncClient, 
     await db.commit()
     await db.refresh(course)
 
+    reference = _build_prodamus_order_id(course.id, "self")
     payload, headers = _signed_payload(
         {
-            "order_id": _build_prodamus_order_id(course.id, "self"),
+            "order_id": reference,
             "customer_email": "failed-webhook@example.com",
             "sum": "5000",
             "currency": "rub",
-            "payment_status": "failed",
+            "payment_status": "order_denied",
         }
     )
 
@@ -356,6 +363,14 @@ async def test_prodamus_webhook_rejects_non_success_status(client: AsyncClient, 
     assert event.error_code == "payment_not_successful"
     assert "customer_email" not in event.sanitized_payload
     assert "failed-webhook@example.com" not in str(event.sanitized_payload)
+    # A decline took no money, so the owner gets an informational note only.
+    alerts = await _owner_messages(db, "owner_payment_rejected")
+    assert len(alerts) == 1
+    assert alerts[0].payload["text"] == (
+        "ℹ️ Неуспешная попытка оплаты (статус: order_denied)\n"
+        "Email: failed-webhook@example.com\n"
+        f"Заказ: {reference}"
+    )
 
 
 @pytest.mark.asyncio
@@ -529,12 +544,12 @@ async def test_successful_webhook_creates_purchase_entitlement(
     await _create_user(db, "entitled-buyer@example.com")
     await db.commit()
 
-    order_id = _build_prodamus_order_id(course.id, "support")
+    order_id = _build_prodamus_order_id(course.id, "self")
     payload, headers = _signed_payload(
         {
             "order_id": order_id,
             "customer_email": "entitled-buyer@example.com",
-            "sum": "10000",
+            "sum": "5000",
             "currency": "rub",
             "payment_status": "success",
         }
@@ -555,7 +570,7 @@ async def test_successful_webhook_creates_purchase_entitlement(
     assert entitlement.course_id == purchase.course_id
     assert entitlement.source == "purchase"
     assert entitlement.status == "active"
-    assert entitlement.tariff == "support"
+    assert entitlement.tariff == "self"
     assert entitlement.expires_at == purchase.expires_at
 
 
@@ -1042,6 +1057,88 @@ async def test_webhook_still_accepts_historical_support_order(
     assert purchase.tariff == "support"
 
 
+@pytest.mark.asyncio
+async def test_webhook_rejects_legacy_reference_for_discontinued_tariff(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A hand-crafted payform link must not buy the discontinued support tariff."""
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", 555000111)
+    course = await _published_course(db, "Crafted Support Course")
+    reference = _build_prodamus_order_id(course.id, "support")
+    payload, headers = _signed_payload(
+        {
+            "order_id": "400300",
+            "order_num": reference,
+            "customer_email": "crafted-support@example.com",
+            "sum": "10000",
+            "currency": "rub",
+            "payment_status": "success",
+        }
+    )
+
+    response = await client.post("/api/payments/webhook", json=payload, headers=headers)
+
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"] == "Tariff not sellable"
+    assert await db.scalar(select(func.count(Purchase.id))) == 0
+    assert await db.scalar(select(func.count(Entitlement.id))) == 0
+    event = (await db.execute(select(PaymentEvent))).scalar_one()
+    assert event.processing_status == "rejected"
+    assert event.error_code == "tariff_not_sellable"
+    alerts = await _owner_messages(db, "owner_payment_rejected")
+    assert [alert.payload["text"] for alert in alerts] == [
+        "⚠️ Платёж не обработан: tariff_not_sellable\n"
+        "Сумма: 10 000 ₽\n"
+        "Email: crafted-support@example.com\n"
+        f"Заказ: {reference}"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_webhook_retry_of_recorded_legacy_support_payment_stays_ok(
+    client: AsyncClient,
+    db: AsyncSession,
+):
+    """Support payments recorded before the tariff was retired still dedupe to 200."""
+    course = await _published_course(db, "Recorded Support Course")
+    buyer = await _create_user(db, "recorded-support@example.com")
+    now = datetime.utcnow()
+    db.add(
+        Purchase(
+            user_id=buyer.id,
+            course_id=course.id,
+            tariff="support",
+            amount_kopecks=1000000,
+            payment_id="400400",
+            payment_status="success",
+            paid_at=now,
+            expires_at=now + timedelta(days=30),
+        )
+    )
+    await db.commit()
+    payload, headers = _signed_payload(
+        {
+            "order_id": "400400",
+            "order_num": _build_prodamus_order_id(course.id, "support"),
+            "customer_email": "recorded-support@example.com",
+            "sum": "10000",
+            "currency": "rub",
+            "payment_status": "success",
+            "attempt": "3",
+        }
+    )
+
+    response = await client.post("/api/payments/webhook", json=payload, headers=headers)
+
+    assert response.status_code == 200, response.text
+    assert await db.scalar(select(func.count(Purchase.id))) == 1
+    event = (await db.execute(select(PaymentEvent))).scalar_one()
+    assert event.processing_status == "duplicate"
+
+
 # --- Webhook hardening (audit round 2: B1 status, B2 race, signature/amount) ---
 
 
@@ -1071,6 +1168,37 @@ async def test_webhook_invalid_signature_rejected(client: AsyncClient, db: Async
     }
     r = await client.post("/api/payments/webhook", json=payload, headers={"Sign": "deadbeef"})
     assert r.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_webhook_deeply_nested_body_is_rejected_without_server_error(
+    client: AsyncClient, db: AsyncSession
+):
+    deep_form = {"a" + "[0]" * 5000: "x"}
+    deep_json_array = "[" * 5000 + "]" * 5000
+    deep_json_object = '{"a":' * 600 + "1" + "}" * 600
+    json_headers = {"Content-Type": "application/json"}
+
+    responses = [
+        await client.post("/api/payments/webhook", data=deep_form),
+        await client.post(
+            "/api/payments/webhook", data=deep_form, headers={"Sign": "deadbeef"}
+        ),
+        await client.post(
+            "/api/payments/webhook",
+            content=deep_json_array,
+            headers={**json_headers, "Sign": "deadbeef"},
+        ),
+        await client.post(
+            "/api/payments/webhook",
+            content=deep_json_object,
+            headers={**json_headers, "Sign": "deadbeef"},
+        ),
+    ]
+
+    assert [response.status_code for response in responses] == [400, 400, 400, 400]
+    assert responses[0].json()["detail"] == "Missing signature"
+    assert await db.scalar(select(func.count(PaymentEvent.id))) == 0
 
 
 @pytest.mark.asyncio
@@ -1137,10 +1265,10 @@ async def test_webhook_two_payments_same_new_email_keeps_both(
     )
     p2, h2 = _signed_payload(
         {
-            "order_id": _build_prodamus_order_id(course.id, "support"),
+            "order_id": _build_prodamus_order_id(course.id, "self"),
             "order_num": "race-two",
             "customer_email": "racebuyer@example.com",
-            "sum": "10000",
+            "sum": "5000",
             "currency": "rub",
             "payment_status": "success",
         }
@@ -1426,6 +1554,86 @@ async def test_rejected_signed_webhook_alerts_owner_once(
         "Сумма: 9 999 ₽\n"
         "Email: mismatch-alert@example.com\n"
         f"Заказ: {reference}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_rejected_webhook_alert_race_keeps_422(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A concurrent delivery committing the same alert must not turn 422 into 500."""
+    from app.services.outbox_service import enqueue_outbox_message
+
+    async def unchecked_alert(session, *, kind, text, dedupe_key):
+        # Emulate losing the race: the existence check passed, then the other
+        # delivery committed the same dedupe key before this insert.
+        enqueue_outbox_message(
+            session,
+            kind=kind,
+            channel="telegram",
+            recipient="555000111",
+            payload={"text": text},
+            dedupe_key=dedupe_key,
+        )
+        return True
+
+    monkeypatch.setattr("app.api.payments.enqueue_owner_telegram_alert", unchecked_alert)
+    course = await _published_course(db, "Alert Race Course")
+    notification = {
+        "order_id": "300889",
+        "order_num": _build_prodamus_order_id(course.id, "self"),
+        "customer_email": "alert-race@example.com",
+        "sum": "9999",
+        "currency": "rub",
+        "payment_status": "success",
+        "attempt": "1",
+    }
+    next_attempt = {**notification, "attempt": "2"}
+
+    first = await client.post(
+        "/api/payments/webhook", json=notification, headers=_signed_payload(notification)[1]
+    )
+    second = await client.post(
+        "/api/payments/webhook", json=next_attempt, headers=_signed_payload(next_attempt)[1]
+    )
+
+    assert [first.status_code, second.status_code] == [422, 422]
+    assert second.json()["detail"] == "Amount mismatch"
+    assert len(await _owner_messages(db, "owner_payment_rejected")) == 1
+    assert await db.scalar(select(func.count(PaymentEvent.id))) == 2
+
+
+@pytest.mark.asyncio
+async def test_rejected_webhook_without_order_ids_alerts_once_across_attempts(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", 555000111)
+    notification = {
+        "customer_email": "no-ids@example.com",
+        "sum": "5000",
+        "currency": "rub",
+        "payment_status": "success",
+        "attempt": "1",
+    }
+
+    responses = [
+        await client.post(
+            "/api/payments/webhook", json=attempt, headers=_signed_payload(attempt)[1]
+        )
+        for attempt in (notification, {**notification, "attempt": "2"})
+    ]
+
+    assert [response.status_code for response in responses] == [422, 422]
+    assert await db.scalar(select(func.count(PaymentEvent.id))) == 2
+    alerts = await _owner_messages(db, "owner_payment_rejected")
+    assert len(alerts) == 1
+    assert alerts[0].payload["text"].startswith(
+        "⚠️ Платёж не обработан: missing_provider_order_id\n"
     )
 
 

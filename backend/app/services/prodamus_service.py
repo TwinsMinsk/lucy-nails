@@ -24,6 +24,8 @@ logger = logging.getLogger(__name__)
 
 _BRACKET_KEY_RE = re.compile(r"^([^\[\]]+)((?:\[[^\[\]]*\])+)$")
 _BRACKET_SEGMENT_RE = re.compile(r"\[([^\[\]]*)\]")
+# PHP's default max_input_nesting_level: deeper form keys never reach $_POST.
+_MAX_INPUT_NESTING_LEVEL = 64
 
 
 def _to_str(value: Any) -> Any:
@@ -37,6 +39,9 @@ def _to_str(value: Any) -> Any:
         return ""
     if isinstance(value, bool):
         return "1" if value else ""
+    if isinstance(value, float) and value.is_integer():
+        # PHP strval(5900.0) is "5900"; other floats keep the shortest repr.
+        return str(int(value))
     return str(value)
 
 
@@ -57,7 +62,8 @@ def nest_form_fields(items: Iterable[tuple[str, Any]]) -> dict[str, Any]:
     ``products[0][name]=x`` must become ``{"products": [{"name": "x"}]}``.
     A bracketed level whose keys are exactly ``0..n-1`` becomes a list, any
     other level stays a dict with string keys. Repeated keys keep the last
-    value, as in PHP. Non-string values (uploaded files) are ignored.
+    value, as in PHP. Non-string values (uploaded files) and keys nested
+    deeper than PHP's ``max_input_nesting_level`` are ignored.
     """
     root: dict[str, Any] = {}
     for key, value in items:
@@ -67,7 +73,10 @@ def nest_form_fields(items: Iterable[tuple[str, Any]]) -> dict[str, Any]:
         if match is None:
             root[key] = value
             continue
-        path = [match.group(1), *_BRACKET_SEGMENT_RE.findall(match.group(2))]
+        segments = _BRACKET_SEGMENT_RE.findall(match.group(2))
+        if len(segments) > _MAX_INPUT_NESTING_LEVEL:
+            continue
+        path = [match.group(1), *segments]
         node = root
         for depth, segment in enumerate(path):
             if depth and segment == "":
@@ -188,9 +197,19 @@ class ProdamusService:
             logger.error("PRODAMUS_SECRET_KEY is not configured")
             return False
 
+        # PHP Hmac::verify compares case-insensitively; our digest is lowercase hex.
+        signature = signature.strip().lower()
+        # Compare bytes: compare_digest() raises on non-ASCII str (headers are latin-1).
+        received = signature.encode("utf-8")
+
         # First, try standard signature
-        expected = _make_signature(payload, secret)
-        if hmac.compare_digest(expected, signature):
+        try:
+            expected = _make_signature(payload, secret)
+        except RecursionError:
+            # Prodamus never signs payloads nested this deeply.
+            logger.warning("Prodamus webhook payload is nested too deeply to verify")
+            return False
+        if hmac.compare_digest(expected.encode("ascii"), received):
             return True
 
         # Demo-mode signature uses the secret with a "demo" suffix. Accept it ONLY
@@ -200,7 +219,7 @@ class ProdamusService:
         demo_allowed = settings.PRODAMUS_DEMO_MODE or settings.ENVIRONMENT.lower() != "production"
         if demo_allowed:
             expected_demo = _make_signature(payload, secret + "demo")
-            if hmac.compare_digest(expected_demo, signature):
+            if hmac.compare_digest(expected_demo.encode("ascii"), received):
                 logger.info("Matched demo signature for Prodamus webhook")
                 return True
 

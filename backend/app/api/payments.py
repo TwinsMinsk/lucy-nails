@@ -4,6 +4,7 @@ Payments API: webhook Prodamus + генерация платёжной ссыл�
 
 import hashlib
 import hmac
+import json
 import logging
 import secrets
 from datetime import datetime, timedelta
@@ -303,7 +304,7 @@ def _checkout_link_for_course(
     if tariff not in SELLABLE_TARIFFS:
         raise HTTPException(status_code=400, detail="Invalid tariff")
     price = float(course.price_self if tariff == "self" else course.price_support)
-    course_name = f"{course.title} — {'Самостоятельный' if tariff == 'self' else 'С поддержкой'}"
+    course_name = f"{course.title} — {TARIFF_LABELS[tariff]}"
     order_id = order_id or _build_prodamus_order_id(course.id, tariff)
     success_url = None
     if status_token:
@@ -376,6 +377,11 @@ async def _record_purchase_once(
 
         if course_id_uuid is None or tariff is None:
             raise HTTPException(status_code=422, detail="Invalid order_id")
+        # A legacy reference names its own tariff, so a hand-crafted payform link
+        # could still buy a discontinued one. Orders were validated at checkout.
+        if order is None and tariff not in SELLABLE_TARIFFS:
+            logger.error("Prodamus webhook: legacy reference for unsellable tariff=%s", tariff)
+            raise HTTPException(status_code=422, detail="Tariff not sellable")
 
         customer_email = webhook_email
 
@@ -539,33 +545,58 @@ async def _record_rejected_webhook(
     The alert is keyed by the provider order id (not the event hash, which
     changes with Prodamus' ``attempt`` counter), so retries do not spam.
     """
-    await record_terminal_payment_event(
-        event_data,
-        processing_status=processing_status,
-        error_code=error_code,
-        error_detail=error_detail,
-        order_id=order_id,
-    )
-    identity = event_data.external_event_id or event_data.order_reference or event_data.event_hash
+    try:
+        await record_terminal_payment_event(
+            event_data,
+            processing_status=processing_status,
+            error_code=error_code,
+            error_detail=error_detail,
+            order_id=order_id,
+        )
+    except IntegrityError:
+        # A concurrent delivery of the same notification recorded it first.
+        logger.info("Prodamus webhook: rejected event already recorded")
+    identity = event_data.external_event_id or event_data.order_reference
+    if not identity:
+        # Without ids, key on the body minus the per-delivery retry counter.
+        stable_payload = {key: value for key, value in payload.items() if key != "attempt"}
+        identity = json.dumps(
+            stable_payload, ensure_ascii=False, sort_keys=True, default=str, separators=(",", ":")
+        )
     identity_hash = hashlib.sha256(identity.encode("utf-8")).hexdigest()
-    amount = (
-        format_rub(event_data.amount_kopecks) if event_data.amount_kopecks is not None else "—"
-    )
     email = str(payload.get("customer_email") or "").strip()[:320] or "—"
     order_reference = event_data.order_reference or event_data.external_event_id or "—"
-    async with async_session_maker() as db:
-        await enqueue_owner_telegram_alert(
-            db,
-            kind="owner_payment_rejected",
-            text=(
-                f"⚠️ Платёж не обработан: {error_code}\n"
-                f"Сумма: {amount}\n"
-                f"Email: {email}\n"
-                f"Заказ: {order_reference}"
-            ),
-            dedupe_key=f"payment-rejected:{identity_hash}:{error_code}",
+    if processing_status == "ignored":
+        # Declines and cancellations: no money was taken.
+        text = (
+            f"ℹ️ Неуспешная попытка оплаты (статус: {event_data.event_type})\n"
+            f"Email: {email}\n"
+            f"Заказ: {order_reference}"
         )
-        await db.commit()
+    else:
+        amount = (
+            format_rub(event_data.amount_kopecks)
+            if event_data.amount_kopecks is not None
+            else "—"
+        )
+        text = (
+            f"⚠️ Платёж не обработан: {error_code}\n"
+            f"Сумма: {amount}\n"
+            f"Email: {email}\n"
+            f"Заказ: {order_reference}"
+        )
+    async with async_session_maker() as db:
+        try:
+            await enqueue_owner_telegram_alert(
+                db,
+                kind="owner_payment_rejected",
+                text=text,
+                dedupe_key=f"payment-rejected:{identity_hash}:{error_code}",
+            )
+            await db.commit()
+        except IntegrityError:
+            # A concurrent delivery queued the same alert; keep the caller's 422.
+            await db.rollback()
 
 
 @router.post(
@@ -581,19 +612,24 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
     Единственное подтверждение оплаты — валидная подпись и этот webhook
     (редирект urlSuccess не гарантирует оплату).
     """
+    # Reject unsigned requests before spending any work on the body.
+    signature = request.headers.get("Sign", "")
+    if not signature:
+        logger.warning("Prodamus webhook: no Sign header")
+        raise HTTPException(status_code=400, detail="Missing signature")
+
     content_type = request.headers.get("content-type", "")
     if "application/json" in content_type:
-        payload = await request.json()
+        try:
+            payload = await request.json()
+        except (ValueError, RecursionError):
+            logger.warning("Prodamus webhook: unparseable JSON body")
+            raise HTTPException(status_code=400, detail="Invalid payload")
     else:
         # Prodamus posts multipart/form-data with bracket keys and signs the
         # nested PHP-style structure, not the flat field names.
         form = await request.form()
         payload = nest_form_fields(form.multi_items())
-
-    signature = request.headers.get("Sign", "")
-    if not signature:
-        logger.warning("Prodamus webhook: no Sign header")
-        raise HTTPException(status_code=400, detail="Missing signature")
 
     if not ProdamusService.verify_signature(payload, signature):
         logger.warning("Prodamus webhook: invalid signature")

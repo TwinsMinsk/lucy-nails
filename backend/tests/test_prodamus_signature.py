@@ -100,16 +100,59 @@ def test_demo_signature_accepted_when_demo_mode_enabled(monkeypatch):
     assert ProdamusService.verify_signature(_WEBHOOK_PAYLOAD, demo_sig) is True
 
 
-def test_to_str_matches_php_strval_for_none_and_bool():
+def test_to_str_matches_php_strval_for_scalars():
     assert _to_str({"b": True, "a": None, "c": False, "d": [None, True]}) == {
         "a": "",
         "b": "1",
         "c": "",
         "d": ["", "1"],
     }
-    # Numbers keep Python str(); outgoing link signatures depend on it.
-    assert _to_str(5900.0) == "5900.0"
+    # PHP strval() drops the fraction of integral floats only. Outgoing link
+    # values are strings before signing, so their signatures are unaffected.
+    assert _to_str(5900.0) == "5900"
+    assert _to_str(5900.5) == "5900.5"
+    assert _to_str(0.1) == "0.1"
     assert _to_str(1) == "1"
+    assert _to_str("5900.0") == "5900.0"
+
+
+def test_verify_signature_ignores_case_and_surrounding_whitespace(monkeypatch):
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "PRODAMUS_DEMO_MODE", True)
+    normal_sig = _make_signature(_WEBHOOK_PAYLOAD, settings.PRODAMUS_SECRET_KEY)
+    demo_sig = _make_signature(_WEBHOOK_PAYLOAD, settings.PRODAMUS_SECRET_KEY + "demo")
+
+    assert ProdamusService.verify_signature(_WEBHOOK_PAYLOAD, normal_sig.upper()) is True
+    assert ProdamusService.verify_signature(_WEBHOOK_PAYLOAD, f" {normal_sig.upper()} ") is True
+    assert ProdamusService.verify_signature(_WEBHOOK_PAYLOAD, demo_sig.upper()) is True
+
+
+def test_verify_signature_rejects_unverifiable_input_without_raising():
+    deep: dict = {}
+    node = deep
+    for _ in range(5000):
+        node["a"] = {}
+        node = node["a"]
+
+    assert ProdamusService.verify_signature(deep, "deadbeef") is False
+    # Starlette decodes headers as latin-1, so a Sign header may be non-ASCII.
+    assert ProdamusService.verify_signature(_WEBHOOK_PAYLOAD, "ÿ" * 64) is False
+
+
+def test_nest_form_fields_drops_keys_deeper_than_php_nesting_limit():
+    nested = nest_form_fields(
+        [
+            ("ok" + "[0]" * 64, "kept"),
+            ("deep" + "[0]" * 65, "dropped"),
+            ("order_id", "300155"),
+        ]
+    )
+
+    assert set(nested) == {"ok", "order_id"}
+    value = nested["ok"]
+    for _ in range(64):
+        value = value[0]
+    assert value == "kept"
 
 
 def test_nest_form_fields_rebuilds_php_post_structure():
