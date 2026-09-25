@@ -4,7 +4,7 @@ import { PaymentStatus } from "./payment-status";
 
 export const metadata = {
   title: "Платёж принят — Lucy Nails Academy",
-  description: "Платёж принят Prodamus. Доступ откроется после подтверждения webhook.",
+  description: "Проверяем оплату. Доступ к курсу откроется сразу после подтверждения платежа.",
 };
 
 export default function PaymentSuccessPage() {

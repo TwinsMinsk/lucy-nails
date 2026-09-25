@@ -244,7 +244,7 @@ export default function DashboardPage() {
                         </div>
                         <h3 className="font-serif text-2xl text-text-primary mb-2">У вас пока нет открытого курса</h3>
                         <p className="text-text-secondary max-w-sm mb-6">
-                            Вы можете оплатить курс на главной странице без регистрации. После оплаты данные для входа придут на email.
+                            Выберите курс на главной странице — после оплаты он появится здесь.
                         </p>
                         <Button asChild className="rounded-full bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white">
                             <Link href="/">Перейти в каталог</Link>

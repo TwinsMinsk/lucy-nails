@@ -34,7 +34,7 @@ export function PaymentButton({ courseId, tariff, children, className }: Payment
 
     if (!hasSession) {
       toast.info("Можно оплатить без регистрации", {
-        description: "Укажите email, и после оплаты мы отправим данные для входа.",
+        description: "Укажите email — после оплаты пришлём ссылку для входа в кабинет.",
       });
       setGuestOpen(true);
       return;
@@ -63,7 +63,7 @@ export function PaymentButton({ courseId, tariff, children, className }: Payment
       console.error("Payment link error:", e);
       if (isAuthError(e)) {
         toast.info("Можно оплатить без регистрации", {
-          description: "Укажите email, и после оплаты мы отправим данные для входа.",
+          description: "Укажите email — после оплаты пришлём ссылку для входа в кабинет.",
         });
         setGuestOpen(true);
         return;

@@ -22,7 +22,7 @@ const stateCopy: Record<PaymentState, { title: string; description: string }> = 
   },
   paid: {
     title: "Оплата подтверждена",
-    description: "Доступ к курсу открыт. Если это ваша первая покупка, ссылка установки пароля придёт на email.",
+    description: "Доступ к курсу открыт. Мы отправили письмо на email, указанный при оплате.",
   },
   help: {
     title: "Нужна проверка оплаты",
@@ -113,11 +113,23 @@ export function PaymentStatus() {
         </div>
 
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 text-left">
-          <p className="text-sm text-text-secondary">
-            {state === "paid"
-              ? "Можно переходить в личный кабинет. Письмо отправляется отдельно и может прийти чуть позже."
-              : "Страница обновляет статус автоматически. Не закрывайте её и не создавайте повторный платёж."}
-          </p>
+          {state === "paid" ? (
+            <div className="space-y-2 text-sm text-text-secondary">
+              <p>
+                <span className="font-medium text-text-primary">Покупаете впервые?</span> Откройте письмо
+                «Установите пароль» и перейдите по ссылке из него — так вы создадите пароль для входа в кабинет.
+              </p>
+              <p>
+                <span className="font-medium text-text-primary">Уже есть аккаунт?</span> Войдите со своим
+                паролем — курс уже ждёт вас в кабинете.
+              </p>
+              <p>Письмо может прийти в течение нескольких минут — если его нет, проверьте папку «Спам».</p>
+            </div>
+          ) : (
+            <p className="text-sm text-text-secondary">
+              Страница обновляет статус автоматически. Не закрывайте её и не создавайте повторный платёж.
+            </p>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">

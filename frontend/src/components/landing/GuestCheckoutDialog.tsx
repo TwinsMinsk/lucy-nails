@@ -54,7 +54,7 @@ export function GuestCheckoutDialog({
     }
     const trimmed = email.trim().toLowerCase();
     if (!trimmed) {
-      toast.error("Укажите email", { description: "На него пришлём данные для входа после оплаты." });
+      toast.error("Укажите email", { description: "На него пришлём ссылку для входа после оплаты." });
       return;
     }
     try {
@@ -88,7 +88,7 @@ export function GuestCheckoutDialog({
         <DialogHeader>
           <DialogTitle>Оплата без регистрации</DialogTitle>
           <DialogDescription>
-            Укажите email — после успешной оплаты отправим пароль для входа в личный кабинет.
+            Укажите email — после успешной оплаты пришлём ссылку, по которой вы создадите пароль для входа в личный кабинет.
             Телефон необязателен, но поможет быстрее найти платёж при обращении.
           </DialogDescription>
         </DialogHeader>
