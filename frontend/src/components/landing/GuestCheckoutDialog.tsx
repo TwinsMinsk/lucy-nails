@@ -98,15 +98,16 @@ export function GuestCheckoutDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      {/* Scroll inside the dialog: on small phones the form is taller than the screen */}
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto p-5 sm:max-w-md sm:p-6">
         <DialogHeader>
           <DialogTitle>Оплата без регистрации</DialogTitle>
           <DialogDescription>
-            Укажите email — после успешной оплаты пришлём ссылку, по которой вы создадите пароль для входа в личный кабинет.
-            Телефон необязателен, но поможет быстрее найти платёж при обращении.
+            Укажите email — после оплаты пришлём ссылку, по которой вы создадите пароль для входа в кабинет.
+            Телефон необязателен, но поможет быстрее найти платёж.
           </DialogDescription>
         </DialogHeader>
-        <div className="rounded-2xl bg-[#fff1f4] border border-primary/20 p-4 text-sm text-text-secondary space-y-2">
+        <div className="rounded-2xl bg-[#fff1f4] border border-primary/20 p-3 sm:p-4 text-sm text-text-secondary space-y-2">
           <div className="flex items-start gap-2">
             <CheckCircle className="h-4 w-4 text-[#D4AF37] shrink-0 mt-0.5" />
             <span>Вы перейдёте на платёжную форму Prodamus.</span>

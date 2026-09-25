@@ -82,3 +82,34 @@ test("guest checkout reaches confirmed access state", async ({ page }) => {
         consent_version: expect.any(String),
     })
 })
+
+test("guest checkout dialog stays usable on a 360×640 phone", async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 640 })
+    await page.route("**/api/analytics/events", async (route) => {
+        await route.fulfill({ status: 202, contentType: "application/json", body: '{"accepted":true,"duplicate":false}' })
+    })
+    await page.goto("/#pricing")
+    const cta = page.getByRole("button", { name: "Начать обучение" }).first()
+    // Wait for hydration: a click on the SSR button before React attaches is lost.
+    await expect.poll(() => cta.evaluate((button) => Object.keys(button).some((key) => key.startsWith("__reactProps")))).toBe(true)
+    await cta.click()
+
+    const dialog = page.getByRole("dialog", { name: "Оплата без регистрации" })
+    await expect(dialog).toBeVisible()
+    // Measure after the zoom-in animation; the dialog must scroll internally
+    // instead of running off the scroll-locked page.
+    await dialog.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
+    const box = await dialog.boundingBox()
+    expect(box).not.toBeNull()
+    expect(box!.y).toBeGreaterThanOrEqual(0)
+    expect(box!.y + box!.height).toBeLessThanOrEqual(640)
+
+    for (const target of [
+        dialog.getByRole("button", { name: "Перейти к оплате" }),
+        dialog.getByRole("link", { name: "Войти" }),
+    ]) {
+        await target.scrollIntoViewIfNeeded()
+        await expect(target).toBeVisible()
+        await expect(target).toBeInViewport({ ratio: 1 })
+    }
+})
