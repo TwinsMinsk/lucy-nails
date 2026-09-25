@@ -135,10 +135,12 @@ async def test_lifecycle_scheduler_is_idempotent_and_expires_access(
 
 
 @pytest.mark.asyncio
-async def test_lifecycle_owner_alert_uses_payment_processing_status(
+async def test_lifecycle_owner_alert_skips_rejected_payments(
     db: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ):
+    # Rejected payments get their own immediate alert; the digest must not
+    # repeat them every hour forever.
     monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
     monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", 987654321)
     db.add(
@@ -159,9 +161,62 @@ async def test_lifecycle_owner_alert_uses_payment_processing_status(
     )
     await db.commit()
 
-    assert scheduled == 1
+    assert scheduled == 0
     alert = await db.scalar(
         select(OutboxMessage).where(OutboxMessage.kind == "system_alert")
     )
-    assert alert is not None
+    assert alert is None
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_owner_alert_on_dead_letter_changes_and_daily(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", 987654321)
+
+    def dead_letter(index: int) -> OutboxMessage:
+        return OutboxMessage(
+            kind="account_activation",
+            channel="email",
+            recipient=f"buyer{index}@example.com",
+            payload={},
+            status="dead_letter",
+            attempts=5,
+            dedupe_key=f"test-dead-letter:{index}",
+        )
+
+    async def alerts() -> list[OutboxMessage]:
+        return list(
+            (
+                await db.execute(
+                    select(OutboxMessage).where(OutboxMessage.kind == "system_alert")
+                )
+            ).scalars()
+        )
+
+    db.add(dead_letter(1))
+    await db.commit()
+
+    first = await LifecycleService.schedule(db, now=datetime(2026, 8, 26, 12, 0, 0))
+    await db.commit()
+    again_same_day = await LifecycleService.schedule(
+        db, now=datetime(2026, 8, 26, 18, 0, 0)
+    )
+    await db.commit()
+    assert (first, again_same_day) == (1, 0)
+    [alert] = await alerts()
     assert alert.channel == "telegram"
+    assert "не доставлено уведомлений: 1" in alert.payload["text"]
+
+    db.add(dead_letter(2))
+    await db.commit()
+    after_new_dead_letter = await LifecycleService.schedule(
+        db, now=datetime(2026, 8, 26, 19, 0, 0)
+    )
+    await db.commit()
+    next_day = await LifecycleService.schedule(db, now=datetime(2026, 8, 27, 9, 0, 0))
+    await db.commit()
+    assert (after_new_dead_letter, next_day) == (1, 1)
+    assert len(await alerts()) == 3
