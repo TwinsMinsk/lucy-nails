@@ -36,7 +36,7 @@ from app.models.payment_event import PaymentEvent
 from app.models.user import User
 from app.services.outbox_service import enqueue_outbox_message
 from app.services.runtime_settings_service import RuntimeSettingsService
-from app.services.prodamus_service import ProdamusService
+from app.services.prodamus_service import ProdamusService, nest_form_fields
 from app.services.access_service import AccessService
 from app.services.payment_event_service import (
     PaymentEventData,
@@ -517,8 +517,10 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
     if "application/json" in content_type:
         payload = await request.json()
     else:
+        # Prodamus posts multipart/form-data with bracket keys and signs the
+        # nested PHP-style structure, not the flat field names.
         form = await request.form()
-        payload = dict(form)
+        payload = nest_form_fields(form.multi_items())
 
     signature = request.headers.get("Sign", "")
     if not signature:

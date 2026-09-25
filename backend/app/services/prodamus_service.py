@@ -13,12 +13,17 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import urllib.parse
+from collections.abc import Iterable
 from typing import Any
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+_BRACKET_KEY_RE = re.compile(r"^([^\[\]]+)((?:\[[^\[\]]*\])+)$")
+_BRACKET_SEGMENT_RE = re.compile(r"\[([^\[\]]*)\]")
 
 
 def _to_str(value: Any) -> Any:
@@ -27,7 +32,55 @@ def _to_str(value: Any) -> Any:
         return {k: _to_str(v) for k, v in sorted(value.items())}
     if isinstance(value, list):
         return [_to_str(item) for item in value]
+    # Match PHP strval(), which Prodamus applies before signing.
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "1" if value else ""
     return str(value)
+
+
+def _sequential_levels_to_lists(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    converted = {key: _sequential_levels_to_lists(item) for key, item in value.items()}
+    indexes = [str(index) for index in range(len(converted))]
+    if converted and set(converted) == set(indexes):
+        return [converted[index] for index in indexes]
+    return converted
+
+
+def nest_form_fields(items: Iterable[tuple[str, Any]]) -> dict[str, Any]:
+    """Rebuild the nested data PHP's ``$_POST`` derives from bracketed form keys.
+
+    Prodamus signs webhooks over that nested structure, so
+    ``products[0][name]=x`` must become ``{"products": [{"name": "x"}]}``.
+    A bracketed level whose keys are exactly ``0..n-1`` becomes a list, any
+    other level stays a dict with string keys. Repeated keys keep the last
+    value, as in PHP. Non-string values (uploaded files) are ignored.
+    """
+    root: dict[str, Any] = {}
+    for key, value in items:
+        if not isinstance(value, str):
+            continue
+        match = _BRACKET_KEY_RE.match(key)
+        if match is None:
+            root[key] = value
+            continue
+        path = [match.group(1), *_BRACKET_SEGMENT_RE.findall(match.group(2))]
+        node = root
+        for depth, segment in enumerate(path):
+            if depth and segment == "":
+                # PHP appends for an empty "[]" segment.
+                segment = str(len(node))
+            if depth == len(path) - 1:
+                node[segment] = value
+                break
+            child = node.get(segment)
+            if not isinstance(child, dict):
+                child = node[segment] = {}
+            node = child
+    return {key: _sequential_levels_to_lists(value) for key, value in root.items()}
 
 
 def _make_signature(data: dict, secret_key: str) -> str:

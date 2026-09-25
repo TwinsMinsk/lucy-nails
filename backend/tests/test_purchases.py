@@ -14,6 +14,7 @@ from app.core.security import get_password_hash
 from app.models.audit_log import AuditLog
 from app.models.course import Course
 from app.models.entitlement import Entitlement
+from app.models.order import Order
 from app.models.payment_event import PaymentEvent
 from app.models.purchase import Purchase
 from app.models.user import User
@@ -151,6 +152,107 @@ async def test_prodamus_webhook_uses_documented_provider_callback_fields(
 
     count_result = await db.execute(select(func.count(Purchase.id)))
     assert count_result.scalar_one() == 1
+
+
+def _prodamus_notification(order_reference: str, email: str, product_name: str) -> dict:
+    """Webhook body modelled on the Prodamus documentation sample."""
+    return {
+        "date": "2026-09-25T12:31:01+03:00",
+        "order_id": "300155",
+        "order_num": order_reference,
+        "domain": "lucy-nails.payform.ru",
+        "sum": "5000.00",
+        "customer_phone": "+79999999999",
+        "customer_email": email,
+        "customer_extra": "тест",
+        "payment_type": "Пластиковая карта Visa, MasterCard, МИР",
+        "commission": "3.5",
+        "commission_sum": "175.00",
+        "attempt": "1",
+        "sys": "lucy_nails",
+        "products": [
+            {
+                "name": product_name,
+                "price": "5000.00",
+                "quantity": "1",
+                "sum": "5000.00",
+            }
+        ],
+        "payment_init": "manual",
+        "payment_status": "success",
+        "payment_status_description": "Успешная оплата",
+    }
+
+
+def _bracket_form_fields(payload: dict) -> list[tuple[str, str]]:
+    fields: list[tuple[str, str]] = []
+    for key, value in payload.items():
+        if isinstance(value, list):
+            for index, item in enumerate(value):
+                for item_key, item_value in item.items():
+                    fields.append((f"{key}[{index}][{item_key}]", item_value))
+        else:
+            fields.append((key, value))
+    return fields
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("encoding", ["multipart", "urlencoded"])
+async def test_prodamus_form_webhook_with_nested_products_grants_access(
+    client: AsyncClient,
+    db: AsyncSession,
+    encoding: str,
+):
+    course = await _published_course(db, "Form Webhook Course")
+    email = f"form-{encoding}@example.com"
+    checkout = await client.post(
+        "/api/payments/guest-link",
+        json={"course_id": str(course.id), "tariff": "self", "customer_email": email},
+    )
+    assert checkout.status_code == 200, checkout.text
+    order_reference = checkout.json()["order_id"]
+
+    # Prodamus signs the nested structure and posts it with bracket keys.
+    payload, headers = _signed_payload(
+        _prodamus_notification(order_reference, email, f"{course.title} — Самостоятельный")
+    )
+    fields = _bracket_form_fields(payload)
+    assert ("products[0][name]", f"{course.title} — Самостоятельный") in fields
+    if encoding == "multipart":
+        request = client.build_request(
+            "POST",
+            "/api/payments/webhook",
+            files=[(key, (None, value)) for key, value in fields],
+            headers=headers,
+        )
+        assert request.headers["content-type"].startswith("multipart/form-data")
+    else:
+        request = client.build_request(
+            "POST", "/api/payments/webhook", data=dict(fields), headers=headers
+        )
+        assert request.headers["content-type"] == "application/x-www-form-urlencoded"
+
+    response = await client.send(request)
+
+    assert response.status_code == 200, response.text
+    purchase = (
+        await db.execute(select(Purchase).where(Purchase.payment_id == "300155"))
+    ).scalar_one()
+    assert purchase.amount_kopecks == 500000
+    assert purchase.tariff == "self"
+    entitlement = (
+        await db.execute(
+            select(Entitlement).where(Entitlement.source_purchase_id == purchase.id)
+        )
+    ).scalar_one()
+    assert entitlement.status == "active"
+    order = await db.get(Order, uuid.UUID(order_reference.split("|", 1)[1]))
+    await db.refresh(order)
+    assert order.status == "paid"
+    event = (await db.execute(select(PaymentEvent))).scalar_one()
+    assert event.processing_status == "processed"
+    assert event.external_event_id == "300155"
+    assert event.order_reference == order_reference
 
 
 @pytest.mark.asyncio
