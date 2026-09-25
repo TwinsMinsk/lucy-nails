@@ -424,7 +424,10 @@ export interface CourseResponse {
     cover_image_url?: string | null;
     is_published: boolean;
     access_days: number;
-    duration_seconds?: number;
+    modules_count?: number | null;
+    lessons_count?: number | null;
+    /** Sum of lesson durations in seconds */
+    total_duration?: number | null;
     created_at?: string;
 }
 

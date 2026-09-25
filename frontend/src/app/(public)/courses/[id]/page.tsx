@@ -36,27 +36,40 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     }
 }
 
-// Helper to format duration like "20 мин" or "1 час"
+// Lesson duration like "20 мин" or "1 ч 5 мин"; unknown (0) durations are hidden
 const formatDuration = (seconds?: number) => {
-    if (!seconds) return "0 мин";
-    const mins = Math.floor(seconds / 60);
+    if (!seconds || seconds <= 0) return undefined;
+    const mins = Math.max(1, Math.round(seconds / 60));
     if (mins >= 60) {
         return `${Math.floor(mins / 60)} ч ${mins % 60} мин`;
     }
     return `${mins} мин`;
 };
 
+// Total course duration like "≈ 5 ч" or "≈ 40 мин"; null when unknown
+const formatCourseDuration = (seconds?: number | null) => {
+    if (!seconds || seconds <= 0) return null;
+    if (seconds >= 3600) {
+        return `≈ ${Math.round(seconds / 3600)} ч`;
+    }
+    return `≈ ${Math.max(1, Math.round(seconds / 60))} мин`;
+};
+
 // Map API data to component props
 const mapModules = (apiModules: ModuleResponse[]): Module[] => {
-    return apiModules.map(m => ({
-        id: m.id,
-        title: m.title,
-        lessons: m.lessons?.map(l => ({
-            id: l.id,
-            title: l.title,
-            duration: formatDuration(l.duration_seconds)
-        })) || []
-    }));
+    return [...apiModules]
+        .sort((a, b) => a.order_index - b.order_index)
+        .map(m => ({
+            id: m.id,
+            title: m.title,
+            lessons: [...(m.lessons ?? [])]
+                .sort((a, b) => a.order_index - b.order_index)
+                .map(l => ({
+                    id: l.id,
+                    title: l.title,
+                    duration: formatDuration(l.duration_seconds)
+                }))
+        }));
 };
 
 export default async function CoursePage({ params }: { params: Promise<{ id: string }> }) {
@@ -79,12 +92,12 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
     // Combine API data with some UI defaults or mapped values
     const course = {
         ...courseData,
-        level: "Для всех уровней", // Placeholder or add to DB
+        level: "Для практикующих мастеров",
         certificate: true,
         prices: {
             self: courseData.price_self,
         },
-        duration: `~${Math.ceil((courseData.duration_seconds || 0) / 3600)} часов`, // Estimate from metadata if available? Or just hide
+        duration: formatCourseDuration(courseData.total_duration),
         lessonsCount: modulesData.reduce((acc, m) => acc + (m.lessons?.length || 0), 0),
         modules: mapModules(modulesData),
     };
@@ -116,10 +129,12 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                             </p>
 
                             <div className="flex flex-wrap gap-4 text-sm font-medium text-text-secondary">
-                                <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border shadow-sm">
-                                    <Clock className="w-4 h-4 text-primary" />
-                                    {course.duration}
-                                </div>
+                                {course.duration && (
+                                    <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border shadow-sm">
+                                        <Clock className="w-4 h-4 text-primary" />
+                                        {course.duration}
+                                    </div>
+                                )}
                                 <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border shadow-sm">
                                     <Video className="w-4 h-4 text-primary" />
                                     {course.lessonsCount} уроков
