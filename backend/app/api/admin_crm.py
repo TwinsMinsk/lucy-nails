@@ -15,7 +15,6 @@ from app.core.config import settings
 from app.core.dependencies import require_permission, user_has_permission
 from app.core.security import (
     create_account_activation_token,
-    create_password_reset_token,
     get_password_hash,
 )
 from app.models.certificate import Certificate
@@ -712,14 +711,16 @@ async def send_student_login_link(
     user = await db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    token = create_password_reset_token(user.id, user.token_version)
+    # Activation tokens live for hours (not minutes), so a student can open the
+    # support email later; /auth/activate sets the password for any account.
+    token = create_account_activation_token(user.id, user.token_version)
     message = enqueue_outbox_message(
         db,
         kind="login_link",
         recipient=user.email,
         payload={
             "login_url": (
-                f"{settings.FRONTEND_URL.rstrip('/')}/auth/reset-password?token={token}"
+                f"{settings.FRONTEND_URL.rstrip('/')}/auth/activate?token={token}"
             ),
         },
         # Every admin request is a deliberate resend, so it must never be deduplicated.

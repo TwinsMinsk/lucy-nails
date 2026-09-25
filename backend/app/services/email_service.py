@@ -251,7 +251,7 @@ class EmailService:
             "<h1>Вход в личный кабинет</h1>"
             "<p>Служба поддержки отправила вам ссылку для входа в кабинет Lucy Nails Academy.</p>"
             f'<p><a href="{safe_url}">Задать пароль и войти</a></p>'
-            f"<p>Ссылка действует {settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} мин. "
+            f"<p>Ссылка действует {settings.ACCOUNT_ACTIVATION_TOKEN_EXPIRE_HOURS} ч. "
             "и может быть использована один раз. Если вы не обращались в поддержку, "
             "просто проигнорируйте это письмо.</p>"
         )

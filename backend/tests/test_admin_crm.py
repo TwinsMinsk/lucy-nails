@@ -6,7 +6,7 @@ from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import get_password_hash, verify_password_reset_token
+from app.core.security import get_password_hash, verify_account_activation_token
 from app.models.audit_log import AuditLog
 from app.models.course import Course
 from app.models.entitlement import Entitlement
@@ -579,8 +579,8 @@ async def test_send_login_link_enqueues_a_message_every_time(
     for message in messages:
         assert message.recipient == "locked-out@example.com"
         url = message.payload["login_url"]
-        assert "/auth/reset-password?token=" in url
-        token_payload = verify_password_reset_token(url.split("token=", 1)[1])
+        assert "/auth/activate?token=" in url
+        token_payload = verify_account_activation_token(url.split("token=", 1)[1])
         assert token_payload["sub"] == str(student.id)
     audits = await db.scalar(
         select(func.count(AuditLog.id)).where(
