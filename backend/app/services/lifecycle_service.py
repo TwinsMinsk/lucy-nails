@@ -10,7 +10,6 @@ from app.core.config import settings
 from app.models.course import Course
 from app.models.entitlement import Entitlement
 from app.models.outbox import OutboxMessage
-from app.models.payment_event import PaymentEvent
 from app.models.user import User
 from app.services.analytics_service import AnalyticsService
 from app.services.access_service import AccessService
@@ -140,19 +139,17 @@ class LifecycleService:
     async def _schedule_owner_alert(cls, db: AsyncSession, *, now: datetime) -> int:
         if not settings.TELEGRAM_BOT_TOKEN or settings.TELEGRAM_OWNER_CHAT_ID is None:
             return 0
-        failed_payments = await db.scalar(
-            select(func.count(PaymentEvent.id)).where(
-                PaymentEvent.processing_status == "rejected"
-            )
-        )
+        # Rejected payments are alerted one by one when the webhook arrives, so this
+        # digest only covers undelivered notifications. Alert when their number
+        # changes, and repeat at most once a day while they stay unresolved.
         dead_letters = await db.scalar(
             select(func.count(OutboxMessage.id)).where(
                 OutboxMessage.status == "dead_letter"
             )
         )
-        if not failed_payments and not dead_letters:
+        if not dead_letters:
             return 0
-        hour_key = now.strftime("%Y%m%d%H")
+        day_key = now.strftime("%Y%m%d")
         return int(
             await cls._enqueue_once(
                 db,
@@ -161,11 +158,11 @@ class LifecycleService:
                 recipient=str(settings.TELEGRAM_OWNER_CHAT_ID),
                 payload={
                     "text": (
-                        "⚠️ Lucy Nails: требуется внимание. "
-                        f"Ошибки платежей: {failed_payments or 0}; "
-                        f"dead letter: {dead_letters or 0}."
+                        "⚠️ Lucy Nails: не доставлено уведомлений: "
+                        f"{dead_letters}. Откройте админку → «Уведомления» "
+                        "и отправьте их повторно."
                     )
                 },
-                dedupe_key=f"system-alert:{hour_key}",
+                dedupe_key=f"system-alert:dead-letters:{dead_letters}:{day_key}",
             )
         )
