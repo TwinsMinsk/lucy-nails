@@ -18,6 +18,11 @@ test("registration requires personal-data consent", async ({ page }) => {
     })
 
     await page.goto("/auth/register")
+    // Wait for hydration so typed values are not reset by React.
+    await page.waitForFunction(() => {
+        const button = document.querySelector("button[type=submit]")
+        return !!button && Object.keys(button).some((key) => key.startsWith("__reactProps"))
+    })
     await page.getByLabel("Email").fill("new-student@example.com")
     await page.getByLabel("Пароль", { exact: true }).fill("secret123")
     await page.getByLabel("Подтвердите пароль").fill("secret123")

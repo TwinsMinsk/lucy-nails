@@ -1,10 +1,24 @@
-import { expect, test } from "@playwright/test"
+import { expect, test, type Page } from "@playwright/test"
 
 const corsHeaders = {
     "access-control-allow-origin": "http://127.0.0.1:3000",
     "access-control-allow-credentials": "true",
     "access-control-allow-methods": "POST,OPTIONS",
     "access-control-allow-headers": "content-type,x-csrf-token",
+}
+
+async function fillPasswords(page: Page) {
+    // Wait for hydration: typing into SSR inputs before React attaches resets the controlled values.
+    await page.waitForFunction(() => {
+        const input = document.getElementById("confirm")
+        return !!input && Object.keys(input).some((key) => key.startsWith("__reactProps"))
+    })
+    const password = page.getByLabel("Пароль", { exact: true })
+    const confirm = page.getByLabel("Повторите пароль")
+    await password.fill("secret123")
+    await confirm.fill("secret123")
+    await expect(password).toHaveValue("secret123")
+    await expect(confirm).toHaveValue("secret123")
 }
 
 test("activation link sets the first password and leads to login", async ({ page }) => {
@@ -25,8 +39,7 @@ test("activation link sets the first password and leads to login", async ({ page
 
     await page.goto("/auth/activate?token=activation-test")
     await expect(page.getByText("Создайте пароль", { exact: true })).toBeVisible()
-    await page.getByLabel("Пароль", { exact: true }).fill("secret123")
-    await page.getByLabel("Повторите пароль").fill("secret123")
+    await fillPasswords(page)
     await page.getByRole("button", { name: "Сохранить пароль и продолжить" }).click()
 
     await expect(page).toHaveURL(/\/auth\/login$/)
@@ -48,8 +61,7 @@ test("expired activation link explains how to get a new one", async ({ page }) =
     })
 
     await page.goto("/auth/activate?token=stale-token")
-    await page.getByLabel("Пароль", { exact: true }).fill("secret123")
-    await page.getByLabel("Повторите пароль").fill("secret123")
+    await fillPasswords(page)
     await page.getByRole("button", { name: "Сохранить пароль и продолжить" }).click()
 
     await expect(page.getByRole("alert").filter({ hasText: "Ссылка недействительна или устарела" })).toBeVisible()
