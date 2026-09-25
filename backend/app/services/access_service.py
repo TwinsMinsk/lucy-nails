@@ -385,7 +385,9 @@ class AccessService:
         """Published courses whose access ran out and has not been renewed.
 
         One entry per course with the latest natural expiry; courses with a
-        currently active entitlement are skipped.
+        currently active entitlement are skipped, and so are courses with a
+        suspended entitlement: renewal must not be offered while an admin
+        hold is in place.
         """
         current_time = now or datetime.utcnow()
         active_course_ids = select(Entitlement.course_id).where(
@@ -394,6 +396,10 @@ class AccessService:
             Entitlement.starts_at <= current_time,
             Entitlement.expires_at > current_time,
         )
+        suspended_course_ids = select(Entitlement.course_id).where(
+            Entitlement.user_id == user_id,
+            Entitlement.status == "suspended",
+        )
         result = await db.execute(
             select(Entitlement)
             .where(
@@ -401,6 +407,7 @@ class AccessService:
                 Entitlement.status.in_(NATURALLY_ENDED_STATUSES),
                 Entitlement.expires_at <= current_time,
                 Entitlement.course_id.not_in(active_course_ids),
+                Entitlement.course_id.not_in(suspended_course_ids),
             )
             .options(selectinload(Entitlement.course))
             .order_by(Entitlement.expires_at.desc(), Entitlement.created_at.desc())

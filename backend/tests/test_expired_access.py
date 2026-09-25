@@ -139,6 +139,31 @@ async def test_revoked_refunded_and_suspended_access_is_not_listed(
 
 
 @pytest.mark.asyncio
+async def test_course_with_a_current_suspension_is_not_offered_for_renewal(
+    client: AsyncClient, db: AsyncSession
+):
+    now = datetime.utcnow()
+    user = await _user(db, "expired-suspended@example.com")
+    suspended = await _course(db, "SuspendedNow")
+    unaffected = await _course(db, "OtherExpired")
+    db.add_all(
+        [
+            # An old natural expiry would normally be offered for renewal...
+            _entitlement(user, suspended, status="expired", expires_at=now - timedelta(days=40)),
+            # ...but the current access is suspended by an admin.
+            _entitlement(user, suspended, status="suspended", expires_at=now + timedelta(days=10)),
+            _entitlement(user, unaffected, status="expired", expires_at=now - timedelta(days=3)),
+        ]
+    )
+    await db.commit()
+
+    response = await client.get(URL, headers=_headers(user))
+
+    assert response.status_code == 200, response.text
+    assert [item["course_id"] for item in response.json()] == [str(unaffected.id)]
+
+
+@pytest.mark.asyncio
 async def test_other_users_and_unpublished_courses_are_not_listed(
     client: AsyncClient, db: AsyncSession
 ):
