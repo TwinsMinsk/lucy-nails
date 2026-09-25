@@ -3,12 +3,17 @@ from datetime import datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from fastapi import HTTPException
 from httpx import AsyncClient
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.payments import _build_prodamus_order_id, parse_checkout_order_id
+from app.api.payments import (
+    _build_prodamus_order_id,
+    _checkout_link_for_course,
+    parse_checkout_order_id,
+)
 from app.core.config import Settings
 from app.core.security import get_password_hash
 from app.models.audit_log import AuditLog
@@ -946,6 +951,94 @@ async def test_payment_link_requires_authenticated_user(client: AsyncClient, db:
     )
 
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_checkout_rejects_discontinued_support_tariff(client: AsyncClient, db: AsyncSession):
+    course = await _published_course(db, "Self Only Course")
+    await _create_user(db, "support-buyer@example.com")
+    await db.commit()
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "support-buyer@example.com", "password": "password123"},
+    )
+    client.cookies.clear()
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    responses = [
+        await client.post(
+            "/api/payments/guest-link",
+            json={
+                "course_id": str(course.id),
+                "tariff": "support",
+                "customer_email": "support-guest@example.com",
+            },
+        ),
+        await client.post(
+            "/api/payments/link",
+            json={"course_id": str(course.id), "tariff": "support"},
+            headers=headers,
+        ),
+        await client.post(
+            "/api/purchases/create",
+            json={"course_id": str(course.id), "tariff": "support"},
+            headers=headers,
+        ),
+    ]
+
+    for response in responses:
+        assert response.status_code == 400, response.text
+        assert response.json()["detail"] == "Invalid tariff"
+    assert await db.scalar(select(func.count(Order.id))) == 0
+    with pytest.raises(HTTPException) as link_error:
+        _checkout_link_for_course(course, "support")
+    assert link_error.value.status_code == 400
+
+    self_link = await client.post(
+        "/api/payments/link",
+        json={"course_id": str(course.id), "tariff": "self"},
+        headers=headers,
+    )
+    assert self_link.status_code == 200, self_link.text
+
+
+@pytest.mark.asyncio
+async def test_webhook_still_accepts_historical_support_order(
+    client: AsyncClient,
+    db: AsyncSession,
+):
+    course = await _published_course(db, "Historical Support Course")
+    order = Order(
+        course_id=course.id,
+        course_title=course.title,
+        tariff="support",
+        customer_email="historical-support@example.com",
+        amount_kopecks=1000000,
+        currency="RUB",
+        access_days=course.access_days,
+        status="pending",
+        status_token_hash="0" * 64,
+    )
+    db.add(order)
+    await db.commit()
+
+    payload, headers = _signed_payload(
+        {
+            "order_id": "400200",
+            "order_num": f"order|{order.id}",
+            "customer_email": "historical-support@example.com",
+            "sum": "10000",
+            "currency": "rub",
+            "payment_status": "success",
+        }
+    )
+    response = await client.post("/api/payments/webhook", json=payload, headers=headers)
+
+    assert response.status_code == 200, response.text
+    purchase = (
+        await db.execute(select(Purchase).where(Purchase.payment_id == "400200"))
+    ).scalar_one()
+    assert purchase.tariff == "support"
 
 
 # --- Webhook hardening (audit round 2: B1 status, B2 race, signature/amount) ---

@@ -7,7 +7,7 @@ import hmac
 import logging
 import secrets
 from datetime import datetime, timedelta
-from typing import Any, Literal
+from typing import Any
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -50,6 +50,10 @@ from app.services.analytics_service import contains_sensitive_analytics_value
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Only the self-paced tariff is sold. "support" is discontinued for new
+# checkouts, but historical orders and webhooks may still reference it.
+SELLABLE_TARIFFS = ("self",)
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +174,7 @@ async def _create_checkout_order(
     user_id: UUID | None = None,
     attribution: dict[str, Any] | None = None,
 ) -> tuple[Order, str]:
-    if tariff not in ("self", "support"):
+    if tariff not in SELLABLE_TARIFFS:
         raise HTTPException(status_code=400, detail="Invalid tariff")
     status_token = secrets.token_urlsafe(32)
     price_rub = course.price_self if tariff == "self" else course.price_support
@@ -290,7 +294,7 @@ def _checkout_link_for_course(
     order_id: str | None = None,
     status_token: str | None = None,
 ) -> str:
-    if tariff not in ("self", "support"):
+    if tariff not in SELLABLE_TARIFFS:
         raise HTTPException(status_code=400, detail="Invalid tariff")
     price = float(course.price_self if tariff == "self" else course.price_support)
     course_name = f"{course.title} — {'Самостоятельный' if tariff == 'self' else 'С поддержкой'}"
@@ -663,7 +667,7 @@ class CheckoutAttribution(BaseModel):
 
 class PaymentLinkRequest(BaseModel):
     course_id: str
-    tariff: str  # "self" | "support"
+    tariff: str  # only SELLABLE_TARIFFS; others get 400 "Invalid tariff"
     customer_email: str | None = None
     customer_phone: str | None = None
     attribution: CheckoutAttribution | None = None
@@ -671,7 +675,7 @@ class PaymentLinkRequest(BaseModel):
 
 class GuestPaymentLinkRequest(BaseModel):
     course_id: str
-    tariff: Literal["self", "support"]
+    tariff: str  # only SELLABLE_TARIFFS; others get 400 "Invalid tariff"
     customer_email: EmailStr
     customer_phone: str | None = None
     attribution: CheckoutAttribution | None = None
