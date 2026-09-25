@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +22,8 @@ from app.models.certificate import Certificate
 from app.models.course import Course
 from app.models.crm import StudentNote, StudentTag, StudentTagAssignment
 from app.models.entitlement import Entitlement
+from app.models.lesson import Lesson
+from app.models.module import Module
 from app.models.order import Order
 from app.models.outbox import OutboxMessage
 from app.models.payment_event import PaymentEvent
@@ -132,6 +134,19 @@ class StudentNoteResponse(BaseModel):
         from_attributes = True
 
 
+class StudentLessonProgress(BaseModel):
+    course_id: UUID
+    course_title: str
+    module_title: str
+    module_order: int
+    lesson_id: UUID
+    lesson_title: str
+    lesson_order: int
+    is_completed: bool
+    watched_seconds: int | None
+    updated_at: datetime | None
+
+
 class StudentDetail(BaseModel):
     id: UUID
     email: str
@@ -149,6 +164,7 @@ class StudentDetail(BaseModel):
     certificates: list[StudentCertificate]
     notes: list[StudentNoteResponse]
     tags: list[str]
+    lesson_progress: list[StudentLessonProgress]
 
 
 class StudentCreateRequest(BaseModel):
@@ -458,6 +474,46 @@ async def student_detail(
     progress = (
         await db.execute(select(Progress).where(Progress.user_id == user_id))
     ).scalars().all()
+    access_course_ids = {item.course_id for item, _ in entitlement_rows} | {
+        item.course_id for item, _ in purchase_rows if item.payment_status == "success"
+    }
+    lesson_rows = []
+    if access_course_ids:
+        # Published modules only, matching ProgressService completion and certificates.
+        lesson_rows = (
+            await db.execute(
+                select(
+                    Course.id.label("course_id"),
+                    Course.title.label("course_title"),
+                    Module.title.label("module_title"),
+                    Module.order_index.label("module_order"),
+                    Lesson.id.label("lesson_id"),
+                    Lesson.title.label("lesson_title"),
+                    Lesson.order_index.label("lesson_order"),
+                    func.coalesce(Progress.is_completed, False).label("is_completed"),
+                    Progress.watched_seconds.label("watched_seconds"),
+                    Progress.updated_at.label("updated_at"),
+                )
+                .join(Module, Module.course_id == Course.id)
+                .join(Lesson, Lesson.module_id == Module.id)
+                .outerjoin(
+                    Progress,
+                    and_(Progress.lesson_id == Lesson.id, Progress.user_id == user_id),
+                )
+                .where(
+                    Course.id.in_(list(access_course_ids)),
+                    Module.is_published.is_(True),
+                )
+                .order_by(
+                    Course.title,
+                    Course.id,
+                    Module.order_index,
+                    Module.created_at,
+                    Lesson.order_index,
+                    Lesson.created_at,
+                )
+            )
+        ).all()
     certificates = (
         await db.execute(
             select(Certificate)
@@ -532,6 +588,7 @@ async def student_detail(
         ],
         notes=list(notes),
         tags=list(tags),
+        lesson_progress=[StudentLessonProgress(**row._mapping) for row in lesson_rows],
     )
 
 

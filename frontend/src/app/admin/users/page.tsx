@@ -23,11 +23,38 @@ import {
     adminUpdateStudentTags,
     AdminCourseFullResponse,
     AdminStudentDetail,
+    AdminStudentLessonProgress,
     AdminStudentListItem,
 } from "@/lib/api"
 
 const date = (value?: string | null) => value ? new Date(value).toLocaleString("ru-RU") : "—"
+const day = (value?: string | null) => value ? new Date(value).toLocaleDateString("ru-RU") : "—"
 const errorText = (error: unknown) => error instanceof Error ? error.message : undefined
+
+type LessonProgressModule = { key: string; title: string; lessons: AdminStudentLessonProgress[] }
+type LessonProgressCourse = { id: string; title: string; completed: number; total: number; modules: LessonProgressModule[] }
+
+// Items arrive ordered by course -> module -> lesson, so consecutive grouping is enough.
+const groupLessonProgress = (items: AdminStudentLessonProgress[]) => {
+    const courses: LessonProgressCourse[] = []
+    for (const item of items) {
+        let course = courses[courses.length - 1]
+        if (!course || course.id !== item.course_id) {
+            course = { id: item.course_id, title: item.course_title, completed: 0, total: 0, modules: [] }
+            courses.push(course)
+        }
+        const moduleKey = `${item.module_order}:${item.module_title}`
+        let courseModule = course.modules[course.modules.length - 1]
+        if (!courseModule || courseModule.key !== moduleKey) {
+            courseModule = { key: moduleKey, title: item.module_title, lessons: [] }
+            course.modules.push(courseModule)
+        }
+        courseModule.lessons.push(item)
+        course.total += 1
+        if (item.is_completed) course.completed += 1
+    }
+    return courses
+}
 
 const emptyStudentForm = { email: "", full_name: "", phone: "", course_id: "", access_days: 30, reason: "" }
 
@@ -218,6 +245,34 @@ export default function AdminUsersPage() {
                                 <div><Label>Дней</Label><Input type="number" min={1} max={3650} value={grantDays} onChange={(event) => setGrantDays(Number(event.target.value))} /></div>
                                 <Textarea value={grantReason} onChange={(event) => setGrantReason(event.target.value)} placeholder="Обязательная причина" />
                                 <Button className="w-full" disabled={saving || !grantCourse || grantReason.trim().length < 5} onClick={grant}>Выдать доступ</Button>
+                            </section>
+                            <section className="space-y-3 rounded-lg border p-4 md:col-span-2">
+                                <h3 className="font-semibold">Прогресс по урокам</h3>
+                                {groupLessonProgress(selected.lesson_progress).map((course) => (
+                                    <div key={course.id} className="space-y-2">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <b className="text-sm">{course.title}</b>
+                                            <Badge variant="outline">{course.completed} из {course.total} уроков пройдено</Badge>
+                                        </div>
+                                        <div className="max-h-80 space-y-2 overflow-y-auto">
+                                            {course.modules.map((courseModule) => (
+                                                <div key={courseModule.key} className="rounded-md bg-muted p-3">
+                                                    <p className="mb-1 text-xs font-medium text-muted-foreground">{courseModule.title}</p>
+                                                    <ul className="space-y-1 text-sm">
+                                                        {courseModule.lessons.map((lesson) => (
+                                                            <li key={lesson.lesson_id} className="flex items-center gap-2">
+                                                                <span className={lesson.is_completed ? "w-4 shrink-0 font-semibold text-green-600" : "w-4 shrink-0 text-muted-foreground"} title={lesson.is_completed ? "Пройден" : "Не пройден"}>{lesson.is_completed ? "✓" : "—"}</span>
+                                                                <span className="min-w-0 flex-1 truncate">{lesson.lesson_title}</span>
+                                                                <span className="shrink-0 text-xs text-muted-foreground">{day(lesson.updated_at)}</span>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                                {!selected.lesson_progress.length && <p className="text-sm text-muted-foreground">Нет курсов с доступом</p>}
                             </section>
                             <section className="space-y-3 rounded-lg border p-4">
                                 <h3 className="font-semibold">Заметки</h3>

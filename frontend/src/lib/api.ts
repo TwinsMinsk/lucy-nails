@@ -926,6 +926,20 @@ export interface AdminStudentDetail {
     }>;
     notes: Array<{ id: string; author_id: string; body: string; created_at: string }>;
     tags: string[];
+    lesson_progress: AdminStudentLessonProgress[];
+}
+
+export interface AdminStudentLessonProgress {
+    course_id: string;
+    course_title: string;
+    module_title: string;
+    module_order: number;
+    lesson_id: string;
+    lesson_title: string;
+    lesson_order: number;
+    is_completed: boolean;
+    watched_seconds?: number | null;
+    updated_at?: string | null;
 }
 
 export interface AdminOrder {

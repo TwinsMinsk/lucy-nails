@@ -10,9 +10,12 @@ from app.core.security import get_password_hash, verify_password_reset_token
 from app.models.audit_log import AuditLog
 from app.models.course import Course
 from app.models.entitlement import Entitlement
+from app.models.lesson import Lesson
+from app.models.module import Module
 from app.models.order import Order
 from app.models.outbox import OutboxMessage
 from app.models.payment_event import PaymentEvent
+from app.models.progress import Progress
 from app.models.purchase import Purchase
 from app.models.refund import RefundRequest
 from app.models.rbac import Permission, Role, UserRoleAssignment
@@ -586,3 +589,80 @@ async def test_send_login_link_enqueues_a_message_every_time(
         )
     )
     assert audits == 2
+
+
+@pytest.mark.asyncio
+async def test_student_detail_lists_per_lesson_progress_in_course_order(
+    client: AsyncClient, db: AsyncSession
+):
+    headers = await _admin_headers(client, db)
+    course = Course(title="Progress Course", price_self=5000, price_support=10000)
+    other_course = Course(title="No Access Course", price_self=5000, price_support=10000)
+    student = User(
+        email="progress-student@example.com",
+        password_hash=get_password_hash("studentpass1"),
+        role="student",
+    )
+    db.add_all([course, other_course, student])
+    await db.flush()
+    # Modules/lessons are inserted out of order to verify the response ordering.
+    second_module = Module(course_id=course.id, title="Module 2", order_index=1, is_published=True)
+    first_module = Module(course_id=course.id, title="Module 1", order_index=0, is_published=True)
+    draft_module = Module(course_id=course.id, title="Draft", order_index=2, is_published=False)
+    other_module = Module(course_id=other_course.id, title="Other", order_index=0, is_published=True)
+    db.add_all([second_module, first_module, draft_module, other_module])
+    await db.flush()
+    lesson_three = Lesson(module_id=second_module.id, title="Lesson 3", order_index=0)
+    lesson_two = Lesson(module_id=first_module.id, title="Lesson 2", order_index=1)
+    lesson_one = Lesson(module_id=first_module.id, title="Lesson 1", order_index=0)
+    draft_lesson = Lesson(module_id=draft_module.id, title="Draft lesson", order_index=0)
+    other_lesson = Lesson(module_id=other_module.id, title="Other lesson", order_index=0)
+    db.add_all([lesson_three, lesson_two, lesson_one, draft_lesson, other_lesson])
+    await db.flush()
+    now = datetime.utcnow()
+    db.add_all(
+        [
+            Entitlement(
+                user_id=student.id,
+                course_id=course.id,
+                source="manual",
+                tariff="self",
+                status="active",
+                starts_at=now,
+                expires_at=now + timedelta(days=30),
+                reason="Progress test",
+            ),
+            Progress(
+                user_id=student.id,
+                lesson_id=lesson_two.id,
+                watched_seconds=300,
+                is_completed=True,
+                completed_at=now,
+                updated_at=now,
+            ),
+            Progress(
+                user_id=student.id,
+                lesson_id=lesson_one.id,
+                watched_seconds=20,
+                is_completed=False,
+                updated_at=now,
+            ),
+        ]
+    )
+    await db.commit()
+
+    response = await client.get(f"/api/admin/students/{student.id}", headers=headers)
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["completed_lessons"] == 1
+    assert body["tracked_lessons"] == 2
+    items = body["lesson_progress"]
+    assert [item["lesson_title"] for item in items] == ["Lesson 1", "Lesson 2", "Lesson 3"]
+    assert [item["module_title"] for item in items] == ["Module 1", "Module 1", "Module 2"]
+    assert {item["course_id"] for item in items} == {str(course.id)}
+    assert items[0]["course_title"] == "Progress Course"
+    assert [item["is_completed"] for item in items] == [False, True, False]
+    assert [item["watched_seconds"] for item in items] == [20, 300, None]
+    assert items[1]["updated_at"] is not None
+    assert items[2]["updated_at"] is None
