@@ -89,7 +89,20 @@ export const isAuthError = (error: unknown): boolean => (
     error instanceof Error && error.message === "Требуется вход в аккаунт"
 );
 
-async function refreshAccessToken(): Promise<string | null> {
+// The backend rotates the refresh token on every use and revokes the session when
+// an already-used one is presented again, so parallel 401s must share one refresh.
+let refreshPromise: Promise<string | null> | null = null;
+
+function refreshAccessToken(): Promise<string | null> {
+    if (!refreshPromise) {
+        refreshPromise = requestTokenRefresh().finally(() => {
+            refreshPromise = null;
+        });
+    }
+    return refreshPromise;
+}
+
+async function requestTokenRefresh(): Promise<string | null> {
     const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
         method: "POST",
         credentials: "include",
