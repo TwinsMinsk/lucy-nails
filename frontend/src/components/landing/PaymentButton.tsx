@@ -15,6 +15,8 @@ interface PaymentButtonProps {
   tariff: "self";
   children?: React.ReactNode;
   className?: string;
+  /** Where the CTA sits, for the cta_click analytics event */
+  location?: "pricing" | "dashboard_renewal";
 }
 
 function resolveCourseIdForCheckout(raw: string | null): string {
@@ -23,13 +25,13 @@ function resolveCourseIdForCheckout(raw: string | null): string {
   return s;
 }
 
-export function PaymentButton({ courseId, tariff, children, className }: PaymentButtonProps) {
+export function PaymentButton({ courseId, tariff, children, className, location = "pricing" }: PaymentButtonProps) {
   const [loading, setLoading] = useState(false);
   const [guestOpen, setGuestOpen] = useState(false);
   const effectiveCourseId = resolveCourseIdForCheckout(courseId);
 
   const handlePayment = async () => {
-    void trackPublicEvent("cta_click", { tariff, location: "pricing" }, effectiveCourseId);
+    void trackPublicEvent("cta_click", { tariff, location }, effectiveCourseId);
     const hasSession = typeof document !== "undefined" && document.cookie.includes("auth_session=1");
 
     if (!hasSession) {

@@ -108,6 +108,27 @@ async def test_public_event_rejects_server_only_financial_event(client: AsyncCli
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("location", "expected_status"),
+    [("pricing", 202), ("dashboard_renewal", 202), ("footer", 422)],
+)
+async def test_cta_click_accepts_known_locations_only(
+    client: AsyncClient, location: str, expected_status: int
+):
+    response = await client.post(
+        "/api/analytics/events",
+        json={
+            "event_id": str(uuid4()),
+            "event_name": "cta_click",
+            "source": "web",
+            "anonymous_id": str(uuid4()),
+            "properties": {"tariff": "self", "location": location},
+        },
+    )
+    assert response.status_code == expected_status, response.text
+
+
+@pytest.mark.asyncio
 async def test_checkout_snapshots_first_and_last_touch_and_emits_server_events(
     client: AsyncClient, db: AsyncSession
 ):

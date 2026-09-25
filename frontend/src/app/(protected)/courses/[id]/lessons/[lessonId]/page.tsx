@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, getLesson, LessonResponse, getPublicCourseModules, ModuleResponse, getCourseProgress, updateLessonProgress, isAuthError, getPublicCourse, getCertificateStatus, CertificateResponse } from "@/lib/api";
 import { toast } from "sonner";
 import { sanitizeHtml } from "@/lib/sanitize";
+import { formatLessonDuration } from "@/lib/format";
 
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -176,12 +177,6 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
         }
     };
 
-    // Format duration helper
-    const formatDuration = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        return `${mins} мин`;
-    };
-
     const sanitizedContent = useMemo(
         () => (lesson?.content ? sanitizeHtml(lesson.content) : ""),
         [lesson?.content]
@@ -266,7 +261,7 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
                                     </div>
                                     <span className="line-clamp-2">{l.title}</span>
                                     <span className="ml-auto text-xs text-text-secondary shrink-0">
-                                        {formatDuration(l.duration_seconds)}
+                                        {formatLessonDuration(l.duration_seconds)}
                                     </span>
                                 </Link>
                             );

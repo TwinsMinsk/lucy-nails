@@ -22,6 +22,7 @@ import type { Module } from "@/components/course/ModuleList";
 import { getPublishedCourses, getPublicCourseModules, type ModuleResponse } from "@/lib/api";
 import { landingCourse } from "@/lib/landing/course-content";
 import { getLandingContent } from "@/lib/landing/loader";
+import { formatDays } from "@/lib/format";
 
 export const metadata: Metadata = {
   title: landingCourse.title,
@@ -43,6 +44,7 @@ const COURSE_DATA = {
   prices: {
     self: 5900,
   },
+  accessDays: 30,
 };
 
 export default async function Home() {
@@ -56,6 +58,7 @@ export default async function Home() {
 
   let primaryCourseId: string | null = null;
   let prices = { self: COURSE_DATA.prices.self };
+  let accessDays = COURSE_DATA.accessDays;
 
   try {
     const catalog = await getPublishedCourses();
@@ -63,6 +66,7 @@ export default async function Home() {
       const c = catalog.courses[0];
       primaryCourseId = c.id;
       prices = { self: c.price_self };
+      accessDays = c.access_days || COURSE_DATA.accessDays;
     }
   } catch {
     // Оставляем цены из статического COURSE_DATA; кнопки оплаты будут заблокированы без курса из API.
@@ -229,9 +233,9 @@ export default async function Home() {
               <CardHeader className="text-center pt-8 pb-4">
                 <CardTitle className="font-serif text-2xl text-text-primary">{landingCourse.tariffs.self.title}</CardTitle>
                 <div className="flex items-baseline justify-center gap-1 font-serif text-5xl text-text-primary mt-4">
-                  {course.prices.self.toLocaleString()} ₽
+                  {course.prices.self.toLocaleString("ru-RU")} ₽
                 </div>
-                <p className="text-sm text-text-secondary mt-2">Доступ на 30 дней</p>
+                <p className="text-sm text-text-secondary mt-2">Доступ на {formatDays(accessDays)}</p>
                 <p className="text-sm text-text-secondary leading-relaxed mt-4">
                   {landingCourse.tariffs.self.description}
                 </p>

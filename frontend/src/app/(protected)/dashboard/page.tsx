@@ -311,6 +311,7 @@ export default function DashboardPage() {
                                         <PaymentButton
                                             courseId={course.course_id}
                                             tariff="self"
+                                            location="dashboard_renewal"
                                             className="relative overflow-hidden group w-full h-11 rounded-full bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white border-none"
                                         >
                                             Продлить доступ — {course.price_self.toLocaleString("ru-RU")} ₽

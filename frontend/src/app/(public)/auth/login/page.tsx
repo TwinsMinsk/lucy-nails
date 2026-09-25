@@ -174,7 +174,8 @@ export default function LoginPage() {
                 <CardContent>
                     {step === "credentials" && (
                         <Form {...form}>
-                            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                            {/* method="post": a native submit before hydration must never put the password in the URL */}
+                            <form method="post" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                                 <FormField
                                     control={form.control}
                                     name="email"

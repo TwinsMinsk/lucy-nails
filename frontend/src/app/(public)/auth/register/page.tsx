@@ -120,7 +120,9 @@ export default function RegisterPage() {
                 </CardHeader>
                 <CardContent>
                     <Form {...form}>
+                        {/* method="post": a native submit before hydration must never put the password in the URL */}
                         <form
+                            method="post"
                             onSubmit={form.handleSubmit(onSubmit, () => {
                                 if (!consentGiven) setConsentError(true)
                             })}

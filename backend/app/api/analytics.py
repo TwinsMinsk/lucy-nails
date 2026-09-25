@@ -108,7 +108,12 @@ class PublicAnalyticsEvent(BaseModel):
             if self.properties.get("tariff") not in (None, "self", "support"):
                 raise ValueError("Invalid checkout tariff")
             location = self.properties.get("location")
-            if location is not None and location not in {"pricing", "hero", "navigation"}:
+            if location is not None and location not in {
+                "pricing",
+                "hero",
+                "navigation",
+                "dashboard_renewal",
+            }:
                 raise ValueError("Invalid CTA location")
         return self
 

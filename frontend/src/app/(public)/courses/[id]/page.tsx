@@ -10,6 +10,7 @@ import { getPublicCourse, getPublicCourseModules, CourseResponse, ModuleResponse
 import { notFound } from "next/navigation";
 import { CoursePaymentCTA } from "@/components/course/CoursePaymentCTA";
 import { landingCourse } from "@/lib/landing/course-content";
+import { formatCourseDuration, formatDays, formatLessonDuration } from "@/lib/format";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
     const { id } = await params;
@@ -36,25 +37,6 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     }
 }
 
-// Lesson duration like "20 мин" or "1 ч 5 мин"; unknown (0) durations are hidden
-const formatDuration = (seconds?: number) => {
-    if (!seconds || seconds <= 0) return undefined;
-    const mins = Math.max(1, Math.round(seconds / 60));
-    if (mins >= 60) {
-        return `${Math.floor(mins / 60)} ч ${mins % 60} мин`;
-    }
-    return `${mins} мин`;
-};
-
-// Total course duration like "≈ 5 ч" or "≈ 40 мин"; null when unknown
-const formatCourseDuration = (seconds?: number | null) => {
-    if (!seconds || seconds <= 0) return null;
-    if (seconds >= 3600) {
-        return `≈ ${Math.round(seconds / 3600)} ч`;
-    }
-    return `≈ ${Math.max(1, Math.round(seconds / 60))} мин`;
-};
-
 // Map API data to component props
 const mapModules = (apiModules: ModuleResponse[]): Module[] => {
     return [...apiModules]
@@ -67,7 +49,7 @@ const mapModules = (apiModules: ModuleResponse[]): Module[] => {
                 .map(l => ({
                     id: l.id,
                     title: l.title,
-                    duration: formatDuration(l.duration_seconds)
+                    duration: formatLessonDuration(l.duration_seconds)
                 }))
         }));
 };
@@ -171,7 +153,7 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                                         <ul className="space-y-3">
                                             <li className="flex gap-3 text-sm">
                                                 <CheckCircle className="w-5 h-5 text-success shrink-0" />
-                                                <span>Доступ ко всем урокам (30 дней)</span>
+                                                <span>Доступ ко всем урокам ({formatDays(course.access_days || 30)})</span>
                                             </li>
                                             <li className="flex gap-3 text-sm">
                                                 <CheckCircle className="w-5 h-5 text-success shrink-0" />
