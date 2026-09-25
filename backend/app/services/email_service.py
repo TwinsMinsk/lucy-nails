@@ -238,9 +238,15 @@ class EmailService:
     async def send_access_granted(email: str, login_url: str, course_title: str) -> None:
         safe_url = escape(login_url, quote=True)
         safe_title = escape(course_title)
+        # A returning guest buyer may never have set a password.
+        forgot_url = escape(
+            f"{settings.FRONTEND_URL.rstrip('/')}/auth/forgot-password", quote=True
+        )
         html = (
             f"<h1>Оплата подтверждена</h1><p>Доступ к курсу «{safe_title}» открыт.</p>"
             f'<p><a href="{safe_url}">Войти в кабинет</a></p>'
+            "<p>Если вы ещё не задавали пароль, нажмите "
+            f'«<a href="{forgot_url}">Забыли пароль?</a>» на странице входа.</p>'
         )
         await EmailService._send(email, "Доступ к курсу открыт — Lucy Nails Academy", html)
 

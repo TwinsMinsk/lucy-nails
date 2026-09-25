@@ -74,6 +74,7 @@ test("guest checkout reaches confirmed access state", async ({ page }) => {
     await payButton.click()
 
     await expect(page.getByRole("heading", { name: "Оплата подтверждена" })).toBeVisible()
+    await expect(page.getByRole("link", { name: "«Забыли пароль?»" })).toHaveAttribute("href", "/auth/forgot-password")
     expect(checkoutPayload).toMatchObject({
         customer_email: "student@example.com",
         tariff: "self",

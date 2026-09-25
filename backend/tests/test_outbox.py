@@ -14,6 +14,7 @@ from app.models.entitlement import Entitlement
 from app.models.outbox import DeliveryAttempt, OutboxMessage
 from app.models.user import User
 from app.services.access_service import AccessService
+from app.services.email_service import EmailService
 from app.services.outbox_service import enqueue_outbox_message
 import app.workers.outbox as outbox_worker
 
@@ -463,3 +464,22 @@ async def test_owner_alert_is_queued_once_and_delivered_as_telegram_text(
     assert message is not None
     await db.refresh(message)
     assert message.status == "sent"
+
+
+@pytest.mark.asyncio
+async def test_access_granted_email_points_passwordless_buyers_to_password_reset(monkeypatch):
+    sent: dict = {}
+
+    async def fake_send(email, subject, html, attachments=None):
+        sent.update(email=email, html=html)
+
+    monkeypatch.setattr(EmailService, "_send", fake_send)
+    monkeypatch.setattr(settings, "FRONTEND_URL", "https://school.example")
+
+    await EmailService.send_access_granted(
+        "returning@example.com", "https://school.example/auth/login", "Nail Design PRO"
+    )
+
+    assert sent["email"] == "returning@example.com"
+    assert "Если вы ещё не задавали пароль" in sent["html"]
+    assert 'href="https://school.example/auth/forgot-password"' in sent["html"]

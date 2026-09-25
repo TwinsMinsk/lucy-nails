@@ -123,6 +123,12 @@ export function PaymentStatus() {
                 <span className="font-medium text-text-primary">Уже есть аккаунт?</span> Войдите со своим
                 паролем — курс уже ждёт вас в кабинете.
               </p>
+              <p>
+                Не задавали пароль или забыли? — воспользуйтесь{" "}
+                <Link href="/auth/forgot-password" className="font-medium text-[#db3f6e] hover:underline">
+                  «Забыли пароль?»
+                </Link>
+              </p>
               <p>Письмо может прийти в течение нескольких минут — если его нет, проверьте папку «Спам».</p>
             </div>
           ) : (
