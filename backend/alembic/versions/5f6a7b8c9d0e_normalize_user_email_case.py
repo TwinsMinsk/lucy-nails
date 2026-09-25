@@ -11,6 +11,9 @@ password" on an account created by payment, and case variants could create
 duplicate accounts. This migration lowercases all stored emails and adds a
 unique functional index on lower(email) so the DB enforces case-insensitive
 uniqueness going forward.
+
+Downgrade only drops the index: the original email casing is not stored
+anywhere, so it cannot be restored.
 """
 
 from typing import Sequence, Union
@@ -28,10 +31,11 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     conn = op.get_bind()
 
+    # Select ids only: migration output lands in deploy logs, emails must not.
     duplicates = conn.execute(
         sa.text(
             """
-            SELECT lower(email) AS email, count(*) AS cnt
+            SELECT array_agg(id::text ORDER BY id) AS user_ids
             FROM users
             GROUP BY lower(email)
             HAVING count(*) > 1
@@ -39,10 +43,14 @@ def upgrade() -> None:
         )
     ).fetchall()
     if duplicates:
-        emails = ", ".join(row.email for row in duplicates)
+        user_ids = "; ".join(", ".join(row.user_ids) for row in duplicates)
         raise RuntimeError(
-            "Cannot normalize user emails: case-variant duplicate accounts exist for "
-            f"{emails}. Merge these accounts manually, then re-run this migration."
+            "Cannot normalize user emails: "
+            f"{len(duplicates)} group(s) of case-variant duplicate accounts exist "
+            f"(user ids: {user_ids}). List them with: SELECT id, email FROM users "
+            "WHERE lower(email) IN (SELECT lower(email) FROM users GROUP BY lower(email) "
+            "HAVING count(*) > 1) ORDER BY lower(email); "
+            "merge these accounts manually, then re-run this migration."
         )
 
     conn.execute(sa.text("UPDATE users SET email = lower(email) WHERE email <> lower(email)"))
