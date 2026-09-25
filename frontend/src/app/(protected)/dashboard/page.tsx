@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Award, BookOpen, CalendarClock, CheckCircle, Loader2, MessageCircle, PlayCircle } from "lucide-react";
+import { Award, BookOpen, CalendarClock, CheckCircle, Loader2, PlayCircle } from "lucide-react";
 import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
@@ -158,17 +158,6 @@ export default function DashboardPage() {
                                                     {course.tariff === "support" ? "С поддержкой" : "Самостоятельный"}
                                                 </span>
                                             </p>
-                                        )}
-                                        {course.support_chat_url && (
-                                            <a
-                                                href={course.support_chat_url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="inline-flex items-center justify-center w-full rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
-                                            >
-                                                <MessageCircle className="w-4 h-4 mr-2" />
-                                                Чат с куратором в Telegram
-                                            </a>
                                         )}
                                         <div className="space-y-2">
                                             <div className="flex justify-between text-sm">

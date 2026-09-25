@@ -1479,7 +1479,8 @@ export const adminReorderGallery = async (
 
 export interface PaymentLinkRequest {
     course_id: string;
-    tariff: "self" | "support";
+    // Checkout sells only the self-paced tariff; "support" is rejected by the backend.
+    tariff: "self";
     customer_email?: string;
     customer_phone?: string;
     attribution?: CheckoutAttribution;
@@ -1503,7 +1504,7 @@ export const getPaymentLink = async (data: PaymentLinkRequest): Promise<PaymentL
 
 export interface GuestPaymentLinkRequest {
     course_id: string;
-    tariff: "self" | "support";
+    tariff: "self";
     customer_email: string;
     customer_phone?: string;
     attribution?: CheckoutAttribution;

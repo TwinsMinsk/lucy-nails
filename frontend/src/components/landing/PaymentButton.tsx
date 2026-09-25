@@ -12,7 +12,7 @@ import { sendYandexGoal, trackPublicEvent } from "@/lib/analytics-client";
 interface PaymentButtonProps {
   /** UUID курса с API или `"default"` — первый опубликованный курс на бэкенде */
   courseId: string | null;
-  tariff: "self" | "support";
+  tariff: "self";
   children?: React.ReactNode;
   className?: string;
 }

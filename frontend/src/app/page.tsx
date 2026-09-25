@@ -43,7 +43,6 @@ const COURSE_DATA = {
   certificate: true,
   prices: {
     self: 5900,
-    support: 11900,
   },
 };
 
@@ -57,14 +56,14 @@ export default async function Home() {
   })) satisfies Module[];
 
   let primaryCourseId: string | null = null;
-  let prices = { self: COURSE_DATA.prices.self, support: COURSE_DATA.prices.support };
+  let prices = { self: COURSE_DATA.prices.self };
 
   try {
     const catalog = await getPublishedCourses();
     if (catalog.total > 0 && catalog.courses[0]) {
       const c = catalog.courses[0];
       primaryCourseId = c.id;
-      prices = { self: c.price_self, support: c.price_support };
+      prices = { self: c.price_self };
     }
   } catch {
     // Оставляем цены из статического COURSE_DATA; кнопки оплаты будут заблокированы без курса из API.
@@ -129,7 +128,7 @@ export default async function Home() {
                   <Button asChild className="relative overflow-hidden group rounded-full text-sm uppercase tracking-[0.2em] font-bold px-10 py-6 h-auto bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white hover:to-[#db3f6e] transition-all duration-500 shadow-[0_10px_25px_rgba(219,63,110,0.35)] hover:shadow-[0_20px_40px_rgba(219,63,110,0.5)] hover:-translate-y-1 border-none ring-1 ring-white/20">
                     <Link href="#pricing">
                       <span className="relative z-10 drop-shadow-md flex items-center gap-2">
-                        Выбрать тариф
+                        Купить курс
                         <ArrowRight className="w-4 h-4" />
                       </span>
                       <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/30 to-transparent z-0" />
@@ -226,11 +225,11 @@ export default async function Home() {
               Тестовая оплата уже подключена
             </div>
             <h2 className="font-serif text-4xl md:text-5xl text-text-primary mb-4">
-              Тарифы
+              Стоимость обучения
             </h2>
             <p className="text-text-secondary max-w-2xl mx-auto leading-relaxed">
-              Выберите формат обучения. Если покупаете без входа в аккаунт, укажите email:
-              после подтверждения оплаты туда придут данные для доступа в кабинет.
+              Если покупаете без входа в аккаунт, укажите email: после подтверждения оплаты
+              туда придёт ссылка для входа в личный кабинет.
             </p>
             {!primaryCourseId && (
               <p className="text-sm text-text-secondary mt-3">
@@ -240,9 +239,7 @@ export default async function Home() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto items-start">
-
-            {/* Tariff: Self */}
+          <div className="max-w-md mx-auto">
             <Card className="border-2 border-[#D4AF37] shadow-[0_30px_90px_rgba(212,175,55,0.18)] hover:shadow-[0_40px_110px_rgba(212,175,55,0.28)] hover:-translate-y-2 transition-all duration-500 rounded-[2.5rem] p-4 bg-white">
               <CardHeader className="text-center pt-8 pb-4">
                 <CardTitle className="font-serif text-2xl text-text-primary">{landingCourse.tariffs.self.title}</CardTitle>
@@ -271,44 +268,6 @@ export default async function Home() {
                 </PaymentButton>
               </CardFooter>
             </Card>
-
-            {/* Tariff: Support */}
-            <div className="relative">
-              {/* Popular Badge */}
-              <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-10 bg-[#D4AF37] text-white text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-widest shadow-lg">
-                Популярный
-              </div>
-
-              <Card className="border-2 border-[#D4AF37] shadow-[0_35px_100px_rgba(212,175,55,0.22)] hover:shadow-[0_45px_120px_rgba(212,175,55,0.32)] hover:-translate-y-2 transition-all duration-500 rounded-[2.5rem] p-4 bg-[#FFF1F4] relative z-0 scale-105">
-                <CardHeader className="text-center pt-10 pb-4">
-                  <CardTitle className="font-serif text-2xl text-text-primary">{landingCourse.tariffs.support.title}</CardTitle>
-                  <div className="flex items-baseline justify-center gap-1 font-serif text-5xl text-text-primary mt-4">
-                    {course.prices.support.toLocaleString()} ₽
-                  </div>
-                  <p className="text-sm text-text-secondary mt-2">Доступ на 30 дней</p>
-                  <p className="text-sm text-text-secondary leading-relaxed mt-4">
-                    {landingCourse.tariffs.support.description}
-                  </p>
-                </CardHeader>
-                <CardContent className="space-y-6 px-8 pb-8">
-                  <div className="w-full h-px bg-border/50" />
-                  <ul className="space-y-4 text-text-secondary">
-                    {landingCourse.tariffs.support.features.map((feature) => (
-                      <li key={feature} className="flex items-center gap-3">
-                        <CheckCircle className="w-5 h-5 text-[#D4AF37] shrink-0 fill-[#D4AF37]/10" />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-                <CardFooter className="pb-8 px-8">
-                  <PaymentButton courseId={primaryCourseId} tariff="support">
-                    Начать обучение
-                  </PaymentButton>
-                </CardFooter>
-              </Card>
-            </div>
-
           </div>
         </div>
       </section>

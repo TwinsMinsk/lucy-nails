@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { CheckCircle, Clock, Video, Award, ShieldCheck } from "lucide-react";
+import { CheckCircle, Clock, Video, Award } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ModuleList, Module } from "@/components/course/ModuleList";
@@ -83,7 +83,6 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
         certificate: true,
         prices: {
             self: courseData.price_self,
-            support: courseData.price_support,
         },
         duration: `~${Math.ceil((courseData.duration_seconds || 0) / 3600)} часов`, // Estimate from metadata if available? Or just hide
         lessonsCount: modulesData.reduce((acc, m) => acc + (m.lessons?.length || 0), 0),
@@ -144,9 +143,8 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
 
                         {/* Detailed Pricing / Rates */}
                         <section id="rates" className="scroll-mt-20">
-                            <h3 className="text-2xl font-bold mb-6">Тарифы обучения</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {/* Rate 1 */}
+                            <h3 className="text-2xl font-bold mb-6">Стоимость обучения</h3>
+                            <div className="max-w-md">
                                 <Card className="flex flex-col h-full border hover:border-primary/50 transition-colors">
                                     <CardHeader>
                                         <CardTitle className="text-xl">Самостоятельный</CardTitle>
@@ -164,53 +162,11 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                                                 <CheckCircle className="w-5 h-5 text-success shrink-0" />
                                                 <span>Самостоятельная отработка по конспектам</span>
                                             </li>
-                                            <li className="flex gap-3 text-sm opacity-50">
-                                                <ShieldCheck className="w-5 h-5 shrink-0" />
-                                                <span className="line-through">Чат с куратором</span>
-                                            </li>
                                         </ul>
                                     </CardContent>
                                     <CardFooter>
                                         <CoursePaymentCTA courseId={id} tariff="self" className="w-full h-12 rounded-lg text-sm uppercase tracking-wide font-bold bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white">
-                                            Выбрать тариф
-                                        </CoursePaymentCTA>
-                                    </CardFooter>
-                                </Card>
-
-                                {/* Rate 2 */}
-                                <Card className="flex flex-col h-full border-2 border-primary/20 bg-primary/5 relative overflow-hidden">
-                                    <div className="absolute top-0 right-0 bg-primary text-white text-xs font-bold px-3 py-1 rounded-bl-lg">
-                                        Популярный
-                                    </div>
-                                    <CardHeader>
-                                        <CardTitle className="text-xl">С поддержкой</CardTitle>
-                                        <div className="text-3xl font-bold text-primary py-2">
-                                        {course.prices.support.toLocaleString('ru-RU')} ₽
-                                        </div>
-                                    </CardHeader>
-                                    <CardContent className="flex-1 space-y-4">
-                                        <ul className="space-y-3">
-                                            <li className="flex gap-3 text-sm">
-                                                <CheckCircle className="w-5 h-5 text-success shrink-0" />
-                                                <span>Доступ ко всем урокам (30 дней)</span>
-                                            </li>
-                                            <li className="flex gap-3 text-sm">
-                                                <CheckCircle className="w-5 h-5 text-success shrink-0" />
-                                                <span>Проверка домашних заданий</span>
-                                            </li>
-                                            <li className="flex gap-3 text-sm font-medium">
-                                                <CheckCircle className="w-5 h-5 text-success shrink-0" />
-                                                <span>Закрытый чат с куратором</span>
-                                            </li>
-                                            <li className="flex gap-3 text-sm">
-                                                <CheckCircle className="w-5 h-5 text-success shrink-0" />
-                                                <span>Подсказки по материалам и ошибкам</span>
-                                            </li>
-                                        </ul>
-                                    </CardContent>
-                                    <CardFooter>
-                                        <CoursePaymentCTA courseId={id} tariff="support" className="w-full h-12 rounded-lg text-sm uppercase tracking-wide font-bold bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white shadow-lg shadow-primary/20">
-                                            Выбрать тариф
+                                            Купить курс
                                         </CoursePaymentCTA>
                                     </CardFooter>
                                 </Card>
@@ -264,7 +220,7 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
             <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur-md border-t lg:hidden z-50">
                 <div className="flex items-center justify-between gap-4 max-w-md mx-auto">
                     <div className="flex flex-col">
-                        <span className="text-xs text-text-secondary">Стоимость от</span>
+                        <span className="text-xs text-text-secondary">Стоимость</span>
                         <span className="font-bold text-lg leading-tight">{course.prices.self.toLocaleString('ru-RU')} ₽</span>
                     </div>
                     <Button size="lg" className="rounded-full shadow-lg" asChild>

@@ -23,7 +23,7 @@ interface GuestCheckoutDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   courseId: string;
-  tariff: "self" | "support";
+  tariff: "self";
 }
 
 export function GuestCheckoutDialog({
