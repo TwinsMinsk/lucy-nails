@@ -377,6 +377,19 @@ export const resetPassword = async (
 };
 
 /**
+ * Задать первый пароль по ссылке активации из письма после оплаты
+ */
+export const activateAccount = async (
+    token: string,
+    newPassword: string
+): Promise<{ message: string }> => {
+    return apiFetch<{ message: string }>("/auth/activate", {
+        method: "POST",
+        body: JSON.stringify({ token, new_password: newPassword }),
+    });
+};
+
+/**
  * ============================================
  * LESSONS METHODS
  * ============================================

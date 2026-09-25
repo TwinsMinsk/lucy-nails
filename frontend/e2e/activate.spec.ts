@@ -1,0 +1,63 @@
+import { expect, test } from "@playwright/test"
+
+const corsHeaders = {
+    "access-control-allow-origin": "http://127.0.0.1:3000",
+    "access-control-allow-credentials": "true",
+    "access-control-allow-methods": "POST,OPTIONS",
+    "access-control-allow-headers": "content-type,x-csrf-token",
+}
+
+test("activation link sets the first password and leads to login", async ({ page }) => {
+    let activatePayload: Record<string, unknown> | undefined
+    await page.route("**/api/auth/activate", async (route) => {
+        if (route.request().method() === "OPTIONS") {
+            await route.fulfill({ status: 204, headers: corsHeaders })
+            return
+        }
+        activatePayload = route.request().postDataJSON() as Record<string, unknown>
+        await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            headers: corsHeaders,
+            body: '{"message":"Account activated"}',
+        })
+    })
+
+    await page.goto("/auth/activate?token=activation-test")
+    await expect(page.getByText("Создайте пароль", { exact: true })).toBeVisible()
+    await page.getByLabel("Пароль", { exact: true }).fill("secret123")
+    await page.getByLabel("Повторите пароль").fill("secret123")
+    await page.getByRole("button", { name: "Сохранить пароль и продолжить" }).click()
+
+    await expect(page).toHaveURL(/\/auth\/login$/)
+    expect(activatePayload).toEqual({ token: "activation-test", new_password: "secret123" })
+})
+
+test("expired activation link explains how to get a new one", async ({ page }) => {
+    await page.route("**/api/auth/activate", async (route) => {
+        if (route.request().method() === "OPTIONS") {
+            await route.fulfill({ status: 204, headers: corsHeaders })
+            return
+        }
+        await route.fulfill({
+            status: 400,
+            contentType: "application/json",
+            headers: corsHeaders,
+            body: '{"detail":"Invalid or expired activation token"}',
+        })
+    })
+
+    await page.goto("/auth/activate?token=stale-token")
+    await page.getByLabel("Пароль", { exact: true }).fill("secret123")
+    await page.getByLabel("Повторите пароль").fill("secret123")
+    await page.getByRole("button", { name: "Сохранить пароль и продолжить" }).click()
+
+    await expect(page.getByRole("alert").filter({ hasText: "Ссылка недействительна или устарела" })).toBeVisible()
+    await expect(page.getByRole("link", { name: "Забыли пароль?" })).toBeVisible()
+})
+
+test("activation page without a token offers recovery links", async ({ page }) => {
+    await page.goto("/auth/activate")
+    await expect(page.getByText("В ссылке не хватает кода активации", { exact: false })).toBeVisible()
+    await expect(page.getByRole("link", { name: "Забыли пароль?" })).toBeVisible()
+})
