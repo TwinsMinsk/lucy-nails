@@ -153,8 +153,9 @@ export default function AdminCoursesPage() {
             toast.success("Курс удалён");
             fetchCourses();
         } catch (error) {
+            // ApiError.message carries the backend `detail` (e.g. 409 for courses with payments).
             const errorMessage = error instanceof Error ? error.message : "Ошибка удаления";
-            toast.error("Ошибка", { description: errorMessage });
+            toast.error("Не удалось удалить курс", { description: errorMessage });
         }
     };
 
@@ -517,6 +518,7 @@ export default function AdminCoursesPage() {
                                                                     <AlertDialogTitle>Удалить курс?</AlertDialogTitle>
                                                                     <AlertDialogDescription>
                                                                         Это действие нельзя отменить. Курс "{course.title}" и все его модули и уроки будут удалены.
+                                                                        Курс с оплатами или выданными доступами удалить нельзя — его можно только снять с публикации.
                                                                     </AlertDialogDescription>
                                                                 </AlertDialogHeader>
                                                                 <AlertDialogFooter>

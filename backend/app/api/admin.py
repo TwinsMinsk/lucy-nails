@@ -20,6 +20,8 @@ from app.models.module import Module
 from app.models.lesson import Lesson
 from app.models.purchase import Purchase
 from app.models.entitlement import Entitlement
+from app.models.order import Order
+from app.models.certificate import Certificate
 from app.schemas.auth import UserResponse
 from app.services.access_service import AccessService
 from app.services.audit_service import append_audit_log
@@ -450,10 +452,22 @@ async def delete_course(
     
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
-    
+
+    # Deleting would cascade away payment history (purchases) or hit the
+    # RESTRICT FK on orders, so commerce/access records force unpublishing.
+    for model in (Purchase, Order, Entitlement, Certificate):
+        reference = await db.scalar(
+            select(model.id).where(model.course_id == course_id).limit(1)
+        )
+        if reference is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Курс с оплатами или доступами нельзя удалить — снимите его с публикации",
+            )
+
     await db.delete(course)
     await db.commit()
-    
+
     return {"message": "Course deleted successfully"}
 
 
