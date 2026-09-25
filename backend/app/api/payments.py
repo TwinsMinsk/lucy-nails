@@ -34,7 +34,11 @@ from app.models.order import Order
 from app.models.purchase import Purchase
 from app.models.payment_event import PaymentEvent
 from app.models.user import User
-from app.services.outbox_service import enqueue_outbox_message
+from app.services.outbox_service import (
+    enqueue_outbox_message,
+    enqueue_owner_telegram_alert,
+    format_rub,
+)
 from app.services.runtime_settings_service import RuntimeSettingsService
 from app.services.prodamus_service import ProdamusService, nest_form_fields
 from app.services.access_service import AccessService
@@ -54,6 +58,7 @@ router = APIRouter()
 # Only the self-paced tariff is sold. "support" is discontinued for new
 # checkouts, but historical orders and webhooks may still reference it.
 SELLABLE_TARIFFS = ("self",)
+TARIFF_LABELS = {"self": "Самостоятельный", "support": "С поддержкой"}
 
 
 # ---------------------------------------------------------------------------
@@ -326,6 +331,7 @@ async def _record_purchase_once(
     payload: dict[str, Any],
     event_data: PaymentEventData,
     order_uuid: UUID | None = None,
+    order_reference: str = "",
 ) -> str:
     """One attempt at recording the purchase in its own transaction.
 
@@ -479,6 +485,19 @@ async def _record_purchase_once(
                 },
                 dedupe_key=f"payment:{dedupe_hash}:access:telegram",
             )
+        await enqueue_owner_telegram_alert(
+            db,
+            kind="owner_payment_alert",
+            text=(
+                "💰 Новая оплата\n"
+                f"Сумма: {format_rub(paid_kopecks)}\n"
+                f"Курс: {course.title}\n"
+                f"Тариф: {TARIFF_LABELS.get(tariff, tariff)}\n"
+                f"Email: {customer_email}\n"
+                f"Заказ: {order_reference or '—'}"
+            ),
+            dedupe_key=f"payment:{dedupe_hash}:owner",
+        )
         if order is not None:
             order.status = "paid"
             order.paid_at = paid_at
@@ -502,6 +521,49 @@ async def _record_purchase_once(
         payment_event.processed_at = datetime.utcnow()
         await db.commit()
         return customer_email
+
+
+async def _record_rejected_webhook(
+    event_data: PaymentEventData,
+    payload: dict[str, Any],
+    *,
+    processing_status: str,
+    error_code: str,
+    error_detail: str,
+    order_id: UUID | None = None,
+) -> None:
+    """Record a signed webhook that was not processed and alert the owner once.
+
+    The alert is keyed by the provider order id (not the event hash, which
+    changes with Prodamus' ``attempt`` counter), so retries do not spam.
+    """
+    await record_terminal_payment_event(
+        event_data,
+        processing_status=processing_status,
+        error_code=error_code,
+        error_detail=error_detail,
+        order_id=order_id,
+    )
+    identity = event_data.external_event_id or event_data.order_reference or event_data.event_hash
+    identity_hash = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    amount = (
+        format_rub(event_data.amount_kopecks) if event_data.amount_kopecks is not None else "—"
+    )
+    email = str(payload.get("customer_email") or "").strip()[:320] or "—"
+    order_reference = event_data.order_reference or event_data.external_event_id or "—"
+    async with async_session_maker() as db:
+        await enqueue_owner_telegram_alert(
+            db,
+            kind="owner_payment_rejected",
+            text=(
+                f"⚠️ Платёж не обработан: {error_code}\n"
+                f"Сумма: {amount}\n"
+                f"Email: {email}\n"
+                f"Заказ: {order_reference}"
+            ),
+            dedupe_key=f"payment-rejected:{identity_hash}:{error_code}",
+        )
+        await db.commit()
 
 
 @router.post(
@@ -537,8 +599,9 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
 
     event_data = build_payment_event_data(payload)
     if not _is_success_payment_payload(payload):
-        await record_terminal_payment_event(
+        await _record_rejected_webhook(
             event_data,
+            payload,
             processing_status="ignored",
             error_code="payment_not_successful",
             error_detail="Signed webhook did not contain a successful payment status",
@@ -549,8 +612,9 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
     provider_order_id_raw = str(payload.get("order_id", "")).strip()
     merchant_reference_raw = str(payload.get("order_num", "")).strip()
     if not provider_order_id_raw:
-        await record_terminal_payment_event(
+        await _record_rejected_webhook(
             event_data,
+            payload,
             processing_status="rejected",
             error_code="missing_provider_order_id",
             error_detail="Prodamus callback did not contain order_id",
@@ -572,8 +636,9 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
             else None
         )
     if order_uuid is None and not parsed:
-        await record_terminal_payment_event(
+        await _record_rejected_webhook(
             event_data,
+            payload,
             processing_status="rejected",
             error_code="invalid_order_reference",
             error_detail="Order reference has an unsupported format",
@@ -589,8 +654,9 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
     try:
         _normalize_email(payload.get("customer_email"))
     except HTTPException as exc:
-        await record_terminal_payment_event(
+        await _record_rejected_webhook(
             event_data,
+            payload,
             processing_status="rejected",
             error_code="invalid_customer_email",
             error_detail=str(exc.detail),
@@ -606,13 +672,20 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
     for attempt in range(2):
         try:
             await _record_purchase_once(
-                payment_key, course_id_uuid, tariff, payload, event_data, order_uuid
+                payment_key,
+                course_id_uuid,
+                tariff,
+                payload,
+                event_data,
+                order_uuid,
+                order_reference=order_reference_raw,
             )
             break
         except HTTPException as exc:
             error_code = str(exc.detail).lower().replace(" ", "_")[:64]
-            await record_terminal_payment_event(
+            await _record_rejected_webhook(
                 event_data,
+                payload,
                 processing_status="rejected",
                 error_code=error_code,
                 error_detail=str(exc.detail),

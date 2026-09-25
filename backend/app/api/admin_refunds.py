@@ -6,12 +6,16 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import require_permission
+from app.models.course import Course
+from app.models.purchase import Purchase
 from app.models.user import User
 from app.services.audit_service import append_audit_log
+from app.services.outbox_service import enqueue_owner_telegram_alert, format_rub
 from app.services.refund_service import RefundError, RefundService
 
 
@@ -136,6 +140,25 @@ async def update_refund(
             "note": refund.note,
         },
     )
+    if refund.status == "processed" and old_value["status"] != "processed":
+        customer = (
+            await db.execute(
+                select(User.email, Course.title)
+                .select_from(Purchase)
+                .join(User, User.id == Purchase.user_id)
+                .join(Course, Course.id == Purchase.course_id)
+                .where(Purchase.id == refund.purchase_id)
+            )
+        ).one()
+        await enqueue_owner_telegram_alert(
+            db,
+            kind="owner_refund_alert",
+            text=(
+                f"↩️ Возврат оформлен: {format_rub(refund.amount_kopecks)}"
+                f" · {customer.email} · {customer.title}"
+            ),
+            dedupe_key=f"refund:{refund.id}:owner",
+        )
     await db.commit()
     await db.refresh(refund)
     return refund

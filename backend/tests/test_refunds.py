@@ -28,6 +28,7 @@ async def test_admin_refund_workflow_revokes_access_without_rewriting_purchase(
 ):
     monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
     monkeypatch.setattr(settings, "TELEGRAM_SUPPORT_GROUP_ID", -1001234567890)
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", 555000111)
     admin = User(
         email="refund-admin@example.com",
         password_hash=get_password_hash("adminpass1"),
@@ -122,6 +123,27 @@ async def test_admin_refund_workflow_revokes_access_without_rewriting_purchase(
     )
     assert removal is not None
     assert not await AccessService.has_active_access(db, student.id, course.id)
+
+    repeated = await client.put(
+        f"/api/admin/refunds/{refund_id}",
+        json={
+            "status": "processed",
+            "reason": "Repeated confirmation from the provider cabinet",
+        },
+        headers=headers,
+    )
+    assert repeated.status_code == 200, repeated.text
+    owner_alerts = (
+        await db.execute(
+            select(OutboxMessage).where(OutboxMessage.kind == "owner_refund_alert")
+        )
+    ).scalars().all()
+    assert len(owner_alerts) == 1
+    assert owner_alerts[0].channel == "telegram"
+    assert owner_alerts[0].recipient == "555000111"
+    assert owner_alerts[0].payload["text"] == (
+        "↩️ Возврат оформлен: 5 000 ₽ · refund-student@example.com · Refund Course"
+    )
 
     student_login = await client.post(
         "/api/auth/login",

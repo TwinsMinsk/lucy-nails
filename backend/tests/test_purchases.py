@@ -14,12 +14,13 @@ from app.api.payments import (
     _checkout_link_for_course,
     parse_checkout_order_id,
 )
-from app.core.config import Settings
+from app.core.config import Settings, settings
 from app.core.security import get_password_hash
 from app.models.audit_log import AuditLog
 from app.models.course import Course
 from app.models.entitlement import Entitlement
 from app.models.order import Order
+from app.models.outbox import OutboxMessage
 from app.models.payment_event import PaymentEvent
 from app.models.purchase import Purchase
 from app.models.user import User
@@ -1276,3 +1277,153 @@ async def test_admin_revoke_access(client: AsyncClient, db: AsyncSession):
     assert item["payment_status"] == "success"
     assert item["access_status"] == "revoked"
     assert item["entitlement_id"] == str(entitlement.id)
+
+
+# --- Owner Telegram notifications ---
+
+
+async def _owner_messages(db: AsyncSession, kind: str) -> list[OutboxMessage]:
+    result = await db.execute(select(OutboxMessage).where(OutboxMessage.kind == kind))
+    return list(result.scalars().all())
+
+
+@pytest.mark.asyncio
+async def test_successful_webhook_queues_single_owner_payment_alert(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", 555000111)
+    course = Course(
+        title="Owner Alert Course", price_self=5900, price_support=11900, is_published=True
+    )
+    db.add(course)
+    await db.commit()
+    await db.refresh(course)
+    checkout = await client.post(
+        "/api/payments/guest-link",
+        json={
+            "course_id": str(course.id),
+            "tariff": "self",
+            "customer_email": "owner-alert@example.com",
+        },
+    )
+    assert checkout.status_code == 200, checkout.text
+    order_reference = checkout.json()["order_id"]
+    notification = {
+        "order_id": "300777",
+        "order_num": order_reference,
+        "customer_email": "owner-alert@example.com",
+        "sum": "5900.00",
+        "currency": "rub",
+        "payment_status": "success",
+        "attempt": "1",
+    }
+
+    first = await client.post(
+        "/api/payments/webhook", json=notification, headers=_signed_payload(notification)[1]
+    )
+    identical_retry = await client.post(
+        "/api/payments/webhook", json=notification, headers=_signed_payload(notification)[1]
+    )
+    next_attempt = {**notification, "attempt": "2"}
+    attempt_retry = await client.post(
+        "/api/payments/webhook", json=next_attempt, headers=_signed_payload(next_attempt)[1]
+    )
+
+    assert [first.status_code, identical_retry.status_code, attempt_retry.status_code] == [
+        200,
+        200,
+        200,
+    ]
+    alerts = await _owner_messages(db, "owner_payment_alert")
+    assert len(alerts) == 1
+    alert = alerts[0]
+    assert alert.channel == "telegram"
+    assert alert.recipient == "555000111"
+    assert alert.dedupe_key.startswith("payment:") and alert.dedupe_key.endswith(":owner")
+    assert alert.payload["text"] == (
+        "💰 Новая оплата\n"
+        "Сумма: 5 900 ₽\n"
+        "Курс: Owner Alert Course\n"
+        "Тариф: Самостоятельный\n"
+        "Email: owner-alert@example.com\n"
+        f"Заказ: {order_reference}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_successful_webhook_without_owner_chat_queues_no_owner_alert(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", None)
+    course = await _published_course(db, "No Owner Chat Course")
+    payload, headers = _signed_payload(
+        {
+            "order_id": "300778",
+            "order_num": _build_prodamus_order_id(course.id, "self"),
+            "customer_email": "no-owner-chat@example.com",
+            "sum": "5000",
+            "currency": "rub",
+            "payment_status": "success",
+        }
+    )
+
+    response = await client.post("/api/payments/webhook", json=payload, headers=headers)
+
+    assert response.status_code == 200, response.text
+    assert await db.scalar(select(func.count(Purchase.id))) == 1
+    telegram_count = await db.scalar(
+        select(func.count(OutboxMessage.id)).where(OutboxMessage.channel == "telegram")
+    )
+    assert telegram_count == 0
+
+
+@pytest.mark.asyncio
+async def test_rejected_signed_webhook_alerts_owner_once(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", 555000111)
+    course = await _published_course(db, "Rejected Alert Course")
+    reference = _build_prodamus_order_id(course.id, "self")
+    notification = {
+        "order_id": "300888",
+        "order_num": reference,
+        "customer_email": "mismatch-alert@example.com",
+        "sum": "9999",
+        "currency": "rub",
+        "payment_status": "success",
+        "attempt": "1",
+    }
+    next_attempt = {**notification, "attempt": "2"}
+
+    first = await client.post(
+        "/api/payments/webhook", json=notification, headers=_signed_payload(notification)[1]
+    )
+    retry = await client.post(
+        "/api/payments/webhook", json=next_attempt, headers=_signed_payload(next_attempt)[1]
+    )
+    forged = await client.post(
+        "/api/payments/webhook",
+        json={**notification, "order_id": "300999"},
+        headers={"Sign": "deadbeef"},
+    )
+
+    assert [first.status_code, retry.status_code, forged.status_code] == [422, 422, 400]
+    assert await db.scalar(select(func.count(PaymentEvent.id))) == 2
+    alerts = await _owner_messages(db, "owner_payment_rejected")
+    assert len(alerts) == 1
+    assert alerts[0].recipient == "555000111"
+    assert alerts[0].payload["text"] == (
+        "⚠️ Платёж не обработан: amount_mismatch\n"
+        "Сумма: 9 999 ₽\n"
+        "Email: mismatch-alert@example.com\n"
+        f"Заказ: {reference}"
+    )

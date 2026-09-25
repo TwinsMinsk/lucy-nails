@@ -67,6 +67,45 @@ def enqueue_outbox_message(
     return message
 
 
+def format_rub(kopecks: int) -> str:
+    """Format an amount in kopecks as '5 900 ₽' (kopecks shown only when present)."""
+    rubles, remainder = divmod(kopecks, 100)
+    amount = f"{rubles:,}".replace(",", " ")
+    if remainder:
+        amount += f",{remainder:02d}"
+    return f"{amount} ₽"
+
+
+async def enqueue_owner_telegram_alert(
+    db: AsyncSession,
+    *,
+    kind: str,
+    text: str,
+    dedupe_key: str,
+) -> bool:
+    """Queue a Telegram message to the shop owner once per dedupe key.
+
+    Does nothing unless both the bot token and the owner chat id are set.
+    The message joins the caller's transaction (transactional outbox).
+    """
+    if not settings.TELEGRAM_BOT_TOKEN or settings.TELEGRAM_OWNER_CHAT_ID is None:
+        return False
+    existing = await db.scalar(
+        select(OutboxMessage.id).where(OutboxMessage.dedupe_key == dedupe_key)
+    )
+    if existing is not None:
+        return False
+    enqueue_outbox_message(
+        db,
+        kind=kind,
+        channel="telegram",
+        recipient=str(settings.TELEGRAM_OWNER_CHAT_ID),
+        payload={"text": text},
+        dedupe_key=dedupe_key,
+    )
+    return True
+
+
 async def deliver_outbox_message(message: OutboxMessage) -> None:
     if message.channel == "telegram":
         if message.kind == "telegram_group_remove":

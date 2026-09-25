@@ -417,3 +417,49 @@ async def test_worker_delivers_existing_outbox_when_lifecycle_scan_fails(
     assert next_scan > 0
     assert len(sessions) == 2
     assert delivered == [sessions[1]]
+
+
+def test_format_rub_groups_thousands_and_keeps_kopecks():
+    assert outbox_service.format_rub(590000) == "5 900 ₽"
+    assert outbox_service.format_rub(123456789) == "1 234 567,89 ₽"
+    assert outbox_service.format_rub(5) == "0,05 ₽"
+
+
+@pytest.mark.asyncio
+async def test_owner_alert_is_queued_once_and_delivered_as_telegram_text(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", 555000111)
+    queued = await outbox_service.enqueue_owner_telegram_alert(
+        db,
+        kind="owner_payment_alert",
+        text="💰 Новая оплата",
+        dedupe_key="test:owner-alert",
+    )
+    await db.commit()
+    duplicate = await outbox_service.enqueue_owner_telegram_alert(
+        db,
+        kind="owner_payment_alert",
+        text="💰 Новая оплата",
+        dedupe_key="test:owner-alert",
+    )
+    assert (queued, duplicate) == (True, False)
+
+    calls: list[tuple[str, dict]] = []
+
+    async def capture_request(method: str, payload: dict) -> None:
+        calls.append((method, payload))
+
+    monkeypatch.setattr(outbox_service, "_telegram_request", capture_request)
+    processed = await outbox_service.process_outbox_batch(db)
+
+    assert processed == 1
+    assert calls == [("sendMessage", {"chat_id": "555000111", "text": "💰 Новая оплата"})]
+    message = await db.scalar(
+        select(OutboxMessage).where(OutboxMessage.dedupe_key == "test:owner-alert")
+    )
+    assert message is not None
+    await db.refresh(message)
+    assert message.status == "sent"
