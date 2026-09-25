@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { CertificateActions } from "@/components/certificate/CertificateActions";
 import { fireConfetti } from "@/components/certificate/confetti";
 import { claimCertificate, isAuthError, CertificateResponse } from "@/lib/api";
+import { parseApiDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 interface CertificateClaimDialogProps {
@@ -134,7 +135,7 @@ export function CertificateClaimDialog({
             </p>
             <p className="text-center text-xs text-muted-foreground">
               № {certificate.certificate_number} · выдан{" "}
-              {new Date(certificate.issued_at).toLocaleDateString("ru-RU")}
+              {parseApiDate(certificate.issued_at).toLocaleDateString("ru-RU")}
             </p>
             <Link
               href={`/certificate/${certificate.certificate_number}`}

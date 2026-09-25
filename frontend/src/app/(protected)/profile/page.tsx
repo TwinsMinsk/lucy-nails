@@ -16,6 +16,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { parseApiDate } from "@/lib/format";
 
 export default function ProfilePage() {
     const router = useRouter();
@@ -125,7 +126,7 @@ export default function ProfilePage() {
                         <Label htmlFor="created_at" className="text-text-secondary">Дата регистрации</Label>
                         <Input
                             id="created_at"
-                            value={new Date(user.created_at).toLocaleDateString('ru-RU')}
+                            value={parseApiDate(user.created_at).toLocaleDateString('ru-RU')}
                             readOnly
                             disabled
                             className="bg-muted/30 border-primary/20 text-text-primary h-12"

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Award, BookOpen, CalendarClock, CalendarX, CheckCircle, Loader2, PlayCircle } from "lucide-react";
+import { Award, BookOpen, CalendarClock, CalendarX, CheckCircle, Loader2, MessageCircle, PlayCircle } from "lucide-react";
 import Image from "next/image";
 
 import { PaymentButton } from "@/components/landing/PaymentButton";
@@ -26,6 +26,7 @@ import {
     MyCourseResponse,
     UserResponse,
 } from "@/lib/api";
+import { parseApiDate } from "@/lib/format";
 import { toast } from "sonner";
 import { CertificateClaimDialog } from "@/components/certificate/CertificateClaimDialog";
 
@@ -83,7 +84,7 @@ export default function DashboardPage() {
 
     const formatAccessLeft = (expiresAt?: string | null) => {
         if (!expiresAt) return null;
-        const diff = new Date(expiresAt).getTime() - Date.now();
+        const diff = parseApiDate(expiresAt).getTime() - Date.now();
         const days = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
         if (days === 0) return "доступ заканчивается сегодня";
         if (days === 1) return "остался 1 день";
@@ -158,7 +159,7 @@ export default function DashboardPage() {
                                                 <span>
                                                     Доступ до{" "}
                                                     <span className="font-medium text-text-primary">
-                                                        {new Date(course.expires_at).toLocaleDateString("ru-RU")}
+                                                        {parseApiDate(course.expires_at).toLocaleDateString("ru-RU")}
                                                     </span>
                                                     {accessLeft ? `, ${accessLeft}` : ""}
                                                 </span>
@@ -171,6 +172,18 @@ export default function DashboardPage() {
                                                     {course.tariff === "support" ? "С поддержкой" : "Самостоятельный"}
                                                 </span>
                                             </p>
+                                        )}
+                                        {/* Support is no longer sold, but earlier buyers keep their curator chat */}
+                                        {course.tariff === "support" && course.support_chat_url && (
+                                            <a
+                                                href={course.support_chat_url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center justify-center w-full rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
+                                            >
+                                                <MessageCircle className="w-4 h-4 mr-2" />
+                                                Чат с куратором в Telegram
+                                            </a>
                                         )}
                                         <div className="space-y-2">
                                             <div className="flex justify-between text-sm">
@@ -288,7 +301,7 @@ export default function DashboardPage() {
                                             <span>
                                                 Доступ закончился{" "}
                                                 <span className="font-medium text-text-primary">
-                                                    {new Date(course.expired_at).toLocaleDateString("ru-RU")}
+                                                    {parseApiDate(course.expired_at).toLocaleDateString("ru-RU")}
                                                 </span>
                                             </span>
                                         </div>
