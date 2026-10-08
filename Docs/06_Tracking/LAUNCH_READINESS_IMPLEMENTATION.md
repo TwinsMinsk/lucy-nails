@@ -41,7 +41,7 @@ Metrika counter identity/access, isolated demo payment form, backup bucket/crede
 
 ## Verified local candidate
 
-Independent verifier verdict: **APPROVE local implementation; production launch INCOMPLETE**. Fresh follow-up backend run: **335 passed, zero skipped**, 141.69s. Independent follow-up review is recorded separately before its commit. No production resources were changed. An empty isolated Railway staging environment now has independent PostgreSQL 17 and Redis; application deployment and external acceptance are still pending.
+Independent verifier verdict: **APPROVE local implementation; production launch INCOMPLETE**. Fresh follow-up backend run: **335 passed, zero skipped**, 141.69s. Independent follow-up review approved the delta before commit. No production resources were changed. An empty isolated Railway staging environment now has independent PostgreSQL 17, Redis and private Mailpit; application deployment and external acceptance are still pending.
 
 | Check | Evidence | Practical limit |
 | --- | --- | --- |
@@ -59,7 +59,7 @@ Independent verifier verdict: **APPROVE local implementation; production launch 
 
 The pre-existing baseline metadata drift is resolved without changing applied migrations: five model fields now declare JSONB, and analytics event ID / MFA user ID declarations match the existing unique constraints and ordinary indexes. A fresh PostgreSQL 17 upgrade and `alembic check` pass; CI now checks schema drift explicitly.
 
-[Secret-scan triage](../04_Setup_Ops/SECRET_SCAN_TRIAGE.md) records all 27 original findings and the exact official provenance of the four historical Prodamus demo examples. Current files and refreshed history through candidate `8d1f946` have zero findings; four independent canaries are still detected. GitHub CI, scanner and individual CodeQL language jobs passed on that candidate; a separate CodeQL regex alert prompted a bounded hostname parser fix. The follow-up commit requires another complete GitHub run before merge.
+[Secret-scan triage](../04_Setup_Ops/SECRET_SCAN_TRIAGE.md) records all 27 original findings and the exact official provenance of the four historical Prodamus demo examples. Current files and refreshed history through candidate `8d1f946` have zero findings; four independent canaries are still detected. A separate CodeQL regex alert prompted a bounded hostname parser fix. On follow-up candidate `4c0b439`, backend/frontend CI, both CodeQL language jobs, aggregate CodeQL, Secret Scan and GitGuardian passed. CI run: [37747648694](https://github.com/TwinsMinsk/lucy-nails/actions/runs/37747648694). Independent approval and green CI do not close production backup or external launch gates.
 
 Verification also found and closed concurrency defects: stale password changes could race mailbox activation/session revocation; a payment-event FK lock could deadlock concurrent callbacks and misclassify the same provider payment. Deterministic regressions now cover both. Bcrypt no longer blocks the API event loop: ten-login probe gap decreased from 1.864s to 15.7ms using a bounded thread pool.
 
