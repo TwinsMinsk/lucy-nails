@@ -24,11 +24,13 @@ from app.core.uploads import public_upload_url, upload_dir
 from app.models.certificate import Certificate
 from app.models.course import Course
 from app.models.user import User
+from app.models.entitlement import Entitlement
+from app.models.purchase import Purchase
 from app.services.certificate_renderer import png_to_pdf, render_certificate_png
 from app.services.analytics_service import AnalyticsService
 from app.services.outbox_service import enqueue_outbox_message
 from app.services.progress_service import ProgressService
-from app.services.purchase_service import PurchaseService
+from app.services.access_service import AccessService
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +59,10 @@ class CourseNotFoundError(CertificateError):
 
 class CertificateStorageNotConfiguredError(CertificateError):
     """Upload storage is not configured (required in production)."""
+
+
+class CertificateRevokedError(CertificateError):
+    pass
 
 
 class CertificateService:
@@ -114,12 +120,27 @@ class CertificateService:
 
     @staticmethod
     async def _has_course_access(db: AsyncSession, user: User, course_id: UUID) -> bool:
-        """Access = admin, or any successful purchase ever (expiry ignored — completion
-        could only have been earned while access was live)."""
+        """Preserve earned eligibility after ordinary expiry, excluding revoked/refunded access."""
         if user.role == "admin":
             return True
-        purchase = await PurchaseService.get_any_successful_purchase(db, user.id, course_id)
-        return purchase is not None
+        if user.email_verified_at is None:
+            return False
+        purchases = list((await db.scalars(select(Purchase).where(
+            Purchase.user_id == user.id, Purchase.course_id == course_id,
+            Purchase.payment_status == "success",
+        ).order_by(Purchase.id).with_for_update())).all())
+        valid_purchases = {purchase.id for purchase in purchases if not await AccessService.is_purchase_fully_refunded(db, purchase)}
+        entitlements = list((await db.scalars(select(Entitlement).where(
+            Entitlement.user_id == user.id, Entitlement.course_id == course_id,
+        ))).all())
+        if entitlements:
+            return any(
+                grant.status in {"active", "expired"}
+                and grant.starts_at <= datetime.utcnow()
+                and (grant.source_purchase_id is None or grant.source_purchase_id in valid_purchases)
+                for grant in entitlements
+            )
+        return bool(valid_purchases)
 
     @staticmethod
     async def get_status(
@@ -129,13 +150,15 @@ class CertificateService:
     ) -> tuple[str, int, Certificate | None]:
         """Returns (status, progress_percent, certificate) for the claim-status check."""
         completion = await ProgressService.get_course_completion(db, user.id, course_id)
+        if user.role != "admin" and user.email_verified_at is None:
+            return "not_available", completion.percent, None
 
         # Course-eager-loaded lookup (not the bare get_for_user_course): callers
         # (the router) need certificate.course.title without triggering a lazy
         # load on the async session.
         existing = await CertificateService._get_existing_with_course(db, user.id, course_id)
         if existing:
-            return "issued", completion.percent, existing
+            return ("revoked" if existing.status == "revoked" else "issued"), completion.percent, existing
 
         has_access = await CertificateService._has_course_access(db, user, course_id)
         if completion.is_complete and has_access:
@@ -161,8 +184,14 @@ class CertificateService:
         # (MissingGreenlet). Use this local for the rest of the function instead.
         user_id = user.id
 
+        if user.role != "admin" and user.email_verified_at is None:
+            raise NoCourseAccessError("Confirm email before claiming a certificate")
+        has_access = await CertificateService._has_course_access(db, user, course_id)
+
         existing = await CertificateService._get_existing_with_course(db, user_id, course_id)
         if existing:
+            if existing.status == "revoked":
+                raise CertificateRevokedError("Certificate revoked")
             return existing, False
 
         course_result = await db.execute(select(Course).where(Course.id == course_id))
@@ -170,7 +199,7 @@ class CertificateService:
         if not course:
             raise CourseNotFoundError(f"Course {course_id} not found")
 
-        if not await CertificateService._has_course_access(db, user, course_id):
+        if not has_access:
             raise NoCourseAccessError("User has no access to this course")
 
         completion = await ProgressService.get_course_completion(db, user_id, course_id)
@@ -178,7 +207,7 @@ class CertificateService:
             raise CourseNotCompletedError("Course is not fully completed yet")
 
         # Mirror app/api/upload.py's production storage guard.
-        if settings.ENVIRONMENT.lower() == "production" and (
+        if settings.is_deployed and (
             not settings.UPLOAD_STORAGE_DIR or not settings.UPLOAD_PUBLIC_BASE_URL
         ):
             raise CertificateStorageNotConfiguredError(

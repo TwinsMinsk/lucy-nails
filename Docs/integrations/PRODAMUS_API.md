@@ -892,7 +892,7 @@ $linktoform = 'https://demo.payform.ru/';
 
 // Секретный ключ. Можно найти на странице настроек,
 // в личном кабинете платежной формы.
-$secret_key = '2y2aw4oknnke80bp1a8fniwuuq7tdkwmmuq7vwi4nzbr8z1182ftbn6p8mhw3bhz';
+$secret_key = getenv('PRODAMUS_SECRET_KEY');
 
 $data = [\
 	// хххх - номер заказ в системе интернет-магазина\
@@ -1750,7 +1750,7 @@ header('Content-type:text/plain;charset=utf-8');
 require_once __DIR__ . '/Hmac.php';
 
 $url = 'https://demo.payform.ru/rest/setActivity/';
-$secret_key = '2y2aw4oknnke80bp1a8fniwuuq7tdkwmmuq7vwi4nzbr8z1182ftbn6p8mhw3bhz';
+$secret_key = getenv('PRODAMUS_SECRET_KEY');
 
 $data = [\
   'subscription' => 1,\
@@ -2573,7 +2573,7 @@ header('Content-type:text/plain;charset=utf-8');
 require_once __DIR__ . '/Hmac.php';
 
 $url = 'https://demo.payform.ru/rest/setSubscriptionDiscount/';
-$secret_key = '2y2aw4oknnke80bp1a8fniwuuq7tdkwmmuq7vwi4nzbr8z1182ftbn6p8mhw3bhz';
+$secret_key = getenv('PRODAMUS_SECRET_KEY');
 
 $data = [\
   'subscription' => 1,\
@@ -2796,7 +2796,7 @@ header('Content-type:text/plain;charset=utf-8');
 require_once __DIR__ . '/Hmac.php';
 
 $url = 'https://demo.payform.ru/rest/setSubscriptionPaymentDate/';
-$secret_key = '2y2aw4oknnke80bp1a8fniwuuq7tdkwmmuq7vwi4nzbr8z1182ftbn6p8mhw3bhz';
+$secret_key = getenv('PRODAMUS_SECRET_KEY');
 
 $data = [\
   'subscription' => 1,\

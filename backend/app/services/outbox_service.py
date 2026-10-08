@@ -128,6 +128,12 @@ async def deliver_outbox_message(message: OutboxMessage) -> None:
             message.payload["course_title"],
         )
         return
+    if message.kind == "email_verification":
+        await EmailService.send_email_verification(message.recipient, message.payload["activation_url"])
+        return
+    if message.kind == "password_reset":
+        await EmailService.send_password_reset(message.recipient, message.payload["reset_url"])
+        return
     if message.kind == "access_granted":
         await EmailService.send_access_granted(
             message.recipient,

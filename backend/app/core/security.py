@@ -14,6 +14,28 @@ from app.core.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+MAX_AUTH_TOKEN_LENGTH = 4096
+
+
+def decode_auth_token(token: str) -> dict[str, Any]:
+    try:
+        if not isinstance(token, str) or len(token) > MAX_AUTH_TOKEN_LENGTH:
+            raise JWTError("Invalid token length")
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+            options={"require": ["exp", "sub", "ver", "type"]},
+        )
+        uuid.UUID(payload["sub"])
+        if type(payload["ver"]) is not int or not isinstance(payload["type"], str):
+            raise JWTError("Invalid token claims")
+        if "sid" in payload:
+            uuid.UUID(payload["sid"])
+        return payload
+    except (ValueError, TypeError, AttributeError, RecursionError, OverflowError) as exc:
+        raise JWTError("Invalid token") from exc
+
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Проверяет пароль по хешу."""
@@ -64,7 +86,7 @@ def create_password_reset_token(user_id: Any, token_version: int = 0) -> str:
 def verify_password_reset_token(token: str) -> dict[str, Any] | None:
     """Проверяет reset-токен и возвращает его payload (с sub/ver) или None."""
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        payload = decode_auth_token(token)
     except JWTError:
         return None
     if payload.get("type") != "reset":
@@ -81,7 +103,7 @@ def create_account_activation_token(user_id: Any, token_version: int = 0) -> str
 
 def verify_account_activation_token(token: str) -> dict[str, Any] | None:
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        payload = decode_auth_token(token)
     except JWTError:
         return None
     if payload.get("type") != "activation":
@@ -98,7 +120,7 @@ def create_mfa_setup_token(user_id: Any, token_version: int = 0) -> str:
 
 def verify_mfa_setup_token(token: str) -> dict[str, Any] | None:
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        payload = decode_auth_token(token)
     except JWTError:
         return None
     if payload.get("type") != "mfa_setup":

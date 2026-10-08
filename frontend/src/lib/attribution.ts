@@ -48,6 +48,7 @@ export function saveConsent(analytics: boolean): ConsentState | null {
         window.localStorage.removeItem(FIRST_TOUCH_KEY)
         window.localStorage.removeItem(LAST_TOUCH_KEY)
         window.localStorage.removeItem(ANONYMOUS_ID_KEY)
+        Object.keys(window.sessionStorage).filter((key) => key.startsWith("lucy-metrika-purchase:")).forEach((key) => window.sessionStorage.removeItem(key))
     }
     window.dispatchEvent(new CustomEvent("lucy-consent-updated", { detail: consent }))
     return consent

@@ -1,6 +1,9 @@
 "use client"
 
-import { FormEvent, useEffect, useState } from "react"
+import { formatApiDate, formatApiDateTime } from "@/lib/format"
+import { useAdminPermission } from "@/app/admin/permissions"
+import { FormEvent, Suspense, useCallback, useEffect, useRef, useState } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { KeyRound, Loader2, Mail, Search, UserPlus, UserRound } from "lucide-react"
 import { toast } from "sonner"
 
@@ -15,20 +18,20 @@ import { Textarea } from "@/components/ui/textarea"
 import {
     adminCreateStudent,
     adminCreateStudentNote,
-    adminGetCourses,
+    adminGetAccessCourses,
     adminGetStudent,
     adminGetStudents,
     adminGrantAccess,
     adminSendStudentLoginLink,
     adminUpdateStudentTags,
-    AdminCourseFullResponse,
+    AdminAccessCourse,
     AdminStudentDetail,
     AdminStudentLessonProgress,
     AdminStudentListItem,
 } from "@/lib/api"
 
-const date = (value?: string | null) => value ? new Date(value).toLocaleString("ru-RU") : "—"
-const day = (value?: string | null) => value ? new Date(value).toLocaleDateString("ru-RU") : "—"
+const date = formatApiDateTime
+const day = formatApiDate
 const errorText = (error: unknown) => error instanceof Error ? error.message : undefined
 
 type LessonProgressModule = { key: string; title: string; lessons: AdminStudentLessonProgress[] }
@@ -59,12 +62,30 @@ const groupLessonProgress = (items: AdminStudentLessonProgress[]) => {
 const emptyStudentForm = { email: "", full_name: "", phone: "", course_id: "", access_days: 30, reason: "" }
 
 export default function AdminUsersPage() {
+    return <Suspense fallback={<Loader2 className="mx-auto my-12 h-7 w-7 animate-spin" />}><Users /></Suspense>
+}
+
+function Users() {
+    const router = useRouter()
+    const pathname = usePathname()
+    const params = useSearchParams()
+    const search = params.get("search") || ""
+    const offset = Math.max(0, Number(params.get("offset")) || 0)
+    const [searchInput, setSearchInput] = useState(search)
+    useEffect(() => { setSearchInput(search) }, [search])
+    const navigate = (query: string, pageOffset: number) => {
+        const next = new URLSearchParams()
+        if (query) next.set("search", query)
+        if (pageOffset) next.set("offset", String(pageOffset))
+        router.replace(`${pathname}${next.size ? `?${next}` : ""}`, { scroll: false })
+    }
+    const canManageUsers = useAdminPermission("users.manage")
+    const canManageAccess = useAdminPermission("access.manage")
     const [items, setItems] = useState<AdminStudentListItem[]>([])
     const [total, setTotal] = useState(0)
-    const [search, setSearch] = useState("")
     const [loading, setLoading] = useState(true)
     const [selected, setSelected] = useState<AdminStudentDetail | null>(null)
-    const [courses, setCourses] = useState<AdminCourseFullResponse[]>([])
+    const [courses, setCourses] = useState<AdminAccessCourse[]>([])
     const [note, setNote] = useState("")
     const [tags, setTags] = useState("")
     const [tagReason, setTagReason] = useState("")
@@ -74,6 +95,7 @@ export default function AdminUsersPage() {
     const [saving, setSaving] = useState(false)
     const [createOpen, setCreateOpen] = useState(false)
     const [studentForm, setStudentForm] = useState(emptyStudentForm)
+    const generation = useRef(0)
     const canCreateStudent = Boolean(studentForm.email.trim())
         && Boolean(studentForm.course_id)
         && Number.isInteger(studentForm.access_days)
@@ -81,24 +103,27 @@ export default function AdminUsersPage() {
         && studentForm.access_days <= 3650
         && studentForm.reason.trim().length >= 5
 
-    const load = async (query = search) => {
+    const load = useCallback(async () => {
+        const request = ++generation.current
         setLoading(true)
         try {
-            const response = await adminGetStudents({ search: query, limit: 100 })
+            const response = await adminGetStudents({ search, limit: 50, offset })
+            if (request !== generation.current) return
             setItems(response.items)
             setTotal(response.total)
         } catch (error) {
+            if (request !== generation.current) return
             toast.error("Не удалось загрузить учеников", { description: error instanceof Error ? error.message : undefined })
         } finally {
-            setLoading(false)
+            if (request === generation.current) setLoading(false)
         }
-    }
+    }, [search, offset])
+
+    useEffect(() => { void load(); return () => { generation.current += 1 } }, [load])
 
     useEffect(() => {
-        void Promise.all([load(""), adminGetCourses().then(setCourses)])
-        // Initial load only; search is submitted explicitly.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [])
+        if (canManageAccess) void adminGetAccessCourses().then(setCourses).catch((error) => toast.error("Не удалось загрузить курсы", { description: errorText(error) }))
+    }, [canManageAccess])
 
     const openStudent = async (id: string) => {
         try {
@@ -181,7 +206,7 @@ export default function AdminUsersPage() {
         } finally { setSaving(false) }
     }
 
-    const submitSearch = (event: FormEvent) => { event.preventDefault(); void load() }
+    const submitSearch = (event: FormEvent) => { event.preventDefault(); navigate(searchInput.trim(), 0) }
 
     return (
         <div className="container max-w-7xl space-y-6 px-4 py-8 md:px-6">
@@ -190,13 +215,13 @@ export default function AdminUsersPage() {
                     <h1 className="text-3xl font-bold">Ученики</h1>
                     <p className="mt-1 text-muted-foreground">Серверный поиск, доступы, прогресс, сертификаты, заметки и теги.</p>
                 </div>
-                <Button className="gap-2" onClick={() => setCreateOpen(true)}><UserPlus className="h-4 w-4" />Добавить ученика</Button>
+                {canManageAccess && <Button className="gap-2" onClick={() => setCreateOpen(true)}><UserPlus className="h-4 w-4" />Добавить ученика</Button>}
             </div>
             <Card>
                 <CardHeader className="gap-4 md:flex-row md:items-center md:justify-between">
                     <CardTitle>{total} учеников</CardTitle>
                     <form className="flex w-full gap-2 md:w-96" onSubmit={submitSearch}>
-                        <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Email, имя или телефон" />
+                        <Input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Email, имя или телефон" />
                         <Button type="submit" variant="outline"><Search className="h-4 w-4" /></Button>
                     </form>
                 </CardHeader>
@@ -217,6 +242,7 @@ export default function AdminUsersPage() {
                             {!items.length && <p className="p-10 text-center text-muted-foreground">Ничего не найдено</p>}
                         </div>
                     )}
+                    <div className="mt-4 flex items-center gap-3"><Button variant="outline" disabled={offset === 0} onClick={() => navigate(search, Math.max(0, offset - 50))}>Назад</Button><span className="text-sm">{total ? offset + 1 : 0}–{Math.min(offset + items.length, total)} из {total}</span><Button variant="outline" disabled={offset + 50 >= total} onClick={() => navigate(search, offset + 50)}>Далее</Button></div>
                 </CardContent>
             </Card>
 
@@ -239,13 +265,13 @@ export default function AdminUsersPage() {
                                 </div>)}
                                 {!selected.entitlements.length && <p className="text-sm text-muted-foreground">Доступов нет</p>}
                             </section>
-                            <section className="space-y-3 rounded-lg border p-4">
+                            {canManageAccess && <section className="space-y-3 rounded-lg border p-4">
                                 <h3 className="flex items-center gap-2 font-semibold"><KeyRound className="h-4 w-4" />Выдать доступ</h3>
                                 <Select value={grantCourse} onValueChange={setGrantCourse}><SelectTrigger><SelectValue placeholder="Выберите курс" /></SelectTrigger><SelectContent>{courses.map((course) => <SelectItem key={course.id} value={course.id}>{course.title}</SelectItem>)}</SelectContent></Select>
                                 <div><Label>Дней</Label><Input type="number" min={1} max={3650} value={grantDays} onChange={(event) => setGrantDays(Number(event.target.value))} /></div>
                                 <Textarea value={grantReason} onChange={(event) => setGrantReason(event.target.value)} placeholder="Обязательная причина" />
                                 <Button className="w-full" disabled={saving || !grantCourse || grantReason.trim().length < 5} onClick={grant}>Выдать доступ</Button>
-                            </section>
+                            </section>}
                             <section className="space-y-3 rounded-lg border p-4 md:col-span-2">
                                 <h3 className="font-semibold">Прогресс по урокам</h3>
                                 {groupLessonProgress(selected.lesson_progress).map((course) => (
@@ -276,20 +302,20 @@ export default function AdminUsersPage() {
                             </section>
                             <section className="space-y-3 rounded-lg border p-4">
                                 <h3 className="font-semibold">Заметки</h3>
-                                <Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Внутренняя заметка о студенте" />
-                                <Button variant="outline" disabled={saving || note.trim().length < 2} onClick={saveNote}>Добавить заметку</Button>
+                                {canManageUsers && <><Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Внутренняя заметка о студенте" />
+                                <Button variant="outline" disabled={saving || note.trim().length < 2} onClick={saveNote}>Добавить заметку</Button></>}
                                 <div className="max-h-44 space-y-2 overflow-y-auto">{selected.notes.map((item) => <div key={item.id} className="rounded-md bg-muted p-2 text-sm"><p>{item.body}</p><p className="mt-1 text-xs text-muted-foreground">{date(item.created_at)}</p></div>)}</div>
                             </section>
                             <section className="space-y-3 rounded-lg border p-4">
                                 <h3 className="font-semibold">Теги</h3>
-                                <Input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="vip, needs-follow-up" />
+                                {canManageUsers && <><Input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="vip, needs-follow-up" />
                                 <Textarea value={tagReason} onChange={(event) => setTagReason(event.target.value)} placeholder="Причина изменения тегов" />
-                                <Button variant="outline" disabled={saving || tagReason.trim().length < 5} onClick={saveTags}>Сохранить теги</Button>
+                                <Button variant="outline" disabled={saving || tagReason.trim().length < 5} onClick={saveTags}>Сохранить теги</Button></>}
                                 <div className="flex flex-wrap gap-2">{selected.tags.map((tag) => <Badge key={tag} variant="secondary">{tag}</Badge>)}</div>
                             </section>
                         </div>
                         <DialogFooter className="gap-2">
-                            <Button variant="outline" className="gap-2" disabled={saving} onClick={sendLoginLink}><Mail className="h-4 w-4" />Отправить ссылку для входа</Button>
+                            {canManageUsers && <Button variant="outline" className="gap-2" disabled={saving} onClick={sendLoginLink}><Mail className="h-4 w-4" />Отправить ссылку для входа</Button>}
                             <Button variant="outline" onClick={() => setSelected(null)}>Закрыть</Button>
                         </DialogFooter>
                     </>}

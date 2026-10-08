@@ -237,6 +237,7 @@ async def test_partial_refund_keeps_access_until_full_amount_is_processed(
     )
     student = User(
         email="partial-refund-student@example.com",
+        email_verified_at=datetime.utcnow(),
         password_hash=get_password_hash("studentpass1"),
         role="student",
     )
@@ -459,6 +460,7 @@ async def test_group_removal_waits_for_last_active_support_entitlement(
     monkeypatch.setattr(settings, "TELEGRAM_SUPPORT_GROUP_ID", -1001234567890)
     student = User(
         email="multi-support@example.com",
+        email_verified_at=datetime.utcnow(),
         password_hash=get_password_hash("studentpass1"),
         role="student",
         telegram_id=99112233,

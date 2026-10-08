@@ -1,5 +1,6 @@
 "use client"
 
+import { formatApiDateTime } from "@/lib/format"
 import { FormEvent, useCallback, useEffect, useState } from "react"
 import { Award, Download, Loader2, RefreshCcw, Search, ShieldX } from "lucide-react"
 import { toast } from "sonner"
@@ -21,7 +22,7 @@ import {
 
 type CertificateAction = { certificate: AdminCertificate; type: "reissue" | "revoke" }
 
-const formatDate = (value?: string | null) => value ? new Date(value).toLocaleString("ru-RU") : "—"
+const formatDate = formatApiDateTime
 
 export default function AdminCertificatesPage() {
     const [items, setItems] = useState<AdminCertificate[]>([])

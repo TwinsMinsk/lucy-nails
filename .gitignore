@@ -136,3 +136,4 @@ kinescope_player_log_*.json
 /backend/check_lesson_db.py
 /backend/test_payment.py
 /backend/run_test.bat
+/scripts/load/learners.local.json

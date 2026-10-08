@@ -23,9 +23,10 @@ test("registration requires personal-data consent", async ({ page }) => {
         const button = document.querySelector("button[type=submit]")
         return !!button && Object.keys(button).some((key) => key.startsWith("__reactProps"))
     })
-    await page.getByLabel("Email").fill("new-student@example.com")
+    await page.getByLabel("Email").pressSequentially("new-student@example.com")
     await page.getByLabel("Пароль", { exact: true }).fill("secret123")
     await page.getByLabel("Подтвердите пароль").fill("secret123")
+    await expect(page.getByLabel("Email")).toHaveValue("new-student@example.com")
     await expect(page.getByRole("button", { name: "Зарегистрироваться" })).toHaveAttribute("aria-disabled", "true")
     await page.getByLabel("Подтвердите пароль").press("Enter")
 
@@ -37,10 +38,10 @@ test("registration requires personal-data consent", async ({ page }) => {
     await expect(page.getByRole("link", { name: "обработку персональных данных" })).toHaveAttribute("target", "_blank")
 })
 
-test("login posts credentials to the API and never into the page URL", async ({ page }) => {
+test("login posts credentials to the API and never into the page URL", async ({ page, baseURL }) => {
     let loginPayload: Record<string, unknown> | undefined
     const corsHeaders = {
-        "access-control-allow-origin": "http://127.0.0.1:3000",
+        "access-control-allow-origin": new URL(baseURL!).origin,
         "access-control-allow-credentials": "true",
         "access-control-allow-methods": "POST,OPTIONS",
         "access-control-allow-headers": "content-type,x-csrf-token",
@@ -66,8 +67,10 @@ test("login posts credentials to the API and never into the page URL", async ({ 
         const button = document.querySelector("button[type=submit]")
         return !!button && Object.keys(button).some((key) => key.startsWith("__reactProps"))
     })
-    await page.getByLabel("Email").fill("student@example.com")
+    await page.getByLabel("Email").pressSequentially("student@example.com")
     await page.getByLabel("Пароль").fill("secret123")
+    await expect(page.getByLabel("Email")).toHaveValue("student@example.com")
+    await expect(page.getByLabel("Пароль")).toHaveValue("secret123")
     await page.getByLabel("Пароль").press("Enter")
 
     await expect.poll(() => loginPayload).toMatchObject({ email: "student@example.com", password: "secret123" })

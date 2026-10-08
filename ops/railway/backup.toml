@@ -1,0 +1,8 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "ops/backup/Dockerfile"
+
+[deploy]
+startCommand = "python3 /app/backup_postgres.py --output-dir /tmp/backups"
+cronSchedule = "0 1 * * *"
+restartPolicyType = "NEVER"

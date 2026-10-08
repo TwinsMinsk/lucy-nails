@@ -35,8 +35,14 @@ async def test_public_event_is_deduplicated_and_contains_no_pii(
     assert duplicate.status_code == 202, duplicate.text
     assert duplicate.json() == {"accepted": True, "duplicate": True}
     rows = (
-        await db.execute(select(AnalyticsEvent).where(AnalyticsEvent.event_id == event_id))
-    ).scalars().all()
+        (
+            await db.execute(
+                select(AnalyticsEvent).where(AnalyticsEvent.event_id == event_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
     assert rows[0].utm_source == "instagram"
     assert rows[0].properties == {"path": "/", "variant": "main"}
@@ -173,13 +179,20 @@ async def test_checkout_snapshots_first_and_last_touch_and_emits_server_events(
     assert order.first_utm_source == "instagram"
     assert order.last_utm_source == "telegram"
     events = (
-        await db.execute(
-            select(AnalyticsEvent)
-            .where(AnalyticsEvent.order_id == order.id)
-            .order_by(AnalyticsEvent.event_name)
+        (
+            await db.execute(
+                select(AnalyticsEvent)
+                .where(AnalyticsEvent.order_id == order.id)
+                .order_by(AnalyticsEvent.event_name)
+            )
         )
-    ).scalars().all()
-    assert [event.event_name for event in events] == ["checkout_started", "payment_redirect"]
+        .scalars()
+        .all()
+    )
+    assert [event.event_name for event in events] == [
+        "checkout_started",
+        "payment_redirect",
+    ]
     assert all(event.anonymous_id == anonymous_id for event in events)
 
     pii_identifier = await client.post(
@@ -194,3 +207,46 @@ async def test_checkout_snapshots_first_and_last_touch_and_emits_server_events(
         },
     )
     assert pii_identifier.status_code == 422, pii_identifier.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    ["/admin", "/profile", "/courses/id/lessons/id", "/auth/reset", "/payment-success"],
+)
+async def test_collector_rejects_private_page_paths(client, path):
+    response = await client.post(
+        "/api/analytics/events",
+        json={
+            "event_id": str(uuid4()),
+            "event_name": "landing_view",
+            "source": "web",
+            "anonymous_id": str(uuid4()),
+            "properties": {"path": path},
+        },
+    )
+    assert response.status_code == 422, response.text
+
+
+@pytest.mark.asyncio
+async def test_event_timestamp_is_normalized_to_utc(client, db):
+    from datetime import datetime, timezone, timedelta
+
+    instant = datetime.now(timezone.utc).replace(microsecond=0)
+    event_id = str(uuid4())
+    response = await client.post(
+        "/api/analytics/events",
+        json={
+            "event_id": event_id,
+            "event_name": "landing_view",
+            "source": "web",
+            "anonymous_id": str(uuid4()),
+            "properties": {"path": "/courses/public-course"},
+            "happened_at": instant.astimezone(timezone(timedelta(hours=3))).isoformat(),
+        },
+    )
+    assert response.status_code == 202, response.text
+    event = await db.scalar(
+        select(AnalyticsEvent).where(AnalyticsEvent.event_id == event_id)
+    )
+    assert event.happened_at == instant.replace(tzinfo=None)

@@ -8,7 +8,6 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-import jwt
 from jwt.exceptions import PyJWTError as JWTError
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -22,6 +21,7 @@ from app.core.rate_limit import limiter
 from app.core.security import (
     create_mfa_setup_token,
     create_password_reset_token,
+    decode_auth_token,
     verify_account_activation_token,
     verify_mfa_setup_token,
     verify_password_reset_token,
@@ -38,9 +38,9 @@ from app.schemas.auth import (
     UserResponse,
 )
 from app.services.auth_service import AuthService
-from app.services.email_service import EmailService
+from app.services.outbox_service import enqueue_outbox_message
 from app.services.mfa_service import MfaService
-from app.services.session_service import SessionService
+from app.services.session_service import SessionService, hash_refresh_token, hmac_compare
 
 
 logger = logging.getLogger(__name__)
@@ -51,11 +51,11 @@ router = APIRouter()
 class RefreshRequest(BaseModel):
     """Обновление access token."""
 
-    refresh_token: str | None = Field(None, min_length=10)
+    refresh_token: str | None = Field(None, min_length=10, max_length=4096)
 
 
 class MfaSetupRequest(BaseModel):
-    setup_token: str = Field(..., min_length=10)
+    setup_token: str = Field(..., min_length=10, max_length=4096)
 
 
 class MfaConfirmRequest(MfaSetupRequest):
@@ -82,7 +82,7 @@ class SessionResponse(BaseModel):
 
 
 def _is_production() -> bool:
-    return settings.ENVIRONMENT.lower() == "production"
+    return settings.is_deployed
 
 
 def _cookie_domain() -> str | None:
@@ -242,11 +242,7 @@ async def refresh_token_endpoint(
         )
 
     try:
-        payload = jwt.decode(
-            refresh_token,
-            settings.JWT_SECRET_KEY,
-            algorithms=[settings.JWT_ALGORITHM],
-        )
+        payload = decode_auth_token(refresh_token)
         if payload.get("type") != "refresh":
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -342,28 +338,24 @@ async def logout(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Выход пользователя.
-
-    Note:
-        JWT stateless, поэтому просто возвращаем успех.
-        Клиент должен удалить токен на своей стороне.
-    """
+    """Revoke owned sessions, including a refresh session after access expiry."""
     token = request.cookies.get("access_token")
     authorization = request.headers.get("authorization") or ""
     if not token and authorization.lower().startswith("bearer "):
         token = authorization[7:]
-    if token:
+    for candidate, expected_type in ((token, "access"), (request.cookies.get("refresh_token"), "refresh")):
+        if not candidate:
+            continue
         try:
-            payload = jwt.decode(
-                token,
-                settings.JWT_SECRET_KEY,
-                algorithms=[settings.JWT_ALGORITHM],
-            )
+            payload = decode_auth_token(candidate)
+            if payload.get("type") != expected_type:
+                continue
             session_id = payload.get("sid")
             if session_id:
                 auth_session = await db.get(AuthSession, UUID(session_id))
                 if auth_session and str(auth_session.user_id) == payload.get("sub"):
+                    if expected_type == "refresh" and not hmac_compare(auth_session.refresh_token_hash, hash_refresh_token(candidate)):
+                        continue
                     auth_session.revoked_at = datetime.utcnow()
                     await db.commit()
         except (JWTError, TypeError, ValueError):
@@ -383,7 +375,9 @@ async def change_password(
 ):
     """Меняет пароль залогиненного пользователя (нужен текущий пароль)."""
     ok = await AuthService.change_password(
-        db, current_user, data.current_password, data.new_password
+        db, current_user, data.current_password, data.new_password,
+        authenticated_version=request.state.auth_token_version,
+        session_id=getattr(request.state, "auth_session_id", None),
     )
     if not ok:
         raise HTTPException(
@@ -416,13 +410,30 @@ async def forgot_password(
     result = await db.execute(select(User).where(func.lower(User.email) == email))
     user = result.scalar_one_or_none()
     if user:
-        token = create_password_reset_token(user.id, user.token_version)
-        reset_url = f"{settings.FRONTEND_URL.rstrip('/')}/auth/reset-password?token={token}"
-        try:
-            await EmailService.send_password_reset(user.email, reset_url)
-        except Exception:
-            logger.exception("Failed to send password reset email")
+        if user.email_verified_at is None:
+            AuthService.enqueue_verification(db, user)
+        else:
+            token = create_password_reset_token(user.id, user.token_version)
+            reset_url = f"{settings.FRONTEND_URL.rstrip('/')}/auth/reset-password?token={token}"
+            enqueue_outbox_message(db, kind="password_reset", recipient=user.email,
+                                   payload={"reset_url": reset_url},
+                                   dedupe_key=f"password-reset:{user.id}:{secrets.token_hex(16)}")
+        await db.commit()
     return {"message": "If the account exists, a reset link has been sent"}
+
+
+@router.post("/resend-verification")
+@limiter.limit("5/minute")
+async def resend_verification(
+    request: Request,
+    data: ForgotPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    user = await db.scalar(select(User).where(func.lower(User.email) == data.email))
+    if user is not None and user.email_verified_at is None:
+        AuthService.enqueue_verification(db, user)
+        await db.commit()
+    return {"message": "If verification is needed, a link has been sent"}
 
 
 @router.post("/reset-password")
@@ -445,7 +456,7 @@ async def reset_password(
     except ValueError:
         raise invalid
 
-    result = await db.execute(select(User).where(User.id == user_uuid))
+    result = await db.execute(select(User).where(User.id == user_uuid).with_for_update().execution_options(populate_existing=True))
     user = result.scalar_one_or_none()
     if not user:
         raise invalid
@@ -455,6 +466,8 @@ async def reset_password(
         raise invalid
 
     await AuthService.set_password(db, user, data.new_password)
+    await AuthService.confirm_mailbox(db, user)
+    await SessionService.revoke_all(db, user.id)
     await db.commit()
     return {"message": "Password has been reset"}
 
@@ -478,11 +491,13 @@ async def activate_payment_account(
         user_uuid = UUID(payload["sub"])
     except ValueError:
         raise invalid
-    result = await db.execute(select(User).where(User.id == user_uuid))
+    result = await db.execute(select(User).where(User.id == user_uuid).with_for_update().execution_options(populate_existing=True))
     user = result.scalar_one_or_none()
     if not user or payload.get("ver") != user.token_version:
         raise invalid
     await AuthService.set_password(db, user, data.new_password)
+    await AuthService.confirm_mailbox(db, user)
+    await SessionService.revoke_all(db, user.id)
     await db.commit()
     return {"message": "Account activated"}
 

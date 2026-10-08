@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entitlement import Entitlement
+from app.models.user import User
 
 
 def support_membership_lock_key(user_id: UUID) -> int:
@@ -29,6 +30,9 @@ async def has_active_support_entitlement(
     now: datetime | None = None,
 ) -> bool:
     current_time = now or datetime.utcnow()
+    user = await db.get(User, user_id)
+    if user is None or (user.role != "admin" and user.email_verified_at is None):
+        return False
     query = select(Entitlement.id).where(
         Entitlement.user_id == user_id,
         Entitlement.tariff == "support",

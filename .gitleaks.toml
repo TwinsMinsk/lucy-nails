@@ -1,0 +1,129 @@
+title = "Lucy Nails exact documented secret-scan exceptions"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "curl-auth-header"
+
+[[rules.allowlists]]
+description = "Exact illustrative curl command with explicit placeholder"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)\.claude/skills/kinescope/SKILL\.md$''']
+regexes = ['''^curl\ \-\-location\ \-\-request\ PUT\ 'https://api\.kinescope\.io/v2/live/events/\{\{event_id\}\}'\ \\\r?\n\ \ \-\-header\ 'Content\-Type:\ application/json'\ \\\r?\n\ \ \-\-header\ 'Authorization:\ Bearer\ your_api_token_here'$''']
+
+[[rules.allowlists]]
+description = "Exact illustrative curl command with explicit placeholder"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)\.claude/skills/kinescope/references/developer\-guides\.md$''']
+regexes = ['''^curl\ \-\-location\ \-\-request\ PUT\ 'https://api\.kinescope\.io/v2/live/events/\{\{event_id\}\}'\ \\\r?\n\-\-header\ 'Content\-Type:\ application/json'\ \\\r?\n\-\-header\ 'Authorization:\ Bearer\ your_api_token_here'$''']
+
+[[rules.allowlists]]
+description = "Exact illustrative curl command with explicit placeholder"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)Docs/integrations/KINESCOPE_API\.md$''']
+regexes = ['''^curl\ \-\-location\ \-\-request\ PUT\ 'https://api\.kinescope\.io/v2/live/events/\{\{event_id\}\}'\ \\\r?\n\-\-header\ 'Content\-Type:\ application/json'\ \\\r?\n\-\-header\ 'Authorization:\ Bearer\ your_api_token_here'$''']
+
+[[rules.allowlists]]
+description = "Exact illustrative curl command with explicit placeholder"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)Docs/integrations/KINESCOPE_API\.md$''']
+regexes = ['''^curl\ \-\-location\ 'https://api\.kinescope\.io/v1/jwk'\ \\\r?\n\-\-request\ POST\ \\\r?\n\-\-header\ 'Content\-Type:\ application/json'\ \\\r?\n\-\-header\ 'Authorization:\ Bearer\ your_api_token_here'$''']
+
+[[rules.allowlists]]
+description = "Exact illustrative curl command with explicit placeholder"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)Docs/integrations/KINESCOPE_API\.md$''']
+regexes = ['''^curl\ \-\-location\ 'https://api\.kinescope\.io/v1/jwk'\ \\\r?\n\-\-header\ 'Content\-Type:\ application/json'\ \\\r?\n\-\-header\ 'Authorization:\ Bearer\ your_api_token_here'$''']
+
+[[rules.allowlists]]
+description = "Exact illustrative curl command with explicit placeholder"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)Docs/integrations/KINESCOPE_API\.md$''']
+regexes = ['''^curl\ \-\-location\ 'https://api\.kinescope\.io/v1/jwk/\{\{jwk_id\}\}'\ \\\r?\n\-\-header\ 'Content\-Type:\ application/json'\ \\\r?\n\-\-header\ 'Authorization:\ Bearer\ your_api_token_here'$''']
+
+[[rules.allowlists]]
+description = "Exact illustrative curl command with explicit placeholder"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)Docs/integrations/KINESCOPE_API\.md$''']
+regexes = ['''^curl\ \-\-location\ \-\-request\ DELETE\ 'https://api\.kinescope\.io/v1/jwk/\{\{jwk_id\}\}'\ \\\r?\n\-\-header\ 'Content\-Type:\ application/json'\ \\\r?\n\-\-header\ 'Authorization:\ Bearer\ your_api_token_here'$''']
+
+[[rules.allowlists]]
+description = "Exact illustrative curl command with explicit placeholder"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)Docs/integrations/KINESCOPE_API\.md$''']
+regexes = ['''^curl\ \-\-location\ \-\-request\ DELETE\ 'https://api\.kinescope\.io/v1/jwk/\{\{jwk_id\}\}'\ \\\r?\n\ \ \ \-\-header\ 'Content\-Type:\ application/json'\ \\\r?\n\ \ \ \-\-header\ 'Authorization:\ Bearer\ your_api_token_here'$''']
+
+[[rules.allowlists]]
+description = "Exact illustrative curl command with explicit placeholder"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)Docs/integrations/KINESCOPE_API\.md$''']
+regexes = ['''^curl\ "https://api\.kinescope\.io/v1/videos\?page=2\&per_page=25"\ \\\r?\n\ \ \-H\ "Authorization:\ Bearer\ YOUR_API_TOKEN"$''']
+
+[[rules.allowlists]]
+description = "Exact illustrative curl command with explicit placeholder"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)Docs/integrations/KINESCOPE_API\.md$''']
+regexes = ['''^curl\ "https://api\.kinescope\.io/v1/videos\?order=created_at\.desc,title\.asc"\ \\\r?\n\ \ \-H\ "Authorization:\ Bearer\ YOUR_API_TOKEN"$''']
+
+[[rules.allowlists]]
+description = "Exact illustrative curl command with explicit placeholder"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)Docs/integrations/KINESCOPE_API\.md$''']
+regexes = ['''^curl\ "https://api\.kinescope\.io/v1/videos\?order=created_at\.asc"\ \\\r?\n\ \ \-H\ "Authorization:\ Bearer\ YOUR_API_TOKEN"$''']
+
+[[rules.allowlists]]
+description = "Exact illustrative curl command with explicit placeholder"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)Docs/integrations/KINESCOPE_API\.md$''']
+regexes = ['''^curl\ "https://api\.kinescope\.io/v1/analytics/overview\?from=2024\-01\-01\&to=2024\-01\-31"\ \\\r?\n\ \ \-H\ "Authorization:\ Bearer\ YOUR_API_TOKEN"$''']
+
+[[rules.allowlists]]
+description = "Exact illustrative curl command with explicit placeholder"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)Docs/integrations/KINESCOPE_API\.md$''']
+regexes = ['''^curl\ "https://api\.kinescope\.io/v1/billing/invoices/123"\ \\\r?\n\ \ \-H\ "Authorization:\ Bearer\ YOUR_API_TOKEN"$''']
+
+[[rules.allowlists]]
+description = "Exact illustrative curl command with explicit placeholder"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)Docs/integrations/KINESCOPE_API\.md$''']
+regexes = ['''^curl\ "https://api\.kinescope\.io/v1/billing/invoices/123\.csv"\ \\\r?\n\ \ \-H\ "Authorization:\ Bearer\ YOUR_API_TOKEN"$''']
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Consent localStorage key name, not a credential"
+condition = "AND"
+regexTarget = "secret"
+paths = ['''(?:^|/)frontend/src/lib/attribution\.ts$''']
+regexes = ['''^lucy_consent_v1$''']
+
+[[rules.allowlists]]
+description = "Variable name after empty private-key path, not a value"
+condition = "AND"
+regexTarget = "secret"
+paths = ['''(?:^|/)\.env\.example$''']
+regexes = ['''^KINESCOPE_JWT_PRIVATE_KEY_PEM=?$''']
+
+[[rules.allowlists]]
+description = "Exact synthetic production-config validation fixture"
+condition = "AND"
+regexTarget = "secret"
+paths = ['''(?:^|/)backend/tests/test_production_hardening\.py$''']
+regexes = ['''^distinct\-mfa\-encryption\-key\-32\-chars\-min$''']

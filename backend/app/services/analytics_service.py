@@ -42,6 +42,23 @@ def contains_sensitive_analytics_value(value: Any) -> bool:
 
 class AnalyticsService:
     @staticmethod
+    async def record_lesson_activity(
+        db: AsyncSession, *, user_id, course_id, lesson_id
+    ):
+        now = datetime.utcnow()
+        return await AnalyticsService.record_event(
+            db,
+            event_id=f"lesson_activity:{user_id}:{lesson_id}:{now.date().isoformat()}",
+            event_name="lesson_activity",
+            source="server",
+            happened_at=now,
+            user_id=user_id,
+            course_id=course_id,
+            lesson_id=lesson_id,
+            properties={},
+        )
+
+    @staticmethod
     async def record_event(
         db: AsyncSession,
         *,
@@ -77,7 +94,9 @@ class AnalyticsService:
             "properties": properties or {},
         }
         if contains_sensitive_analytics_value(privacy_payload):
-            raise ValueError("Analytics events must not contain personal or secret data")
+            raise ValueError(
+                "Analytics events must not contain personal or secret data"
+            )
         statement = (
             insert(AnalyticsEvent)
             .values(

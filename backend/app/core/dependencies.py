@@ -7,13 +7,12 @@ from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
-import jwt
 from jwt.exceptions import PyJWTError as JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.database import get_db
+from app.core.security import decode_auth_token
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
@@ -49,11 +48,7 @@ async def get_current_user(
         raise credentials_exception
 
     try:
-        payload = jwt.decode(
-            token_value,
-            settings.JWT_SECRET_KEY,
-            algorithms=[settings.JWT_ALGORITHM],
-        )
+        payload = decode_auth_token(token_value)
         # Only access tokens authenticate. Reset/refresh tokens carry the same
         # signature+sub but must not grant API access.
         if payload.get("type") != "access":
@@ -72,6 +67,7 @@ async def get_current_user(
     # tokens minted before it (mismatched or missing "ver") are rejected.
     if payload.get("ver") != user.token_version:
         raise credentials_exception
+    request.state.auth_token_version = payload["ver"]
     session_id = payload.get("sid")
     if session_id:
         from app.services.session_service import SessionService
@@ -169,12 +165,11 @@ async def require_course_access(
     """
     from app.services.access_service import AccessService
 
-    entitlement = await AccessService.get_active_entitlement(db, current_user.id, course_id)
-    if entitlement is None and not await AccessService.has_active_access(
+    if current_user.role != "admin" and not await AccessService.has_active_access(
         db, current_user.id, course_id
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Course access required"
         )
-    return entitlement
+    return await AccessService.get_active_entitlement(db, current_user.id, course_id)

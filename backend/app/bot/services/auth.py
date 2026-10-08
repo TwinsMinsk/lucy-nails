@@ -28,7 +28,17 @@ class BotAuthService:
                 token_row = await session.scalar(
                     select(TelegramLinkToken)
                     .where(TelegramLinkToken.token_hash == token_hash)
+                )
+                if token_row is None:
+                    return "Ссылка некорректна. Создайте новую в личном кабинете."
+                user = await session.scalar(select(User).where(User.id == token_row.user_id).with_for_update())
+                if user is None:
+                    return "Пользователь не найден."
+                token_row = await session.scalar(
+                    select(TelegramLinkToken)
+                    .where(TelegramLinkToken.token_hash == token_hash)
                     .with_for_update()
+                    .execution_options(populate_existing=True)
                 )
                 if token_row is None:
                     return "Ссылка некорректна. Создайте новую в личном кабинете."
@@ -37,9 +47,8 @@ class BotAuthService:
                 if token_row.expires_at <= now:
                     return "Ссылка устарела. Создайте новую в личном кабинете."
 
-                user = await session.get(User, token_row.user_id)
-                if user is None:
-                    return "Пользователь не найден."
+                if user.role != "admin" and user.email_verified_at is None:
+                    return "Сначала подтвердите email в личном кабинете."
 
                 telegram_owner = await session.scalar(
                     select(User).where(User.telegram_id == telegram_user.id)

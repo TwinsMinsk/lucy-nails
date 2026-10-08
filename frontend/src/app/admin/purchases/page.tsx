@@ -1,5 +1,6 @@
 "use client";
 
+import { formatApiDate, parseApiDate } from "@/lib/format";
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -10,14 +11,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const formatMoney = (kopecks: number) => `${(kopecks / 100).toLocaleString("ru-RU")} ₽`;
-const formatDate = (date: string | null | undefined) => (
-    date ? new Date(date).toLocaleDateString("ru-RU") : "—"
-);
+const formatDate = formatApiDate;
 
 const isActive = (purchase: AdminPurchaseResponse) =>
     purchase.access_status === "active"
     && Boolean(purchase.access_expires_at)
-    && new Date(purchase.access_expires_at as string) > new Date();
+    && parseApiDate(purchase.access_expires_at as string) > new Date();
 
 export default function AdminPurchasesPage() {
     const [purchases, setPurchases] = useState<AdminPurchaseResponse[]>([]);

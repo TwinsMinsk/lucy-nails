@@ -1,18 +1,25 @@
 import crypto from "k6/crypto";
 import http from "k6/http";
-import { check, fail } from "k6";
+import { check, fail, sleep } from "k6";
+import { SharedArray } from "k6/data";
 
 const apiBase = (__ENV.API_BASE_URL || "").replace(/\/$/, "");
 const courseId = __ENV.COURSE_ID || "default";
 const coursePrice = __ENV.COURSE_PRICE || "0";
 const prodamusSecret = __ENV.PRODAMUS_SECRET_KEY || "";
+const profile = __ENV.LOAD_PROFILE || "acceptance";
+const learners = new SharedArray("learners", () => __ENV.LEARNERS_FILE ? JSON.parse(open(__ENV.LEARNERS_FILE)) : []);
 
 if (__ENV.ALLOW_STAGING_LOAD !== "true") {
   throw new Error("Set ALLOW_STAGING_LOAD=true after confirming the target is an isolated staging environment");
 }
-if (!apiBase || (!apiBase.includes("staging") && !apiBase.includes("127.0.0.1") && !apiBase.includes("localhost"))) {
+const targetHost = /^https?:\/\/([^/:]+)/.exec(apiBase)?.[1]?.toLowerCase();
+if (!targetHost || !(targetHost === "127.0.0.1" || targetHost === "localhost" || targetHost === "host.docker.internal" || /^([a-z0-9]+-)*staging([.-][a-z0-9-]+)+$/.test(targetHost) || /^([a-z0-9-]+\.)*staging\.[a-z0-9.-]+$/.test(targetHost))) {
   throw new Error("API_BASE_URL must point to staging or localhost; production load is blocked by this script");
 }
+if (!["acceptance", "smoke"].includes(profile)) throw new Error("Unknown LOAD_PROFILE");
+if (profile === "acceptance" && learners.length < 100) throw new Error("Acceptance requires 100 separate verified staging learner accounts in LEARNERS_FILE");
+if (learners.length && (learners.some(learner => !learner.access_token) || new Set(learners.map(learner => learner.access_token)).size !== learners.length)) throw new Error("Learner fixtures must contain distinct preauthenticated session-bound access tokens");
 if (!prodamusSecret || coursePrice === "0") {
   throw new Error("PRODAMUS_SECRET_KEY and COURSE_PRICE are required for the signed webhook scenario");
 }
@@ -20,15 +27,16 @@ if (!prodamusSecret || coursePrice === "0") {
 export const options = {
   scenarios: {
     public_reads: {
-      executor: "constant-vus",
-      exec: "publicRead",
-      vus: 100,
-      duration: "60s",
+      executor: "ramping-vus",
+      exec: "learnerRead",
+      startVUs: profile === "smoke" ? 5 : 50,
+      stages: profile === "smoke" ? [{duration: "60s", target: 5}] : [{duration: "15m", target: 50}, {duration: "1s", target: 100}, {duration: "5m", target: 100}],
+      gracefulRampDown: "10s",
     },
     checkout_burst: {
       executor: "per-vu-iterations",
       exec: "createCheckout",
-      vus: 20,
+      vus: 10,
       iterations: 1,
       maxDuration: "30s",
       startTime: "5s",
@@ -36,7 +44,7 @@ export const options = {
     webhook_burst: {
       executor: "constant-arrival-rate",
       exec: "repeatWebhook",
-      rate: 10,
+      rate: 5,
       timeUnit: "1s",
       duration: "10s",
       preAllocatedVUs: 10,
@@ -47,6 +55,7 @@ export const options = {
   thresholds: {
     http_req_failed: ["rate<0.01"],
     http_req_duration: ["p(95)<500"],
+    checks: ["rate>0.99"],
   },
 };
 
@@ -71,11 +80,13 @@ function guestCheckout(email) {
     course_id: courseId,
     tariff: "self",
     customer_email: email,
+    offer_accepted: true,
+    personal_data_consent: true,
   }), { headers: { "Content-Type": "application/json" }, tags: { operation: "checkout" } });
 }
 
 export function setup() {
-  const email = `load-webhook-${Date.now()}@example.test`;
+  const email = `load-webhook-${Date.now()}@example.com`;
   const response = guestCheckout(email);
   if (!check(response, { "setup checkout created": (item) => item.status === 200 })) {
     fail(`Unable to prepare load order: HTTP ${response.status}`);
@@ -84,13 +95,22 @@ export function setup() {
   return { orderId: order.order_id, email };
 }
 
-export function publicRead() {
-  const response = http.get(`${apiBase.replace(/\/api$/, "")}/health`, { tags: { operation: "health" } });
-  check(response, { "health is successful": (item) => item.status === 200 });
+export function learnerRead() {
+  const learner = learners[(__VU - 1) % learners.length];
+  const headers = learner ? {Authorization: `Bearer ${learner.access_token}`} : {};
+  const path = learner ? `/courses/${courseId}/my-progress` : `/courses/${courseId}`;
+  const response = http.get(`${apiBase}${path}`, {headers, tags: {operation: "course"}});
+  check(response, {"course API successful": r => r.status === 200});
+  if (learner?.lesson_id) {
+    const lessonId = learner.lesson_ids?.[__ITER % learner.lesson_ids.length] || learner.lesson_id;
+    const lesson = http.get(`${apiBase}/lessons/${lessonId}`, {headers, tags: {operation: "lesson"}});
+    check(lesson, {"paid lesson accessible": r => r.status === 200});
+  }
+  sleep(90 + Math.random() * 30);
 }
 
 export function createCheckout() {
-  const email = `load-checkout-${__VU}-${Date.now()}@example.test`;
+  const email = `load-checkout-${__VU}-${Date.now()}@example.com`;
   const response = guestCheckout(email);
   check(response, { "checkout is created": (item) => item.status === 200 });
 }

@@ -25,7 +25,7 @@ export async function trackPublicEvent(
     }
 }
 
-export function sendYandexGoal(goal: "checkout" | "purchase"): void {
+export function sendYandexGoal(goal: "checkout" | "purchase", dedupeKey?: string): void {
     if (typeof window === "undefined") return
-    window.dispatchEvent(new CustomEvent("lucy-metrika-goal", { detail: { goal } }))
+    window.dispatchEvent(new CustomEvent("lucy-metrika-goal", { detail: { goal, ...(dedupeKey ? { dedupeKey } : {}) } }))
 }

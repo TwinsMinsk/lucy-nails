@@ -24,6 +24,7 @@ async def _seed_play(db: AsyncSession, *, with_purchase: bool, expired: bool = F
     """Course→Module→Lesson (+опц. Purchase) и пользователь с известным паролем."""
     user = User(
         email="player@example.com",
+        email_verified_at=datetime.utcnow(),
         password_hash=get_password_hash("playerpass1"),
         role="student",
     )

@@ -1,6 +1,7 @@
 """Public PII-free first-party event collector."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import re
 from typing import Any, Literal
 from uuid import UUID
 
@@ -66,7 +67,9 @@ class PublicAnalyticsEvent(BaseModel):
     @field_validator("properties")
     @classmethod
     def reject_pii_properties(cls, value: dict[str, Any]) -> dict[str, Any]:
-        if _contains_forbidden_property(value) or contains_sensitive_analytics_value(value):
+        if _contains_forbidden_property(value) or contains_sensitive_analytics_value(
+            value
+        ):
             raise ValueError("PII and payment data are not allowed in analytics events")
         if len(str(value)) > 4000:
             raise ValueError("Analytics properties are too large")
@@ -88,8 +91,13 @@ class PublicAnalyticsEvent(BaseModel):
     @model_validator(mode="after")
     def validate_event_time(self):
         now = datetime.utcnow()
-        happened_at = self.happened_at.replace(tzinfo=None)
-        if happened_at < now - timedelta(days=7) or happened_at > now + timedelta(minutes=5):
+        happened_at = self.happened_at
+        if happened_at.tzinfo is not None:
+            happened_at = happened_at.astimezone(timezone.utc).replace(tzinfo=None)
+        self.happened_at = happened_at
+        if happened_at < now - timedelta(days=7) or happened_at > now + timedelta(
+            minutes=5
+        ):
             raise ValueError("Event timestamp is outside the accepted window")
         allowed_keys = PUBLIC_PROPERTY_KEYS[self.event_name]
         unknown_keys = set(self.properties) - allowed_keys
@@ -99,7 +107,7 @@ class PublicAnalyticsEvent(BaseModel):
             path = self.properties.get("path")
             if path is not None and (
                 not isinstance(path, str)
-                or not path.startswith("/")
+                or not (path == "/" or re.fullmatch(r"/courses/[A-Za-z0-9-]+", path))
                 or "?" in path
                 or len(path) > 512
             ):

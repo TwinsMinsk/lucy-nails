@@ -29,6 +29,7 @@ import {
     UserResponse,
 } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { AdminPermissionsContext } from "@/app/admin/permissions"
 
 const adminNavItems = [
     { href: "/admin", icon: LayoutDashboard, label: "Главная", permissions: ["analytics.read"] },
@@ -159,7 +160,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <header className="sticky top-0 z-20 border-b bg-background/95 px-3 py-2 backdrop-blur lg:hidden">
                     <div className="overflow-x-auto">{nav}</div>
                 </header>
-                <main>{children}</main>
+                <main><AdminPermissionsContext.Provider value={capabilities.permissions}>{children}</AdminPermissionsContext.Provider></main>
             </div>
         </div>
     )

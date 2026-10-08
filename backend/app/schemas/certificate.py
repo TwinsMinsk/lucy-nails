@@ -48,6 +48,9 @@ class CertificateResponse(BaseModel):
     png_url: str | None
     pdf_url: str | None
     issued_at: datetime
+    status: Literal["active", "revoked"]
+    revoked_at: datetime | None = None
+    revoke_reason: str | None = None
 
     class Config:
         from_attributes = True
@@ -65,16 +68,19 @@ class CertificateResponse(BaseModel):
             course_id=certificate.course_id,
             course_title=course_title,
             student_name=certificate.student_name,
-            png_url=certificate.png_url,
-            pdf_url=certificate.pdf_url,
+            png_url=certificate.png_url if certificate.status != "revoked" else None,
+            pdf_url=certificate.pdf_url if certificate.status != "revoked" else None,
             issued_at=certificate.issued_at,
+            status=certificate.status,
+            revoked_at=certificate.revoked_at,
+            revoke_reason=certificate.revoke_reason,
         )
 
 
 class CertificateStatusResponse(BaseModel):
     """Schema for GET certificate status (not_available / available / issued)."""
 
-    status: Literal["not_available", "available", "issued"]
+    status: Literal["not_available", "available", "issued", "revoked"]
     progress_percent: int
     certificate: CertificateResponse | None = None
 

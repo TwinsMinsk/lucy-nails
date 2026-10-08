@@ -116,7 +116,14 @@ export function CertificateClaimDialog({
           if (phase === "loading") e.preventDefault();
         }}
       >
-        {isSuccess ? (
+        {certificate?.status === "revoked" ? (
+          <DialogHeader>
+            <DialogTitle>Сертификат отозван</DialogTitle>
+            <DialogDescription>
+              {certificate.revoke_reason || "Обратитесь в поддержку для уточнения причины."}
+            </DialogDescription>
+          </DialogHeader>
+        ) : isSuccess ? (
           <>
             <DialogHeader>
               <DialogTitle className="font-serif">Ваш сертификат готов! 🎉</DialogTitle>

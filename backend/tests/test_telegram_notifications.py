@@ -33,6 +33,7 @@ async def test_telegram_link_is_one_time_and_connects_account(
     monkeypatch.setattr(settings, "TELEGRAM_BOT_USERNAME", "lucy_test_bot")
     user = User(
         email="telegram-link@example.com",
+        email_verified_at=datetime.utcnow(),
         password_hash=get_password_hash("telegram-link-password"),
         role="student",
     )

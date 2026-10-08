@@ -42,27 +42,40 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
     const courseTitleRef = useRef("");
     const [certificate, setCertificate] = useState<CertificateResponse | null | undefined>(undefined);
     const [claimOpen, setClaimOpen] = useState(false);
+    const [canTrackProgress, setCanTrackProgress] = useState(false);
+    const [loadError, setLoadError] = useState(false);
+    const [retry, setRetry] = useState(0);
     const [accessDenied, setAccessDenied] = useState(false);
 
     useEffect(() => {
         const fetchData = async () => {
             setIsLoading(true);
             setAccessDenied(false);
+            setCanTrackProgress(false);
+            setLoadError(false);
+            setLesson(null);
+            setCertificate(undefined);
+            setCompletedLessonIds([]);
+            setProgressPercent(0);
             try {
                 // Fetch current lesson, course structure and progress in parallel
-                const [lessonData, modulesData, progressData] = await Promise.all([
+                const [lessonData, modulesData] = await Promise.all([
                     getLesson(lessonId),
                     getPublicCourseModules(id),
-                    getCourseProgress(id),
                 ]);
 
+                const progressData = await getCourseProgress(id).catch((error) => {
+                    if (lessonData.is_preview && error instanceof ApiError && error.status === 403) return null;
+                    throw error;
+                });
+                setCanTrackProgress(progressData !== null);
                 setLesson(lessonData);
                 setModules(modulesData);
-                setCompletedLessonIds(progressData.completed_lesson_ids);
-                setProgressPercent(progressData.progress_percent);
+                setCompletedLessonIds(progressData?.completed_lesson_ids ?? []);
+                setProgressPercent(progressData?.progress_percent ?? 0);
 
                 // Course already complete on load (e.g. re-entering a finished course) — power the CTA without extra requests otherwise
-                if (progressData.progress_percent === 100) {
+                if (progressData?.progress_percent === 100) {
                     getCertificateStatus(id)
                         .then((status) => setCertificate(status.certificate))
                         .catch((error) => {
@@ -107,16 +120,17 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
                     setAccessDenied(true);
                     return;
                 }
+                setLoadError(true);
                 toast.error("Ошибка загрузки данных урока");
             } finally {
                 setIsLoading(false);
             }
         };
         fetchData();
-    }, [id, lessonId, router]);
+    }, [id, lessonId, router, retry]);
 
     const handleToggleComplete = async () => {
-        if (!lesson) return;
+        if (!lesson || !canTrackProgress) return;
 
         const isCompleted = completedLessonIds.includes(lesson.id);
         const newStatus = !isCompleted;
@@ -177,9 +191,10 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
         }
     };
 
+    const lessonContent = lesson?.content;
     const sanitizedContent = useMemo(
-        () => (lesson?.content ? sanitizeHtml(lesson.content) : ""),
-        [lesson?.content]
+        () => (lessonContent ? sanitizeHtml(lessonContent) : ""),
+        [lessonContent]
     );
 
     // Sorted copies for the outline; module numbers are positions, not raw order_index.
@@ -211,6 +226,8 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
             </div>
         );
     }
+
+    if (loadError) return <div className="container space-y-4 p-8" role="alert"><p>Не удалось загрузить урок</p><Button onClick={() => setRetry((value) => value + 1)}>Повторить</Button></div>;
 
     if (!lesson) {
         return (
@@ -357,7 +374,7 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
                             )}
 
                             <div className="flex items-center gap-4">
-                                {!isLessonCompleted ? (
+                                {!canTrackProgress ? <p className="text-sm text-muted-foreground">Предпросмотр: прогресс курса недоступен без доступа</p> : !isLessonCompleted ? (
                                     <Button
                                         size="lg"
                                         onClick={handleToggleComplete}
@@ -384,6 +401,8 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
                                                     Следующий урок <ChevronRight className="w-4 h-4" />
                                                 </Link>
                                             </Button>
+                                        ) : certificate?.status === "revoked" ? (
+                                            <p className="text-sm text-destructive">Сертификат отозван</p>
                                         ) : progressPercent === 100 && certificate === undefined ? (
                                             <Button
                                                 size="lg"

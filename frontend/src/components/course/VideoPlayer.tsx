@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertCircle, Loader2, Lock } from "lucide-react";
-import { getLessonPlayUrl, VideoPlayResponse } from "@/lib/api";
+import { ApiError, getLessonPlayUrl, VideoPlayResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface VideoPlayerProps {
@@ -17,25 +17,55 @@ export function VideoPlayer({ lessonId, title, className }: VideoPlayerProps) {
     const [state, setState] = useState<LoadingState>("idle");
     const [videoData, setVideoData] = useState<VideoPlayResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [denied, setDenied] = useState(false);
+    const [retry, setRetry] = useState(0);
+    const resumeRef = useRef<() => void>(() => {});
 
     useEffect(() => {
+        let cancelled = false;
+        let pending = false;
+        let ready = false;
+        let expiresAt = 0;
         const fetchVideoUrl = async () => {
+            if (pending || cancelled) return;
+            pending = true;
+            ready = false;
             setState("loading");
+            setVideoData(null);
             setError(null);
-
+            setDenied(false);
+            const startedAt = Date.now();
             try {
                 const data = await getLessonPlayUrl(lessonId);
+                if (cancelled) return;
+                const ttl = data.expires_in_seconds || 300;
+                expiresAt = startedAt + Math.max(1, ttl - 15) * 1000;
                 setVideoData(data);
                 setState("success");
+                ready = true;
             } catch (err) {
-                const errorMessage = err instanceof Error ? err.message : "Не удалось загрузить видео";
-                setError(errorMessage);
+                if (cancelled) return;
+                setError(err instanceof Error ? err.message : "Не удалось загрузить видео");
+                setDenied(err instanceof ApiError && [401, 403].includes(err.status));
                 setState("error");
-            }
+            } finally { pending = false; }
         };
-
-        fetchVideoUrl();
-    }, [lessonId]);
+        const resume = () => {
+            if (ready && Date.now() >= expiresAt && document.visibilityState !== "hidden") void fetchVideoUrl();
+        };
+        resumeRef.current = resume;
+        window.addEventListener("focus", resume);
+        window.addEventListener("pageshow", resume);
+        document.addEventListener("visibilitychange", resume);
+        void fetchVideoUrl();
+        return () => {
+            cancelled = true;
+            resumeRef.current = () => {};
+            window.removeEventListener("focus", resume);
+            window.removeEventListener("pageshow", resume);
+            document.removeEventListener("visibilitychange", resume);
+        };
+    }, [lessonId, retry]);
 
     // Loading State
     if (state === "loading") {
@@ -56,7 +86,7 @@ export function VideoPlayer({ lessonId, title, className }: VideoPlayerProps) {
 
     // Error State
     if (state === "error") {
-        const is403 = error?.includes("403") || error?.includes("access required");
+        const is403 = denied || error?.includes("403") || error?.includes("access required");
 
         return (
             <div
@@ -93,6 +123,7 @@ export function VideoPlayer({ lessonId, title, className }: VideoPlayerProps) {
                                 <p className="text-slate-300 text-sm leading-relaxed">
                                     {error || "Произошла неизвестная ошибка при загрузке видео"}
                                 </p>
+                                <button className="rounded-md border px-4 py-2 text-white" onClick={() => setRetry((value) => value + 1)}>Повторить</button>
                             </div>
                         </>
                     )}
@@ -104,8 +135,9 @@ export function VideoPlayer({ lessonId, title, className }: VideoPlayerProps) {
     // Success State - Render iframe
     if (state === "success" && videoData) {
         return (
-            <div className={cn("w-full aspect-video bg-black", className)}>
+            <div className={cn("w-full aspect-video bg-black", className)} onPointerEnter={() => resumeRef.current()} onTouchStart={() => resumeRef.current()}>
                 <iframe
+                    onFocus={() => resumeRef.current()}
                     src={videoData.video_url}
                     title={videoData.title || title}
                     className="w-full h-full border-0"

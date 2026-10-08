@@ -36,10 +36,15 @@ export default function DashboardPage() {
     const [courses, setCourses] = useState<MyCourseResponse[]>([]);
     const [expiredCourses, setExpiredCourses] = useState<ExpiredCourseResponse[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [retry, setRetry] = useState(0);
+    const [loadedAt, setLoadedAt] = useState(0);
     const [claimCourse, setClaimCourse] = useState<MyCourseResponse | null>(null);
 
     useEffect(() => {
         const fetchData = async () => {
+            setIsLoading(true);
+            setLoadError(null);
             try {
                 // Получаем данные пользователя и его курсы
                 const [userData, coursesData, expiredData] = await Promise.all([
@@ -52,12 +57,14 @@ export default function DashboardPage() {
                 setUser(userData);
                 setCourses(coursesData);
                 setExpiredCourses(expiredData);
+                setLoadedAt(Date.now());
             } catch (error) {
                 if (isAuthError(error)) {
                     router.push("/auth/login");
                     return;
                 }
                 const errorMessage = error instanceof Error ? error.message : "Ошибка загрузки данных";
+                setLoadError(errorMessage);
                 toast.error("Ошибка", {
                     description: errorMessage,
                 });
@@ -67,7 +74,7 @@ export default function DashboardPage() {
         };
 
         fetchData();
-    }, [router]);
+    }, [router, retry]);
 
     if (isLoading) {
         return (
@@ -80,11 +87,13 @@ export default function DashboardPage() {
         );
     }
 
+    if (loadError) return <div className="container space-y-4 px-4 py-12" role="alert"><h1 className="text-2xl font-semibold">Не удалось загрузить ваши курсы</h1><p>{loadError}</p><Button onClick={() => setRetry((value) => value + 1)}>Повторить</Button></div>;
+
     const userName = user?.email?.split("@")[0] || "Пользователь";
 
     const formatAccessLeft = (expiresAt?: string | null) => {
         if (!expiresAt) return null;
-        const diff = parseApiDate(expiresAt).getTime() - Date.now();
+        const diff = parseApiDate(expiresAt).getTime() - loadedAt;
         const days = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
         if (days === 0) return "доступ заканчивается сегодня";
         if (days === 1) return "остался 1 день";
@@ -224,7 +233,7 @@ export default function DashboardPage() {
                                                 {continueLabel}
                                             </Link>
                                         </Button>
-                                        {course.progress === 100 && (
+                                        {course.certificate_status === "revoked" ? <p className="text-sm text-destructive">Сертификат отозван</p> : course.progress === 100 && (
                                             course.certificate_number ? (
                                                 <Button
                                                     asChild

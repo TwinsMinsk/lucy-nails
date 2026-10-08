@@ -1,11 +1,33 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { ApiError, apiFetch, isAuthError } from "@/lib/api"
+import { ApiError, apiFetch, isAuthError, adminGetAccessCourses, adminGetNotifications, adminGetReportSources, adminReportSourcesCsvUrl, resendVerification } from "@/lib/api"
 
 
 describe("apiFetch", () => {
     afterEach(() => {
         vi.unstubAllGlobals()
+    })
+
+    it("uses permission-safe course lookup and serializes operational filters", async () => {
+        const request = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], total: 0 }) })
+        vi.stubGlobal("fetch", request)
+        await adminGetAccessCourses()
+        await adminGetNotifications({ search: "buyer@test", status: "dead_letter", channel: "email", offset: 200, limit: 50 })
+        expect(new URL(request.mock.calls[0][0]).pathname).toBe("/api/admin/access-courses")
+        expect(new URL(request.mock.calls[1][0]).searchParams.get("search")).toBe("buyer@test")
+        expect(new URL(request.mock.calls[1][0]).searchParams.get("offset")).toBe("200")
+    })
+
+    it("sends verification email and report attribution filters through API contracts", async () => {
+        const request = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ message: "OK" }) })
+        vi.stubGlobal("fetch", request)
+        await resendVerification("learner@example.test")
+        expect(request.mock.calls[0][1]).toMatchObject({ method: "POST", body: JSON.stringify({ email: "learner@example.test" }) })
+        await adminGetReportSources({ source: "search", campaign: "fall", content: "video", basis: "acquisition" })
+        const csv = new URL(adminReportSourcesCsvUrl({ campaign: "fall", basis: "acquisition" }))
+        expect(csv.searchParams.get("campaign")).toBe("fall")
+        expect(csv.searchParams.get("basis")).toBe("acquisition")
+        expect(csv.searchParams.get("format")).toBe("csv")
     })
 
     it("preserves structured API errors for MFA and other workflows", async () => {

@@ -111,7 +111,7 @@ pydantic-settings==2.7.1
     # via -r backend/requirements.txt
 pygments==2.21.0
     # via pytest
-pyjwt==2.13.0
+pyjwt==2.15.0
     # via -r backend/requirements.txt
 pyotp==2.9.0
     # via -r backend/requirements.txt

@@ -14,6 +14,8 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
+import tempfile
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -59,17 +61,40 @@ def upload_to_s3(path: Path, destination: str) -> None:
         command.extend(["--endpoint-url", endpoint])
     command.extend(["s3", "cp", str(path), target])
     sse = os.getenv("BACKUP_S3_SSE", "AES256").strip()
-    if sse:
-        command.extend(["--sse", sse])
+    if sse not in {"AES256", "aws:kms"}:
+        raise RuntimeError("Encrypted S3 backups require AES256 or aws:kms")
+    command.extend(["--sse", sse])
     kms_key = os.getenv("BACKUP_S3_KMS_KEY_ID", "").strip()
     if kms_key:
         command.extend(["--sse-kms-key-id", kms_key])
     subprocess.run(command, check=True)
 
 
+def bundle_uploads(database: Path, uploads: Path, destination: Path) -> None:
+    if not uploads.is_dir():
+        raise RuntimeError("Backup upload directory is missing")
+    manifest = {"database.dump": sha256(database)}
+    with tarfile.open(destination, "w") as archive:
+        archive.add(database, arcname="database.dump", recursive=False)
+        for path in sorted(uploads.rglob("*")):
+            if path.is_symlink():
+                raise RuntimeError("Symlinks are not supported in upload backups")
+            if path.is_file():
+                relative = f"uploads/{path.relative_to(uploads).as_posix()}"
+                manifest[relative] = sha256(path)
+                archive.add(path, arcname=relative, recursive=False)
+        body = json.dumps({"version": 1, "files": manifest}).encode("utf-8")
+        import io
+
+        entry = tarfile.TarInfo("manifest.json")
+        entry.size = len(body)
+        archive.addfile(entry, io.BytesIO(body))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", default=os.getenv("BACKUP_DIR", "backups"))
+    parser.add_argument("--uploads-dir", default=os.getenv("BACKUP_UPLOADS_DIR", ""))
     args = parser.parse_args()
     database_url = os.getenv("DATABASE_URL", "").strip()
     if not database_url:
@@ -77,40 +102,63 @@ def main() -> int:
     pg_dump = shutil.which("pg_dump")
     if not pg_dump:
         parser.error("pg_dump is not installed or not in PATH")
+    if (
+        os.getenv("BACKUP_REQUIRE_UPLOADS", "false").lower() == "true"
+        and not args.uploads_dir
+    ):
+        parser.error("BACKUP_UPLOADS_DIR is required for a complete backup")
+    s3_uri = os.getenv("BACKUP_S3_URI", "").strip()
+    if os.getenv("BACKUP_REQUIRE_S3", "false").lower() == "true" and not s3_uri:
+        parser.error("BACKUP_S3_URI is required for external backups")
+    if s3_uri and not s3_uri.startswith("s3://"):
+        parser.error("BACKUP_S3_URI must be an s3:// destination")
 
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    final_path = output_dir / f"lucy-nails-{timestamp}.dump"
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    final_path = (
+        output_dir / f"lucy-nails-{timestamp}{'.tar' if args.uploads_dir else '.dump'}"
+    )
     partial_path = output_dir / f".{final_path.name}.partial"
 
     try:
-        subprocess.run(
-            [
-                pg_dump,
-                "--format=custom",
-                "--compress=9",
-                "--no-owner",
-                "--no-privileges",
-                "--file",
-                str(partial_path),
-                postgres_cli_url(database_url),
-            ],
-            check=True,
-        )
+        with tempfile.TemporaryDirectory(prefix="lucy-backup-") as temporary:
+            dump_path = Path(temporary) / "database.dump"
+            subprocess.run(
+                [
+                    pg_dump,
+                    "--format=custom",
+                    "--compress=9",
+                    "--no-owner",
+                    "--no-privileges",
+                    "--file",
+                    str(dump_path),
+                    postgres_cli_url(database_url),
+                ],
+                check=True,
+            )
+            if args.uploads_dir:
+                bundle_uploads(
+                    dump_path, Path(args.uploads_dir).resolve(), partial_path
+                )
+            else:
+                shutil.copyfile(dump_path, partial_path)
         partial_path.replace(final_path)
         checksum = sha256(final_path)
         checksum_path = final_path.with_suffix(final_path.suffix + ".sha256")
         checksum_path.write_text(f"{checksum}  {final_path.name}\n", encoding="ascii")
 
-        s3_uri = os.getenv("BACKUP_S3_URI", "").strip()
         if s3_uri:
             upload_to_s3(final_path, s3_uri)
             upload_to_s3(checksum_path, s3_uri)
 
         retention_days = int(os.getenv("BACKUP_RETENTION_DAYS", "14"))
         cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
-        for candidate in output_dir.glob("lucy-nails-*.dump*"):
+        for candidate in output_dir.glob("lucy-nails-*"):
+            if not candidate.is_file() or not candidate.name.endswith(
+                (".dump", ".tar", ".sha256")
+            ):
+                continue
             modified = datetime.fromtimestamp(candidate.stat().st_mtime, timezone.utc)
             if modified < cutoff:
                 candidate.unlink()
@@ -122,14 +170,16 @@ def main() -> int:
                     "path": str(final_path),
                     "sha256": checksum,
                     "uploaded": bool(s3_uri),
+                    "includes_uploads": bool(args.uploads_dir),
                 }
             )
         )
         return 0
     except Exception as exc:
         partial_path.unlink(missing_ok=True)
-        notify_failure(str(exc))
-        print(json.dumps({"status": "error", "detail": str(exc)[:1000]}), file=sys.stderr)
+        detail = f"Backup failed: {type(exc).__name__}"
+        notify_failure(detail)
+        print(json.dumps({"status": "error", "detail": detail}), file=sys.stderr)
         return 1
 
 

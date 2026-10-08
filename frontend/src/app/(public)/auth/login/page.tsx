@@ -31,6 +31,8 @@ import {
     ApiError,
     confirmMfa,
     login,
+    getMe,
+    resendVerification,
     LoginCredentials,
     MfaSetupResponse,
     setupMfa,
@@ -38,7 +40,7 @@ import {
 import { safeNextPath } from "@/lib/navigation"
 import { LoginSchema } from "@/lib/schemas"
 
-type LoginStep = "credentials" | "mfa" | "setup" | "backup"
+type LoginStep = "credentials" | "mfa" | "setup" | "backup" | "verification"
 
 function errorCode(error: unknown): string | null {
     if (!(error instanceof ApiError) || !error.detail || typeof error.detail !== "object") {
@@ -71,7 +73,12 @@ export default function LoginPage() {
         defaultValues: { email: "", password: "" },
     })
 
-    function finishLogin() {
+    async function finishLogin() {
+        const user = await getMe()
+        if (!user.email_verified_at && user.role !== "admin") {
+            setStep("verification")
+            return
+        }
         toast.success("Вход выполнен", { description: "Добро пожаловать обратно." })
         const next = new URLSearchParams(window.location.search).get("next")
         router.push(safeNextPath(next))
@@ -105,7 +112,7 @@ export default function LoginPage() {
         setCredentials(pending)
         try {
             await login(pending)
-            finishLogin()
+            await finishLogin()
         } catch (error) {
             try {
                 await handleLoginError(error)
@@ -124,7 +131,7 @@ export default function LoginPage() {
         setIsLoading(true)
         try {
             await login({ ...credentials, mfa_code: mfaCode.trim() })
-            finishLogin()
+            await finishLogin()
         } catch (error) {
             await handleLoginError(error).catch((unhandled) => {
                 toast.error("Ошибка входа", {
@@ -157,11 +164,25 @@ export default function LoginPage() {
         toast.success("Резервные коды скопированы")
     }
 
+    async function resendEmail() {
+        if (!credentials) return
+        setIsLoading(true)
+        try {
+            await resendVerification(credentials.email)
+            toast.success("Если email требует подтверждения, письмо отправлено. Проверьте также папку «Спам».")
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Не удалось отправить письмо")
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
     const titles: Record<LoginStep, [string, string]> = {
         credentials: ["Вход в аккаунт", "Введите email и пароль для доступа к курсам"],
         mfa: ["Подтверждение входа", "Введите код из приложения-аутентификатора или резервный код"],
         setup: ["Защитите аккаунт", "Для владельцев и администраторов двухфакторная защита обязательна"],
         backup: ["Сохраните резервные коды", "Каждый код работает один раз. Храните их отдельно от пароля"],
+        verification: ["Подтвердите ваш email", "Откройте ссылку из письма и задайте пароль. Покупки сохраняются; просмотр оплаченных уроков доступен после подтверждения."],
     }
 
     return (
@@ -172,6 +193,17 @@ export default function LoginPage() {
                     <CardDescription className="text-center">{titles[step][1]}</CardDescription>
                 </CardHeader>
                 <CardContent>
+                    {step === "verification" && (
+                        <div className="space-y-4">
+                            <Button className="w-full" disabled={isLoading} onClick={resendEmail}>
+                                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Отправить письмо повторно
+                            </Button>
+                            <Button variant="outline" className="w-full" onClick={() => { router.push("/dashboard"); router.refresh() }}>
+                                Перейти в кабинет
+                            </Button>
+                        </div>
+                    )}
                     {step === "credentials" && (
                         <Form {...form}>
                             {/* method="post": a native submit before hydration must never put the password in the URL */}

@@ -18,7 +18,7 @@ from app.models.user import User
 from app.models.course import Course
 from app.models.module import Module
 from app.models.lesson import Lesson
-from app.models.purchase import Purchase
+from app.models.purchase import Purchase, paid_financial_filter
 from app.models.entitlement import Entitlement
 from app.models.order import Order
 from app.models.certificate import Certificate
@@ -789,13 +789,13 @@ async def get_analytics(
     
     # Total purchases (successful)
     purchases_result = await db.execute(
-        select(func.count(Purchase.id)).where(Purchase.payment_status == "success")
+        select(func.count(Purchase.id)).where(paid_financial_filter())
     )
     total_purchases = purchases_result.scalar() or 0
     
     # Total revenue (in rubles)
     revenue_result = await db.execute(
-        select(func.sum(Purchase.amount_kopecks)).where(Purchase.payment_status == "success")
+        select(func.sum(Purchase.amount_kopecks)).where(paid_financial_filter())
     )
     total_revenue_kopecks = revenue_result.scalar() or 0
     total_revenue = total_revenue_kopecks // 100
@@ -804,8 +804,8 @@ async def get_analytics(
     recent_purchases_result = await db.execute(
         select(func.count(Purchase.id)).where(
             and_(
-                Purchase.payment_status == "success",
-                Purchase.created_at >= thirty_days_ago
+                paid_financial_filter(),
+                func.coalesce(Purchase.paid_at, Purchase.created_at) >= thirty_days_ago
             )
         )
     )

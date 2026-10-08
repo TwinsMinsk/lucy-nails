@@ -57,7 +57,7 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     """Установка нового пароля по токену из письма."""
 
-    token: str = Field(..., min_length=10, description="Токен из письма")
+    token: str = Field(..., min_length=10, max_length=4096, description="Токен из письма")
     new_password: str = Field(..., min_length=6, description="Новый пароль (минимум 6 символов)")
 
 
@@ -74,6 +74,7 @@ class UserResponse(BaseModel):
 
     id: UUID = Field(..., description="UUID пользователя")
     email: str = Field(..., description="Email")
+    email_verified_at: datetime | None = None
     phone: str | None = Field(None, description="Телефон (если указан)")
     full_name: str | None = Field(None, description="ФИО (если указано)")
     role: str = Field(..., description="Роль (student/admin)")

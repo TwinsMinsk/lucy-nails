@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.models.certificate import Certificate
 from app.models.progress import Progress
 from app.models.purchase import Purchase
+from app.models.user import User
 from app.services.access_service import AccessService
 
 
@@ -88,14 +89,14 @@ class PurchaseService:
             return []
 
         course_ids = [access.course.id for access in accesses]
-        certificates_query = select(Certificate.course_id, Certificate.certificate_number).where(
+        certificates_query = select(Certificate.course_id, Certificate.certificate_number, Certificate.status).where(
             and_(
                 Certificate.user_id == user_id,
                 Certificate.course_id.in_(course_ids),
             )
         )
         certificates_result = await db.execute(certificates_query)
-        certificate_numbers_by_course = dict(certificates_result.all())
+        certificates_by_course = {row.course_id: row for row in certificates_result.all()}
 
         progress_query = select(Progress).where(
             and_(
@@ -106,7 +107,10 @@ class PurchaseService:
         progress_result = await db.execute(progress_query)
         completed_lessons_ids = {p.lesson_id for p in progress_result.scalars().all()}
 
+        user = await db.get(User, user_id)
         support_invite = (settings.TELEGRAM_SUPPORT_GROUP_INVITE or "").strip() or None
+        if user is None or (user.role != "admin" and user.email_verified_at is None):
+            support_invite = None
 
         response = []
         for access in accesses:
@@ -167,7 +171,8 @@ class PurchaseService:
                     "tariff": access.tariff,
                     "expires_at": access.expires_at,
                     "support_chat_url": support_chat_url,
-                    "certificate_number": certificate_numbers_by_course.get(course.id),
+                    "certificate_number": certificates_by_course[course.id].certificate_number if course.id in certificates_by_course and certificates_by_course[course.id].status == "active" else None,
+                    "certificate_status": certificates_by_course[course.id].status if course.id in certificates_by_course else None,
                 }
             )
 

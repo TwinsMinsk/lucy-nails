@@ -1,24 +1,25 @@
 import { expect, test } from "@playwright/test"
 
-const corsHeaders = {
-    "access-control-allow-origin": "http://127.0.0.1:3000",
+const corsHeaders = () => ({
+    "access-control-allow-origin": new URL(test.info().project.use.baseURL!).origin,
     "access-control-allow-credentials": "true",
-}
+})
 
 const json = (body: unknown, status = 200) => ({
     status,
     contentType: "application/json",
-    headers: corsHeaders,
+    headers: corsHeaders(),
     body: JSON.stringify(body),
 })
 
-test.beforeEach(async ({ context, page }) => {
-    await context.addCookies([{ name: "auth_session", value: "1", domain: "127.0.0.1", path: "/" }])
+test.beforeEach(async ({ context, page, baseURL }) => {
+    await context.addCookies([{ name: "auth_session", value: "1", url: baseURL! }])
     await page.route("**/api/auth/me", (route) =>
         route.fulfill(json({
             id: "00000000-0000-0000-0000-000000000321",
             email: "student@example.test",
             role: "student",
+            email_verified_at: "2026-08-01T00:00:00Z",
             created_at: "2026-08-01T00:00:00Z",
         })),
     )

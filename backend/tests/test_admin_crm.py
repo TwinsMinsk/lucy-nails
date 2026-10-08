@@ -24,6 +24,7 @@ from app.models.user import User
 
 async def _admin_headers(client: AsyncClient, db: AsyncSession) -> dict[str, str]:
     admin = User(
+        email_verified_at=datetime.utcnow(),
         email="crm-admin@example.com",
         password_hash=get_password_hash("adminpass1"),
         role="admin",
@@ -46,12 +47,14 @@ async def test_dashboard_and_paginated_student_search(
     headers = await _admin_headers(client, db)
     course = Course(title="CRM Course", price_self=5000, price_support=10000)
     anna = User(
+        email_verified_at=datetime.utcnow(),
         email="anna.student@example.com",
         full_name="Anna Student",
         password_hash=get_password_hash("studentpass1"),
         role="student",
     )
     boris = User(
+        email_verified_at=datetime.utcnow(),
         email="boris@example.com",
         password_hash=get_password_hash("studentpass1"),
         role="student",
@@ -160,6 +163,7 @@ async def test_reconciliation_counts_real_webhook_and_missing_access_issues_only
     headers = await _admin_headers(client, db)
     course = Course(title="Reconciliation Course", price_self=5000, price_support=10000)
     student = User(
+        email_verified_at=datetime.utcnow(),
         email="reconciliation-student@example.com",
         password_hash=get_password_hash("studentpass1"),
         role="student",
@@ -264,6 +268,7 @@ async def test_analyst_order_access_masks_personal_data(
     db: AsyncSession,
 ):
     analyst = User(
+        email_verified_at=datetime.utcnow(),
         email="masked-analyst@example.com",
         password_hash=get_password_hash("analystpass1"),
         role="student",
@@ -273,6 +278,7 @@ async def test_analyst_order_access_masks_personal_data(
         Permission(name="commerce.read", description="Read commerce")
     ]
     buyer = User(
+        email_verified_at=datetime.utcnow(),
         email="private.buyer@example.com",
         password_hash=get_password_hash("buyerpass1"),
         role="student",
@@ -382,6 +388,7 @@ async def _staff_headers(
     permissions: list[str],
 ) -> dict[str, str]:
     staff = User(
+        email_verified_at=datetime.utcnow(),
         email=email,
         password_hash=get_password_hash("staffpass1"),
         role="student",
@@ -399,6 +406,124 @@ async def _staff_headers(
     assert response.status_code == 200, response.text
     client.cookies.clear()
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
+@pytest.mark.asyncio
+async def test_curator_course_selector_is_minimal_and_does_not_allow_content_mutations(client, db):
+    headers = await _staff_headers(client, db, email="selector@example.com", role_name="curator", permissions=["users.read", "access.manage"])
+    course = Course(title="Hidden course", price_self=5000, price_support=10000, is_published=False, access_days=45)
+    db.add(course)
+    await db.commit()
+    response = await client.get("/api/admin/access-courses", headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json() == [{"id": str(course.id), "title": "Hidden course", "access_days": 45}]
+    assert (await client.get("/api/admin/courses", headers=headers)).status_code == 403
+    assert (await client.post(f"/api/admin/students/{uuid4()}/notes", json={"body": "Forbidden note"}, headers=headers)).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_course_selector_rejects_users_read_without_access_manage(client, db):
+    headers = await _staff_headers(client, db, email="no-selector@example.com", role_name="reader", permissions=["users.read"])
+    assert (await client.get("/api/admin/access-courses", headers=headers)).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_analyst_orders_search_pages_over_200_without_refund_permission(client, db):
+    headers = await _staff_headers(client, db, email="paged-analyst@example.com", role_name="analyst", permissions=["commerce.read"])
+    course = Course(title="Paged course", price_self=5000, price_support=10000)
+    db.add(course)
+    await db.flush()
+    db.add_all([Order(course_id=course.id, course_title=course.title, tariff="self", customer_email=f"paged-{index}@example.com", amount_kopecks=500000, currency="RUB", access_days=30, status="pending", status_token_hash=f"paged-order-{index}") for index in range(201)])
+    await db.commit()
+    page = await client.get("/api/admin/orders?search=paged-&status=pending&limit=200&offset=200", headers=headers)
+    assert page.status_code == 200, page.text
+    assert page.json()["total"] == 201
+    assert len(page.json()["items"]) == 1
+    assert (await client.get("/api/admin/payment-events", headers=headers)).status_code == 200
+    assert (await client.get("/api/admin/reconciliation", headers=headers)).status_code == 200
+    assert (await client.get("/api/admin/refunds", headers=headers)).status_code == 403
+    assert (await client.post("/api/admin/refunds", json={"purchase_id": str(uuid4()), "amount_kopecks": 1, "reason": "Forbidden refund"}, headers=headers)).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_notification_search_pages_over_200_matching_entries(client, db):
+    headers = await _staff_headers(client, db, email="delivery@example.com", role_name="curator", permissions=["notifications.manage"])
+    db.add_all([OutboxMessage(kind="activation", channel="email", recipient=f"target-{index}@example.com", payload={}, status="pending", dedupe_key=f"search-{index}") for index in range(201)])
+    db.add(OutboxMessage(kind="activation", channel="email", recipient="other@example.com", payload={}, status="pending", dedupe_key="search-other"))
+    await db.commit()
+    page = await client.get("/api/admin/notifications?search=target-&status=pending&channel=email&limit=200&offset=200", headers=headers)
+    assert page.status_code == 200, page.text
+    assert page.json()["total"] == 201
+    assert len(page.json()["items"]) == 1
+    assert page.json()["items"][0]["recipient"].startswith("target-")
+    absent = await client.get("/api/admin/notifications?search=no-match", headers=headers)
+    assert absent.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_dashboard_and_reconciliation_ignore_manual_financial_records(client, db):
+    headers = await _admin_headers(client, db)
+    course = Course(title="Financial separation", price_self=5000, price_support=10000)
+    student = User(email_verified_at=datetime.utcnow(), email="manual-finance@example.com", password_hash=get_password_hash("studentpass1"), role="student")
+    db.add_all([course, student])
+    await db.flush()
+    now = datetime.utcnow()
+    purchase = Purchase(user_id=student.id, course_id=course.id, tariff="self", amount_kopecks=500000, payment_id="admin_grant_manual", payment_status="success", transaction_kind="manual_grant", paid_at=now, expires_at=now + timedelta(days=30))
+    db.add(purchase)
+    await db.flush()
+    admin_id = await db.scalar(select(User.id).where(User.email == "crm-admin@example.com"))
+    db.add(RefundRequest(purchase_id=purchase.id, amount_kopecks=100000, reason="Legacy manual refund", status="processed", created_by_id=admin_id))
+    await db.commit()
+    overview = await client.get("/api/admin/dashboard", headers=headers)
+    assert overview.status_code == 200, overview.text
+    assert overview.json()["gross_revenue_kopecks"] == 0
+    assert overview.json()["refunded_kopecks"] == 0
+    assert overview.json()["net_revenue_kopecks"] == 0
+    reconciliation = await client.get("/api/admin/reconciliation", headers=headers)
+    assert reconciliation.json()["successful_purchases_without_active_entitlement"] == 0
+    paid = Purchase(user_id=student.id, course_id=course.id, tariff="self", amount_kopecks=500000, payment_id="real-payment", payment_status="success", transaction_kind="paid", paid_at=now, expires_at=now + timedelta(days=30))
+    db.add(paid)
+    await db.flush()
+    db.add(RefundRequest(purchase_id=paid.id, amount_kopecks=100000, reason="Paid partial refund", status="processed", created_by_id=admin_id))
+    await db.commit()
+    paid_overview = await client.get("/api/admin/dashboard", headers=headers)
+    assert paid_overview.json()["gross_revenue_kopecks"] == 500000
+    assert paid_overview.json()["refunded_kopecks"] == 100000
+    assert paid_overview.json()["net_revenue_kopecks"] == 400000
+
+
+@pytest.mark.asyncio
+async def test_duplicate_payment_incident_counts_in_dashboard_and_reconciliation(client, db):
+    headers = await _admin_headers(client, db)
+    db.add(PaymentEvent(event_hash="duplicate-payment-incident", event_type="payment", processing_status="financial_incident", error_code="duplicate_order_payment"))
+    await db.commit()
+    dashboard = await client.get("/api/admin/dashboard", headers=headers)
+    reconciliation = await client.get("/api/admin/reconciliation", headers=headers)
+    assert dashboard.json()["payment_errors"] == 1
+    assert reconciliation.json()["processed_payment_errors"] == 1
+
+
+@pytest.mark.asyncio
+async def test_students_and_entitlements_page_past_200_with_stable_ties(client, db):
+    headers = await _admin_headers(client, db)
+    now = datetime.utcnow()
+    course = Course(title="Paged access", price_self=5000, price_support=10000)
+    db.add(course)
+    await db.flush()
+    password = get_password_hash("studentpass1")
+    students = [User(id=UUID(int=index + 1000), email=f"paged-student-{index}@example.com", password_hash=password, role="student", created_at=now) for index in range(205)]
+    db.add_all(students)
+    await db.flush()
+    db.add_all([Entitlement(id=UUID(int=index + 2000), user_id=student.id, course_id=course.id, source="manual", tariff="self", status="active", starts_at=now, expires_at=now + timedelta(days=30), reason="Pagination test") for index, student in enumerate(students)])
+    await db.commit()
+    for path, first_id in (("students", UUID(int=1204)), ("entitlements", UUID(int=2204))):
+        first = await client.get(f"/api/admin/{path}?search=paged-student&limit=50", headers=headers)
+        last = await client.get(f"/api/admin/{path}?search=paged-student&limit=50&offset=200", headers=headers)
+        assert first.status_code == last.status_code == 200
+        assert first.json()["total"] == last.json()["total"] == 205
+        assert first.json()["items"][0]["id"] == str(first_id)
+        assert len(last.json()["items"]) == 5
+        assert set(item["id"] for item in first.json()["items"]).isdisjoint(item["id"] for item in last.json()["items"])
 
 
 @pytest.mark.asyncio
@@ -467,6 +592,7 @@ async def test_admin_create_student_reuses_existing_user_case_insensitively(
     headers = await _admin_headers(client, db)
     course = Course(title="Gift Course", price_self=5000, price_support=10000)
     existing = User(
+        email_verified_at=datetime.utcnow(),
         email="existing.student@example.com",
         password_hash=get_password_hash("studentpass1"),
         role="student",
@@ -551,6 +677,7 @@ async def test_send_login_link_enqueues_a_message_every_time(
 ):
     headers = await _admin_headers(client, db)
     student = User(
+        email_verified_at=datetime.utcnow(),
         email="locked-out@example.com",
         password_hash=get_password_hash("studentpass1"),
         role="student",
@@ -603,11 +730,13 @@ async def test_send_login_link_enqueues_a_message_every_time(
 async def test_send_login_link_refuses_team_accounts(client: AsyncClient, db: AsyncSession):
     headers = await _admin_headers(client, db)
     legacy_admin = User(
+        email_verified_at=datetime.utcnow(),
         email="legacy-admin@example.com",
         password_hash=get_password_hash("adminpass2"),
         role="admin",
     )
     team_member = User(
+        email_verified_at=datetime.utcnow(),
         email="support-agent@example.com",
         password_hash=get_password_hash("staffpass2"),
         role="student",
@@ -643,6 +772,7 @@ async def test_student_detail_lists_per_lesson_progress_in_course_order(
     course = Course(title="Progress Course", price_self=5000, price_support=10000)
     other_course = Course(title="No Access Course", price_self=5000, price_support=10000)
     student = User(
+        email_verified_at=datetime.utcnow(),
         email="progress-student@example.com",
         password_hash=get_password_hash("studentpass1"),
         role="student",

@@ -18,59 +18,37 @@ import Image from "next/image";
 import { NailsGallery } from "@/components/landing/NailsGallery";
 import { PaymentButton } from "@/components/landing/PaymentButton";
 import { ProgramSection } from "@/components/landing/ProgramSection";
-import type { Module } from "@/components/course/ModuleList";
-import { getPublishedCourses, getPublicCourseModules, type ModuleResponse } from "@/lib/api";
+import { getPublicCourseModules, type ModuleResponse } from "@/lib/api";
 import { landingCourse } from "@/lib/landing/course-content";
 import { getLandingContent } from "@/lib/landing/loader";
 import { formatDays } from "@/lib/format";
 
-export const metadata: Metadata = {
-  title: landingCourse.title,
-  description: landingCourse.description,
-  alternates: {
-    canonical: "/",
-  },
-  openGraph: {
-    title: landingCourse.title,
-    description: landingCourse.description,
-    url: "/",
-    images: ["/landing/instructor-master.webp"],
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { hero } = await getLandingContent();
+  return {
+    title: hero.title,
+    description: hero.description,
+    alternates: { canonical: "/" },
+    openGraph: {
+      title: hero.title,
+      description: hero.description,
+      url: "/",
+      images: [hero.instructorImageUrl ?? "/landing/instructor-master.webp"],
+    },
+  };
+}
 
 const COURSE_DATA = {
   level: "Для практикующих мастеров",
   certificate: true,
-  prices: {
-    self: 5900,
-  },
-  accessDays: 30,
+
 };
 
 export default async function Home() {
-  const { hero, modules: landingModules, gallery } = await getLandingContent();
-
-  const staticModules = landingModules.map((module, index) => ({
-    id: String(index + 1),
-    title: module.title,
-    lessons: [{ id: `${index + 1}.1`, title: module.title, duration: module.duration }],
-  })) satisfies Module[];
-
-  let primaryCourseId: string | null = null;
-  let prices = { self: COURSE_DATA.prices.self };
-  let accessDays = COURSE_DATA.accessDays;
-
-  try {
-    const catalog = await getPublishedCourses();
-    if (catalog.total > 0 && catalog.courses[0]) {
-      const c = catalog.courses[0];
-      primaryCourseId = c.id;
-      prices = { self: c.price_self };
-      accessDays = c.access_days || COURSE_DATA.accessDays;
-    }
-  } catch {
-    // Оставляем цены из статического COURSE_DATA; кнопки оплаты будут заблокированы без курса из API.
-  }
+  const { hero, modules: landingModules, gallery, course: publishedCourse } = await getLandingContent();
+  const primaryCourseId = publishedCourse?.id ?? null;
+  const prices = publishedCourse ? { self: publishedCourse.price_self } : null;
+  const accessDays = publishedCourse?.access_days;
 
   let programModules: ModuleResponse[] | null = null;
   if (primaryCourseId) {
@@ -91,7 +69,6 @@ export default async function Home() {
     level: COURSE_DATA.level,
     certificate: COURSE_DATA.certificate,
     prices,
-    modules: staticModules,
   };
 
   return (
@@ -182,7 +159,7 @@ export default async function Home() {
           <div className="text-center mb-16">
             <div className="inline-flex items-center gap-2 rounded-full bg-[#fff1f4] px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-text-secondary mb-4">
               <Video className="w-4 h-4 text-[#D4AF37]" />
-              11 уроков из реальной практики мастера
+              {publishedCourse ? `${publishedCourse.lessons_count} уроков из реальной практики мастера` : "Программа обучения"}
             </div>
             <h2 className="font-serif text-4xl md:text-5xl text-text-primary mb-4">
               Программа курса
@@ -233,9 +210,9 @@ export default async function Home() {
               <CardHeader className="text-center pt-8 pb-4">
                 <CardTitle className="font-serif text-2xl text-text-primary">{landingCourse.tariffs.self.title}</CardTitle>
                 <div className="flex items-baseline justify-center gap-1 font-serif text-5xl text-text-primary mt-4">
-                  {course.prices.self.toLocaleString("ru-RU")} ₽
+                  {course.prices ? `${course.prices.self.toLocaleString("ru-RU")} ₽` : "Продажи пока недоступны"}
                 </div>
-                <p className="text-sm text-text-secondary mt-2">Доступ на {formatDays(accessDays)}</p>
+                {accessDays != null && <p className="text-sm text-text-secondary mt-2">Доступ на {formatDays(accessDays)}</p>}
                 <p className="text-sm text-text-secondary leading-relaxed mt-4">
                   {landingCourse.tariffs.self.description}
                 </p>
@@ -243,7 +220,7 @@ export default async function Home() {
               <CardContent className="space-y-6 px-8 pb-8">
                 <div className="w-full h-px bg-border/50" />
                 <ul className="space-y-4 text-text-secondary">
-                  {landingCourse.tariffs.self.features.map((feature) => (
+                  {(publishedCourse ? [`Все ${publishedCourse.lessons_count} видеоуроков`, `Доступ на ${formatDays(publishedCourse.access_days)} с любого устройства`, ...landingCourse.tariffs.self.features.slice(2)] : []).map((feature) => (
                     <li key={feature} className="flex items-center gap-3">
                       <CheckCircle className="w-5 h-5 text-[#D4AF37] shrink-0 fill-[#D4AF37]/10" />
                       <span>{feature}</span>

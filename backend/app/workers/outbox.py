@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.core.database import async_session_maker
 from app.services.lifecycle_service import LifecycleService
 from app.services.outbox_service import process_outbox_batch
+from app.services.operations_health_service import record_worker_heartbeat
 
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,10 @@ async def run_forever() -> None:
     last_lifecycle_scan = 0.0
     while True:
         processed, last_lifecycle_scan = await run_iteration(last_lifecycle_scan)
+        try:
+            await record_worker_heartbeat()
+        except Exception:
+            logger.exception("Worker heartbeat failed")
         if processed == 0:
             await asyncio.sleep(settings.OUTBOX_POLL_SECONDS)
 

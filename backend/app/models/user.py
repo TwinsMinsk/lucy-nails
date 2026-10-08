@@ -18,6 +18,7 @@ class User(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    email_verified_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     __table_args__ = (
         # Enforces email case-insensitivity at the DB level; lookups also use

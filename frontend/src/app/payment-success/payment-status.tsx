@@ -61,7 +61,7 @@ export function PaymentStatus() {
         if (result.status === "paid") {
           setState("paid");
           window.history.replaceState({}, "", "/payment-success");
-          sendYandexGoal("purchase");
+          sendYandexGoal("purchase", orderId);
           return;
         }
         setState("pending");

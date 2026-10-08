@@ -1,6 +1,9 @@
 "use client"
 
-import { FormEvent, useCallback, useEffect, useState } from "react"
+import { formatApiDateTime } from "@/lib/format"
+import { useAdminPermission } from "@/app/admin/permissions"
+import { FormEvent, Suspense, useCallback, useEffect, useRef, useState } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { KeyRound, Loader2, Search } from "lucide-react"
 import { toast } from "sonner"
 
@@ -19,41 +22,64 @@ import {
     AdminEntitlement,
 } from "@/lib/api"
 
-const date = (value: string) => new Date(value).toLocaleString("ru-RU")
+const date = formatApiDateTime
 
 export default function AdminAccessPage() {
+    return <Suspense fallback={<Loader2 className="mx-auto my-12 h-7 w-7 animate-spin" />}><Access /></Suspense>
+}
+
+function Access() {
+    const router = useRouter()
+    const pathname = usePathname()
+    const params = useSearchParams()
+    const search = params.get("search") || ""
+    const status = params.get("status") || "active"
+    const offset = Math.max(0, Number(params.get("offset")) || 0)
+    const [searchInput, setSearchInput] = useState(search)
+    useEffect(() => { setSearchInput(search) }, [search])
+    const navigate = (query: string, filter: string, pageOffset: number) => {
+        const next = new URLSearchParams()
+        if (query) next.set("search", query)
+        if (filter !== "active") next.set("status", filter)
+        if (pageOffset) next.set("offset", String(pageOffset))
+        router.replace(`${pathname}${next.size ? `?${next}` : ""}`, { scroll: false })
+    }
+    const canManageAccess = useAdminPermission("access.manage")
     const [items, setItems] = useState<AdminEntitlement[]>([])
     const [total, setTotal] = useState(0)
-    const [search, setSearch] = useState("")
-    const [status, setStatus] = useState("active")
     const [loading, setLoading] = useState(true)
     const [revoke, setRevoke] = useState<AdminEntitlement | null>(null)
     const [reason, setReason] = useState("")
+    const generation = useRef(0)
 
     const load = useCallback(async () => {
+        const request = ++generation.current
         setLoading(true)
         try {
             const response = await adminGetEntitlements({
                 search,
                 status: status === "all" ? undefined : status,
-                limit: 200,
+                limit: 50,
+                offset,
             })
+            if (request !== generation.current) return
             setItems(response.items)
             setTotal(response.total)
         } catch (error) {
+            if (request !== generation.current) return
             toast.error("Не удалось загрузить доступы", {
                 description: error instanceof Error ? error.message : undefined,
             })
         } finally {
-            setLoading(false)
+            if (request === generation.current) setLoading(false)
         }
-    }, [search, status])
+    }, [search, status, offset])
 
-    useEffect(() => { void load() }, [load])
+    useEffect(() => { void load(); return () => { generation.current += 1 } }, [load])
 
     const submit = (event: FormEvent) => {
         event.preventDefault()
-        void load()
+        navigate(searchInput.trim(), status, 0)
     }
 
     const confirmRevoke = async () => {
@@ -106,8 +132,8 @@ export default function AdminAccessPage() {
                 <CardHeader className="gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <CardTitle>{total} записей</CardTitle>
                     <form onSubmit={submit} className="flex flex-col gap-2 sm:flex-row">
-                        <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Email ученика" className="sm:w-72" />
-                        <Select value={status} onValueChange={setStatus}>
+                        <Input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Email ученика" className="sm:w-72" />
+                        <Select value={status} onValueChange={(value) => navigate(search, value, 0)}>
                             <SelectTrigger className="sm:w-48"><SelectValue /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="active">Активные</SelectItem>
@@ -137,10 +163,10 @@ export default function AdminAccessPage() {
                                         <td className="p-3">{date(item.expires_at)}</td>
                                         <td className="p-3">
                                             <div className="flex justify-end gap-2">
-                                                {item.status !== "revoked" && <Button size="sm" variant="outline" onClick={() => void extend(item)}>Продлить</Button>}
-                                                {item.status === "active" && <Button size="sm" variant="outline" onClick={() => void changeState(item, "suspend")}>Приостановить</Button>}
-                                                {item.status === "suspended" && <Button size="sm" variant="outline" onClick={() => void changeState(item, "restore")}>Восстановить</Button>}
-                                                {["active", "suspended"].includes(item.status) && <Button size="sm" variant="destructive" onClick={() => setRevoke(item)}>Отозвать</Button>}
+                                                {canManageAccess && item.status !== "revoked" && <Button size="sm" variant="outline" onClick={() => void extend(item)}>Продлить</Button>}
+                                                {canManageAccess && item.status === "active" && <Button size="sm" variant="outline" onClick={() => void changeState(item, "suspend")}>Приостановить</Button>}
+                                                {canManageAccess && item.status === "suspended" && <Button size="sm" variant="outline" onClick={() => void changeState(item, "restore")}>Восстановить</Button>}
+                                                {canManageAccess && ["active", "suspended"].includes(item.status) && <Button size="sm" variant="destructive" onClick={() => setRevoke(item)}>Отозвать</Button>}
                                             </div>
                                         </td>
                                     </tr>
@@ -148,6 +174,7 @@ export default function AdminAccessPage() {
                             </table>
                         </div>
                     )}
+                    <div className="mt-4 flex items-center gap-3"><Button variant="outline" disabled={offset === 0} onClick={() => navigate(search, status, Math.max(0, offset - 50))}>Назад</Button><span className="text-sm">{total ? offset + 1 : 0}–{Math.min(offset + items.length, total)} из {total}</span><Button variant="outline" disabled={offset + 50 >= total} onClick={() => navigate(search, status, offset + 50)}>Далее</Button></div>
                 </CardContent>
             </Card>
             <Dialog open={Boolean(revoke)} onOpenChange={(open) => { if (!open) setRevoke(null) }}>

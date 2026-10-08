@@ -652,7 +652,7 @@ JWT состоит из трёх частей, разделённых точка
 **Готовый токен (пример):**
 
 ```
-eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImtleS0yMDI0LTEyLTI1In0.eyJhdWQiOiJjaGF0IiwidXNlcl9pZCI6InVzZXItMTIzNDUiLCJ1c2VybmFtZSI6ItCY0LLQvdCwINCY0LLQvdCw0L3QvtCyIiwiZXZlbnRfaWQiOiJldmVudC1hYmMtMTIzIiwiaWF0IjoxNzAzNTAwODAwLCJleHAiOjE3MDM1MDQ0MDB9.signature_here
+<EXAMPLE_JWT>
 ```
 
 ### ["Скопировать ссылку на этот раздел"](https://docs.kinescope.ru/instrukcii-dlya-razrabotchikov/jwt-autentifikatsiya-dlya-chata-translyatsiy/\#%D0%B8%D1%81%D0%BF%D0%BE%D0%BB%D1%8C%D0%B7%D0%BE%D0%B2%D0%B0%D0%BD%D0%B8%D0%B5-%D1%82%D0%BE%D0%BA%D0%B5%D0%BD%D0%B0 "\"Скопировать ссылку на этот раздел\"")**Использование токена**
@@ -660,13 +660,13 @@ eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImtleS0yMDI0LTEyLTI1In0.eyJhdWQiOiJj
 После генерации токена передайте его в URL чата:
 
 ```
-https://kinescope.io/chat/event-abc-123?token=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImtleS0yMDI0LTEyLTI1In0...
+https://kinescope.io/chat/event-abc-123?token=<EXAMPLE_JWT>
 ```
 
 **Пример полного URL с токеном:**
 
 ```
-https://kinescope.io/chat/event-abc-123?token=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImtleS0yMDI0LTEyLTI1In0.eyJhdWQiOiJjaGF0IiwidXNlcl9pZCI6InVzZXItMTIzNDUiLCJ1c2VybmFtZSI6ItCY0LLQvdCwINCY0LLQvdCw0L3QvtCyIiwiZXZlbnRfaWQiOiJldmVudC1hYmMtMTIzIiwiaWF0IjoxNzAzNTAwODAwLCJleHAiOjE3MDM1MDQ0MDB9.signature_here
+https://kinescope.io/chat/event-abc-123?token=<EXAMPLE_JWT>
 ```
 
 Готово! Теперь ваши пользователи смогут автоматически авторизовываться в чате трансляции через JWT-токены.
@@ -836,7 +836,7 @@ https://kinescope.io/chat/{{event_id}}?token={{jwt_token}}
 
 
 ```
-https://kinescope.io/chat/event-abc-123?token=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+https://kinescope.io/chat/event-abc-123?token=<EXAMPLE_JWT>
 ```
 
 4. **Проверьте консоль браузера** на наличие ошибок JavaScript
@@ -5593,7 +5593,7 @@ curl -X GET "https://api.kinescope.io/v1/drm/auth/${PROJECT_ID}" \
   "id": "7127f2d7-0e96-40d0-9a03-2e987c096466",
   "ip": "11.22.33.0",
   "type": "video",
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9....",
+  "token": "<SESSION_TOKEN>",
   "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ..."
 }
 ```
@@ -6042,7 +6042,7 @@ JWT состоит из трёх частей, разделённых точка
 
 \*\*Готовый токен (пример):\*\*
 \`\`\`
-eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImtleS0yMDI0LTEyLTI1In0.eyJhdWQiOiJjaGF0IiwidXNlcl9pZCI6InVzZXItMTIzNDUiLCJ1c2VybmFtZSI6ItCY0LLQvdCwINCY0LLQvdCw0L3QvtCyIiwiZXZlbnRfaWQiOiJldmVudC1hYmMtMTIzIiwiaWF0IjoxNzAzNTAwODAwLCJleHAiOjE3MDM1MDQ0MDB9.signature\_here
+<EXAMPLE_JWT>\_here
 \`\`\`
 
 \### \*\*Использование токена\*\*
@@ -6050,12 +6050,12 @@ eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImtleS0yMDI0LTEyLTI1In0.eyJhdWQiOiJj
 После генерации токена передайте его в URL чата:
 
 \`\`\`
-https://kinescope.io/chat/event-abc-123?token=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImtleS0yMDI0LTEyLTI1In0...
+https://kinescope.io/chat/event-abc-123?token=<EXAMPLE_JWT>
 \`\`\`
 
 \*\*Пример полного URL с токеном:\*\*
 \`\`\`
-https://kinescope.io/chat/event-abc-123?token=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImtleS0yMDI0LTEyLTI1In0.eyJhdWQiOiJjaGF0IiwidXNlcl9pZCI6InVzZXItMTIzNDUiLCJ1c2VybmFtZSI6ItCY0LLQvdCwINCY0LLQvdCw0L3QvtCyIiwiZXZlbnRfaWQiOiJldmVudC1hYmMtMTIzIiwiaWF0IjoxNzAzNTAwODAwLCJleHAiOjE3MDM1MDQ0MDB9.signature\_here
+https://kinescope.io/chat/event-abc-123?token=<EXAMPLE_JWT>\_here
 \`\`\`
 
 Готово! Теперь ваши пользователи смогут автоматически авторизовываться в чате трансляции через JWT-токены.
@@ -6216,7 +6216,7 @@ func verifyJWT(tokenString string, publicKey \*rsa.PublicKey) (\*ChatClaims, err
  \`\`\`
  \*\*Пример:\*\*
  \`\`\`
- https://kinescope.io/chat/event-abc-123?token=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+ https://kinescope.io/chat/event-abc-123?token=<EXAMPLE_JWT>
  \`\`\`
 4\. \*\*Проверьте консоль браузера\*\* на наличие ошибок JavaScript
 

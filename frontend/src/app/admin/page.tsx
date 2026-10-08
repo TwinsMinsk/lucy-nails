@@ -7,23 +7,29 @@ import { toast } from "sonner"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { adminGetDashboard, adminGetReconciliation, AdminDashboardResponse, AdminReconciliation } from "@/lib/api"
+import { useAdminPermission } from "@/app/admin/permissions"
 
 const money = (kopecks: number) => `${(kopecks / 100).toLocaleString("ru-RU")} ₽`
 
 export default function AdminDashboardPage() {
+    const canReadCommerce = useAdminPermission("commerce.read")
     const [data, setData] = useState<AdminDashboardResponse | null>(null)
     const [reconciliation, setReconciliation] = useState<AdminReconciliation | null>(null)
+    const [loading, setLoading] = useState(true)
 
     useEffect(() => {
-        Promise.all([adminGetDashboard(), adminGetReconciliation()])
-            .then(([dashboard, reconciliationData]) => {
-                setData(dashboard)
-                setReconciliation(reconciliationData)
+        Promise.allSettled([
+            adminGetDashboard().then(setData),
+            ...(canReadCommerce ? [adminGetReconciliation().then(setReconciliation)] : []),
+        ])
+            .then((results) => {
+                if (results.some((result) => result.status === "rejected")) toast.error("Часть данных обзора недоступна")
             })
-            .catch((error) => toast.error("Не удалось загрузить операционный обзор", { description: error.message }))
-    }, [])
+            .finally(() => setLoading(false))
+    }, [canReadCommerce])
 
-    if (!data) return <div className="flex min-h-[50vh] items-center justify-center"><Loader2 className="h-7 w-7 animate-spin" /></div>
+    if (loading) return <div className="flex min-h-[50vh] items-center justify-center"><Loader2 className="h-7 w-7 animate-spin" /></div>
+    if (!data) return <p className="p-8">Не удалось загрузить операционный обзор.</p>
 
     const cards = [
         { title: "Ученики", value: data.total_students, icon: Users, href: "/admin/users" },

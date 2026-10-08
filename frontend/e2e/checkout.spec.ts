@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test"
 
-test("guest checkout reaches confirmed access state", async ({ page }) => {
+test("guest checkout reaches confirmed access state", async ({ page, baseURL }) => {
     let checkoutPayload: Record<string, unknown> | undefined
     const corsHeaders = {
-        "access-control-allow-origin": "http://127.0.0.1:3000",
+        "access-control-allow-origin": new URL(baseURL!).origin,
         "access-control-allow-credentials": "true",
         "access-control-allow-methods": "GET,POST,OPTIONS",
         "access-control-allow-headers": "content-type,x-csrf-token",
@@ -35,12 +35,14 @@ test("guest checkout reaches confirmed access state", async ({ page }) => {
             contentType: "application/json",
             headers: corsHeaders,
             body: JSON.stringify({
-                url: "http://127.0.0.1:3000/payment-success?order_id=order-test&token=status-test",
+                url: new URL("/payment-success?order_id=order-test&token=status-test", baseURL).href,
             }),
         })
     })
     await page.goto("/#pricing")
-    await page.getByRole("button", { name: "Начать обучение" }).first().click()
+    const cta = page.getByRole("button", { name: "Начать обучение" }).first()
+    await expect.poll(() => cta.evaluate((button) => Object.keys(button).some((key) => key.startsWith("__reactProps")))).toBe(true)
+    await cta.click()
     await expect(page.getByRole("heading", { name: "Оплата без регистрации" })).toBeVisible()
 
     await page.getByLabel("Email").fill("student@example.com")
@@ -72,6 +74,7 @@ test("guest checkout reaches confirmed access state", async ({ page }) => {
     await expect(personalDataError).toHaveCount(0)
     await expect(payButton).not.toHaveAttribute("aria-disabled", "true")
     await payButton.click()
+    await page.waitForURL(/\/payment-success/, { waitUntil: "domcontentloaded" })
 
     await expect(page.getByRole("heading", { name: "Оплата подтверждена" })).toBeVisible()
     await expect(page.getByRole("link", { name: "«Забыли пароль?»" })).toHaveAttribute("href", "/auth/forgot-password")
@@ -81,6 +84,7 @@ test("guest checkout reaches confirmed access state", async ({ page }) => {
         offer_accepted: true,
         personal_data_consent: true,
         consent_version: expect.any(String),
+        course_id: "11111111-1111-4111-8111-111111111101",
     })
 })
 

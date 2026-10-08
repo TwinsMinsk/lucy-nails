@@ -43,6 +43,7 @@ def _signed_payload(payload: dict) -> tuple[dict, dict]:
 async def _create_user(db: AsyncSession, email: str) -> User:
     user = User(
         email=email,
+        email_verified_at=datetime.utcnow(),
         password_hash=get_password_hash("password123"),
         role="student",
     )

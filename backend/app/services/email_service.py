@@ -228,11 +228,24 @@ class EmailService:
         safe_url = escape(activation_url, quote=True)
         safe_title = escape(course_title)
         html = (
-            f"<h1>Доступ к курсу открыт</h1><p>Курс: {safe_title}</p>"
-            f'<p><a href="{safe_url}">Установить пароль и войти</a></p>'
+            f"<h1>Оплата подтверждена</h1><p>Курс: {safe_title}</p>"
+            f'<p><a href="{safe_url}">Подтвердить email и установить пароль</a></p>'
+            "<p>Просмотр курса станет доступен после подтверждения email. Прежние сеансы будут завершены.</p>"
             "<p>Ссылка действует 24 часа и может быть использована один раз.</p>"
         )
         await EmailService._send(email, "Установите пароль — Lucy Nails Academy", html)
+
+    @staticmethod
+    async def send_email_verification(email: str, activation_url: str) -> None:
+        safe_url = escape(activation_url, quote=True)
+        html = (
+            "<h1>Подтвердите ваш email</h1>"
+            f'<p><a href="{safe_url}">Подтвердить email и задать пароль</a></p>'
+            "<p>Для безопасности задайте пароль заново. Прежние сеансы будут завершены.</p>"
+            f"<p>Ссылка действует {settings.ACCOUNT_ACTIVATION_TOKEN_EXPIRE_HOURS} ч. и используется один раз.</p>"
+            "<p>Если вы не создавали аккаунт, проигнорируйте письмо.</p>"
+        )
+        await EmailService._send(email, "Подтвердите email — Lucy Nails Academy", html)
 
     @staticmethod
     async def send_access_granted(email: str, login_url: str, course_title: str) -> None:

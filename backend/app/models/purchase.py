@@ -5,7 +5,16 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Integer, DateTime, Enum as SQLEnum, ForeignKey
+from sqlalchemy import (
+    String,
+    Integer,
+    DateTime,
+    Enum as SQLEnum,
+    ForeignKey,
+    and_,
+    or_,
+    CheckConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -13,31 +22,46 @@ from app.core.database import Base
 
 class Purchase(Base):
     """Покупки курсов с датой истечения доступа."""
-    
+
     __tablename__ = "purchases"
-    
+    __table_args__ = (
+        CheckConstraint(
+            "transaction_kind IN ('paid', 'manual_grant')",
+            name="ck_purchase_transaction_kind",
+        ),
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    course_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    course_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("courses.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     order_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("orders.id", ondelete="SET NULL"), nullable=True, unique=True, index=True
+        ForeignKey("orders.id", ondelete="SET NULL"),
+        nullable=True,
+        unique=True,
+        index=True,
     )
     tariff: Mapped[str] = mapped_column(
-        SQLEnum("self", "support", name="tariff_type"),
-        nullable=False
+        SQLEnum("self", "support", name="tariff_type"), nullable=False
     )
     amount_kopecks: Mapped[int] = mapped_column(Integer, nullable=False)  # в копейках
+    transaction_kind: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="paid", server_default="paid"
+    )
     payment_id: Mapped[str | None] = mapped_column(String(255), unique=True, index=True)
     payment_status: Mapped[str] = mapped_column(
         SQLEnum("pending", "success", "failed", name="payment_status"),
         nullable=False,
-        default="pending"
+        default="pending",
     )
     paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     customer_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
-    
+
     # Relationships
     user: Mapped["User"] = relationship(back_populates="purchases")
     course: Mapped["Course"] = relationship(back_populates="purchases")
@@ -45,8 +69,23 @@ class Purchase(Base):
     entitlement: Mapped["Entitlement | None"] = relationship(
         back_populates="source_purchase", uselist=False
     )
-    payment_events: Mapped[list["PaymentEvent"]] = relationship(back_populates="purchase")
-    refund_requests: Mapped[list["RefundRequest"]] = relationship(back_populates="purchase")
-    
+    payment_events: Mapped[list["PaymentEvent"]] = relationship(
+        back_populates="purchase"
+    )
+    refund_requests: Mapped[list["RefundRequest"]] = relationship(
+        back_populates="purchase"
+    )
+
     def __repr__(self) -> str:
         return f"<Purchase {self.id} ({self.tariff}, {self.payment_status})>"
+
+
+def paid_financial_filter():
+    return and_(
+        Purchase.payment_status == "success",
+        Purchase.transaction_kind == "paid",
+        or_(
+            Purchase.payment_id.is_(None),
+            ~Purchase.payment_id.startswith("admin_grant_", autoescape=True),
+        ),
+    )

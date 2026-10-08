@@ -52,6 +52,7 @@ def _generate_pem() -> str:
 def configured_drm(monkeypatch):
     """Поднимает валидную DRM-конфигурацию на время теста."""
     pem = _generate_pem()
+    monkeypatch.setattr(settings, "KINESCOPE_API_KEY", "test-api-key")
     monkeypatch.setattr(settings, "KINESCOPE_JWT_PRIVATE_KEY_PEM", pem)
     monkeypatch.setattr(settings, "KINESCOPE_JWT_PRIVATE_KEY_PATH", "")
     monkeypatch.setattr(settings, "KINESCOPE_JWK_KID", "test-kid")
@@ -59,12 +60,13 @@ def configured_drm(monkeypatch):
     monkeypatch.setattr(settings, "KINESCOPE_DRM_BASIC_PASS", "test-pass-123")
     monkeypatch.setattr(settings, "KINESCOPE_DRM_TOKEN_TTL_SECONDS", 300)
     monkeypatch.setattr(settings, "BACKEND_URL", "https://api.test.local")
-    # The webhook endpoint holds a module-level kinescope_jwt_service built at
-    # import time (before these settings were patched). Rebuild it so the endpoint
-    # verifies tokens with the same freshly-configured key.
+    # Embed generation and webhook verification share the freshly configured key.
     import app.api.integrations.kinescope as _kin_endpoint
+    import app.services.kinescope_service as _kin_service
 
-    monkeypatch.setattr(_kin_endpoint, "kinescope_jwt_service", KinescopeJwtService())
+    service = KinescopeJwtService()
+    monkeypatch.setattr(_kin_endpoint, "kinescope_jwt_service", service)
+    monkeypatch.setattr(_kin_service, "kinescope_jwt_service", service)
     yield
 
 
@@ -133,6 +135,7 @@ async def _seed_course(
     user = User(
         id=uuid.uuid4(),
         email="buyer@example.com",
+        email_verified_at=datetime.utcnow(),
         password_hash="x",
         role="student",
     )
@@ -332,8 +335,6 @@ async def test_get_embed_url_includes_drm_token_when_configured(configured_drm):
     from app.services.kinescope_service import KinescopeService
 
     svc = KinescopeService()
-    if svc.is_mock_mode:
-        pytest.skip("mock mode active (no KINESCOPE_API_KEY in test env)")
 
     fake_user = User(
         id=uuid.uuid4(),

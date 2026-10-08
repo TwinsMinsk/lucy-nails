@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
 from app.core.database import get_db
+from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.models.user import User
 from app.schemas.lesson import LessonDetailResponse, VideoPlayResponse
@@ -28,25 +29,26 @@ router = APIRouter()
 async def get_lesson(
     lesson_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Получить детали урока по ID.
-    
+
     Args:
         lesson_id: UUID урока
-        
+
     Returns:
         Детали урока (видео доступно только при наличии прав)
     """
-    lesson, has_access = await LessonService.get_lesson_with_access(db, lesson_id, current_user)
-    
+    lesson, has_access = await LessonService.get_lesson_with_access(
+        db, lesson_id, current_user
+    )
+
     if not lesson:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Lesson not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Lesson not found"
         )
-    
+
     # Формируем ответ (ID видео никогда не отдаём — только URL смотреть через /play)
     response = LessonDetailResponse.from_orm(lesson)
     response.kinescope_video_id = None
@@ -66,7 +68,15 @@ async def get_lesson(
                 )
             except KinescopeNotConfiguredError:
                 response.video_url = None
-    
+        if current_user.role == "student":
+            await AnalyticsService.record_lesson_activity(
+                db,
+                user_id=current_user.id,
+                course_id=lesson.module.course_id,
+                lesson_id=lesson.id,
+            )
+            await db.commit()
+
     return response
 
 
@@ -75,41 +85,38 @@ async def update_lesson_progress(
     lesson_id: UUID,
     progress_data: ProgressUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Обновить прогресс просмотра урока.
-    
+
     Args:
         lesson_id: UUID урока
         progress_data: Данные прогресса
-        
+
     Returns:
         Обновленный прогресс
     """
     # 1. Проверяем существование урока и доступ
-    lesson, has_access = await LessonService.get_lesson_with_access(db, lesson_id, current_user)
-    
+    lesson, has_access = await LessonService.get_lesson_with_access(
+        db, lesson_id, current_user
+    )
+
     if not lesson:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Lesson not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Lesson not found"
         )
-        
+
     if not has_access:
-         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Access denied"
         )
 
     # 2. Обновляем прогресс
     progress = await LessonService.update_progress(
-        db, 
-        current_user.id, 
-        lesson_id, 
-        progress_data
+        db, current_user.id, lesson_id, progress_data
     )
-    
+
     return progress
 
 
@@ -119,47 +126,48 @@ async def get_lesson_play_url(
     request: Request,
     lesson_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Получить URL для воспроизведения видео урока.
-    
+
     Проверяет права доступа:
     - Пользователь авторизован (через get_current_user)
     - Есть активная покупка курса ИЛИ пользователь админ
-    
+
     Args:
         lesson_id: UUID урока
-        
+
     Returns:
         Данные для воспроизведения (video_url, provider, title)
-        
+
     Raises:
         404: Урок не найден
         403: Нет доступа к курсу
     """
     # 1. Получаем урок и проверяем доступ
-    lesson, has_access = await LessonService.get_lesson_with_access(db, lesson_id, current_user)
-    
+    lesson, has_access = await LessonService.get_lesson_with_access(
+        db, lesson_id, current_user
+    )
+
     if not lesson:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Lesson not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Lesson not found"
         )
-    
+
     if not has_access:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Course access required. Please purchase the course to watch this lesson."
+            detail="Course access required. Please purchase the course to watch this lesson.",
         )
-    
+
     # 2. Проверяем наличие video_id
     if not lesson.kinescope_video_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Video not configured for this lesson"
+            detail="Video not configured for this lesson",
         )
-    
+
     # 3. Генерируем защищенный URL через KinescopeService
     try:
         video_url = kinescope_service.get_embed_url(
@@ -183,10 +191,16 @@ async def get_lesson_play_url(
         lesson_id=lesson.id,
         properties={},
     )
+    if current_user.role == "student":
+        await AnalyticsService.record_lesson_activity(
+            db,
+            user_id=current_user.id,
+            course_id=lesson.module.course_id,
+            lesson_id=lesson.id,
+        )
     await db.commit()
-    
+
     return VideoPlayResponse(
-        video_url=video_url,
-        provider="kinescope",
-        title=lesson.title
+        video_url=video_url, provider="kinescope", title=lesson.title,
+        expires_in_seconds=settings.KINESCOPE_DRM_TOKEN_TTL_SECONDS,
     )

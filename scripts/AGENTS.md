@@ -24,7 +24,7 @@ PowerShell-скрипты для локальной разработки (зап
 |-----------|---------|
 | [`promo/`](promo/) | Офлайн-пайплайн: `video-lessons/*.mp4` → транскрипт Whisper → подбор хайлайтов → сборка `promo.mp4` → опциональная загрузка в Kinescope → `program.json`. Свой [`AGENTS.md`](promo/AGENTS.md) |
 | [`kinescope/`](kinescope/) | Настройка и отладка Kinescope DRM Authorization Backend (генерация ключей/JWK, регистрация webhook, подпись/проверка токенов). Свой [`AGENTS.md`](kinescope/AGENTS.md) |
-| `load/` | Безопасный staging-only k6 gate: 100 одновременных чтений, 20 checkout и burst webhook 10/с; требует явного `ALLOW_STAGING_LOAD=true` |
+| `load/` | Staging-only k6 gate: 50 учеников 15 минут, 100 на 5 минут, 10 checkout и 50 повторов webhook; требует `ALLOW_STAGING_LOAD=true` и отдельные session-bound токены из `seed_staging.py` |
 | `ops/` | Проверяемые PostgreSQL backup/restore CLI с SHA-256, S3 и Telegram alert |
 | `prodamus/` | [`actions.py`](prodamus/actions.py) — автономный CLI: подписанные checkout-ссылки, верификация подписи webhook, REST-действия подписок (`setActivity`, `setSubscriptionPaymentDate`, `setSubscriptionDiscount`). Отдельный `AGENTS.md` не создаётся |
 | `railway/` | [`create_admin.py`](railway/create_admin.py) — создание/апгрейд админа напрямую через `asyncpg` + `bcrypt` (без импорта backend-кода); [`push_drm_variables.ps1`](railway/push_drm_variables.ps1) — заливка Kinescope DRM-переменных из `.env` + PEM в Railway (backend-сервис). Отдельный `AGENTS.md` не создаётся |

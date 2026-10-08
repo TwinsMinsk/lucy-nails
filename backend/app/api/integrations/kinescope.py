@@ -14,6 +14,7 @@ KINESCOPE_DRM_BASIC_USER / KINESCOPE_DRM_BASIC_PASS, которая задана
 """
 
 import secrets
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -44,7 +45,7 @@ class DrmAuthorizeRequest(BaseModel):
     """JSON, который Kinescope шлёт нам при попытке воспроизведения."""
 
     id: str = Field(..., description="ID видео в Kinescope (UUID)")
-    token: str = Field("", description="Содержимое drmauthtoken (наш JWT)")
+    token: str = Field("", max_length=8192, description="Содержимое drmauthtoken (наш JWT)")
     ip: str | None = Field(None, description="IP зрителя")
     type: str | None = Field(None, description="Тип контента (обычно 'video')")
     user_agent: str | None = Field(None, description="User-Agent зрителя")
@@ -126,18 +127,19 @@ async def authorize_drm(
 
     try:
         claims = kinescope_jwt_service.verify_drm_token(payload.token)
+        user_id = UUID(claims.user_id)
     except KinescopeJwtNotConfiguredError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(e),
         ) from e
-    except JWTError:
+    except (JWTError, ValueError, TypeError):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="invalid drmauthtoken",
         ) from None
 
-    user_res = await db.execute(select(User).where(User.id == claims.user_id))
+    user_res = await db.execute(select(User).where(User.id == user_id))
     user = user_res.scalars().first()
     if not user:
         raise HTTPException(

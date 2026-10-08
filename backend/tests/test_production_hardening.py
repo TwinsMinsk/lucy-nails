@@ -108,6 +108,24 @@ def test_production_config_rejects_demo_mode():
     assert "PRODAMUS_DEMO_MODE must be false in production" in str(exc_info.value)
 
 
+def test_isolated_staging_has_production_safety_and_demo_payments():
+    config = _valid_prod(
+        ENVIRONMENT="staging",
+        PRODAMUS_DEMO_MODE=True,
+        FRONTEND_URL="https://staging.lucysmirnova.ru",
+        BACKEND_URL="https://api.staging.lucysmirnova.ru",
+        COOKIE_DOMAIN="staging.lucysmirnova.ru",
+        TRUSTED_HOSTS="api.staging.lucysmirnova.ru",
+    )
+    assert config.is_deployed
+    with pytest.raises(ValidationError):
+        _valid_prod(ENVIRONMENT="staging", DEBUG=True)
+    with pytest.raises(ValidationError):
+        _valid_prod(ENVIRONMENT="staging", PRODAMUS_DEMO_MODE=True)
+    with pytest.raises(ValidationError):
+        _valid_prod(ENVIRONMENT="staging", PRODAMUS_DEMO_MODE=False)
+
+
 def test_production_config_requires_drm_signing_key():
     with pytest.raises(ValidationError) as exc_info:
         _valid_prod(KINESCOPE_JWT_PRIVATE_KEY_PEM="", KINESCOPE_JWK_KID="")
@@ -119,7 +137,9 @@ def test_production_config_requires_drm_basic_auth():
     with pytest.raises(ValidationError) as exc_info:
         _valid_prod(KINESCOPE_DRM_BASIC_USER="", KINESCOPE_DRM_BASIC_PASS="")
 
-    assert "KINESCOPE_DRM_BASIC_USER and KINESCOPE_DRM_BASIC_PASS are required" in str(exc_info.value)
+    assert "KINESCOPE_DRM_BASIC_USER and KINESCOPE_DRM_BASIC_PASS are required" in str(
+        exc_info.value
+    )
 
 
 def test_production_config_requires_shared_cookie_domain():
