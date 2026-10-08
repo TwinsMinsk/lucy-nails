@@ -67,14 +67,17 @@ export async function getLandingContent(): Promise<ResolvedLandingContent> {
         duration: course ? formatCourseDuration(course.total_duration) ?? "" : "",
         access: course ? `${course.access_days} дней` : "",
     };
-    const modules = payload.modules.map((item) => ({
-        slug: item.id,
-        title: item.title,
-        duration: item.landing_duration_label ?? "",
-        description: item.landing_description ?? "",
-        outcome: item.landing_outcome ?? "",
-        bullets: item.landing_bullets ?? [],
-        mistakes: item.landing_mistakes ?? [],
-    }));
+    const modules = payload.modules.map((item) => {
+        const fallback = staticProgramModules.find((module) => module.title === item.title);
+        return {
+            slug: fallback?.slug ?? item.id,
+            title: item.title,
+            duration: item.landing_duration_label ?? fallback?.duration ?? "",
+            description: item.landing_description ?? fallback?.description ?? "",
+            outcome: item.landing_outcome ?? fallback?.outcome ?? "",
+            bullets: item.landing_bullets ?? fallback?.bullets ?? [],
+            mistakes: item.landing_mistakes ?? fallback?.mistakes ?? [],
+        };
+    });
     return { course, hero, modules, gallery: payload.gallery.map(mapGallery) };
 }
