@@ -3,6 +3,8 @@
 Required environment: DATABASE_URL. Optional: BACKUP_DIR, BACKUP_S3_URI,
 BACKUP_RETENTION_DAYS, BACKUP_S3_SSE (AES256 or aws:kms), BACKUP_S3_KMS_KEY_ID,
 TELEGRAM_BOT_TOKEN and TELEGRAM_OWNER_CHAT_ID for failure alerts.
+BACKUP_REQUIRE_UPLOADS=true requires BACKUP_UPLOADS_DIR and BACKUP_UPLOADS_MARKER.
+The latter must match the mounted root's .backup-source-marker UTF-8 contents.
 """
 
 from __future__ import annotations
@@ -70,9 +72,26 @@ def upload_to_s3(path: Path, destination: str) -> None:
     subprocess.run(command, check=True)
 
 
-def bundle_uploads(database: Path, uploads: Path, destination: Path) -> None:
+def verify_uploads_source(uploads: Path, expected_marker: str | None) -> None:
     if not uploads.is_dir():
         raise RuntimeError("Backup upload directory is missing")
+    if expected_marker:
+        marker = uploads / ".backup-source-marker"
+        if marker.is_symlink() or not marker.is_file():
+            raise RuntimeError("Backup upload source marker is missing or unsafe")
+        if marker.read_text(encoding="utf-8").strip() != expected_marker:
+            raise RuntimeError("Backup upload source marker does not match")
+
+
+def bundle_uploads(
+    database: Path,
+    uploads: Path,
+    destination: Path,
+    *,
+    source_marker: str | None = None,
+) -> dict:
+    verify_uploads_source(uploads, source_marker)
+    summary = {"file_count": 0, "source_marker": source_marker}
     manifest = {"database.dump": sha256(database)}
     with tarfile.open(destination, "w") as archive:
         archive.add(database, arcname="database.dump", recursive=False)
@@ -82,13 +101,18 @@ def bundle_uploads(database: Path, uploads: Path, destination: Path) -> None:
             if path.is_file():
                 relative = f"uploads/{path.relative_to(uploads).as_posix()}"
                 manifest[relative] = sha256(path)
+                if path.relative_to(uploads).as_posix() != ".backup-source-marker":
+                    summary["file_count"] += 1
                 archive.add(path, arcname=relative, recursive=False)
-        body = json.dumps({"version": 1, "files": manifest}).encode("utf-8")
+        body = json.dumps({"version": 1, "files": manifest, "uploads": summary}).encode(
+            "utf-8"
+        )
         import io
 
         entry = tarfile.TarInfo("manifest.json")
         entry.size = len(body)
         archive.addfile(entry, io.BytesIO(body))
+    return summary
 
 
 def main() -> int:
@@ -102,11 +126,21 @@ def main() -> int:
     pg_dump = shutil.which("pg_dump")
     if not pg_dump:
         parser.error("pg_dump is not installed or not in PATH")
-    if (
-        os.getenv("BACKUP_REQUIRE_UPLOADS", "false").lower() == "true"
-        and not args.uploads_dir
-    ):
+    require_uploads = os.getenv("BACKUP_REQUIRE_UPLOADS", "false").lower() == "true"
+    source_marker = os.getenv("BACKUP_UPLOADS_MARKER", "").strip() or None
+    if require_uploads and not args.uploads_dir:
         parser.error("BACKUP_UPLOADS_DIR is required for a complete backup")
+    if require_uploads and not source_marker:
+        parser.error("BACKUP_UPLOADS_MARKER is required for a verified upload source")
+    if source_marker and not args.uploads_dir:
+        parser.error(
+            "BACKUP_UPLOADS_DIR is required when a source marker is configured"
+        )
+    if args.uploads_dir:
+        try:
+            verify_uploads_source(Path(args.uploads_dir).resolve(), source_marker)
+        except (OSError, UnicodeError, RuntimeError) as exc:
+            parser.error(str(exc))
     s3_uri = os.getenv("BACKUP_S3_URI", "").strip()
     if os.getenv("BACKUP_REQUIRE_S3", "false").lower() == "true" and not s3_uri:
         parser.error("BACKUP_S3_URI is required for external backups")
@@ -121,6 +155,7 @@ def main() -> int:
     )
     partial_path = output_dir / f".{final_path.name}.partial"
 
+    uploads_summary = None
     try:
         with tempfile.TemporaryDirectory(prefix="lucy-backup-") as temporary:
             dump_path = Path(temporary) / "database.dump"
@@ -138,8 +173,11 @@ def main() -> int:
                 check=True,
             )
             if args.uploads_dir:
-                bundle_uploads(
-                    dump_path, Path(args.uploads_dir).resolve(), partial_path
+                uploads_summary = bundle_uploads(
+                    dump_path,
+                    Path(args.uploads_dir).resolve(),
+                    partial_path,
+                    source_marker=source_marker,
                 )
             else:
                 shutil.copyfile(dump_path, partial_path)
@@ -171,6 +209,7 @@ def main() -> int:
                     "sha256": checksum,
                     "uploaded": bool(s3_uri),
                     "includes_uploads": bool(args.uploads_dir),
+                    "uploads": uploads_summary,
                 }
             )
         )

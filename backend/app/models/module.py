@@ -5,7 +5,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Text, Integer, Boolean, ForeignKey, JSON
+from sqlalchemy import String, Text, Integer, Boolean, ForeignKey
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -27,8 +28,8 @@ class Module(Base):
     # Landing copy overrides. NULL → frontend falls back to course-content.ts (matched by Module.title slug).
     landing_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     landing_outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
-    landing_bullets: Mapped[list | None] = mapped_column(JSON, nullable=True)
-    landing_mistakes: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    landing_bullets: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    landing_mistakes: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     landing_duration_label: Mapped[str | None] = mapped_column(String(32), nullable=True)
     
     # Relationships

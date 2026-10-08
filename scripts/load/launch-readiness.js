@@ -14,7 +14,11 @@ if (__ENV.ALLOW_STAGING_LOAD !== "true") {
   throw new Error("Set ALLOW_STAGING_LOAD=true after confirming the target is an isolated staging environment");
 }
 const targetHost = /^https?:\/\/([^/:]+)/.exec(apiBase)?.[1]?.toLowerCase();
-if (!targetHost || !(targetHost === "127.0.0.1" || targetHost === "localhost" || targetHost === "host.docker.internal" || /^([a-z0-9]+-)*staging([.-][a-z0-9-]+)+$/.test(targetHost) || /^([a-z0-9-]+\.)*staging\.[a-z0-9.-]+$/.test(targetHost))) {
+const hostLabels = targetHost?.split(".") || [];
+const stagingHost = targetHost?.length <= 253 && hostLabels.length >= 2
+  && hostLabels.every(label => label.length > 0 && label.length <= 63 && /^[a-z0-9-]+$/.test(label) && !label.startsWith("-") && !label.endsWith("-"))
+  && hostLabels.slice(0, -1).some(label => label.split("-").includes("staging"));
+if (!targetHost || !(targetHost === "127.0.0.1" || targetHost === "localhost" || targetHost === "host.docker.internal" || stagingHost)) {
   throw new Error("API_BASE_URL must point to staging or localhost; production load is blocked by this script");
 }
 if (!["acceptance", "smoke"].includes(profile)) throw new Error("Unknown LOAD_PROFILE");

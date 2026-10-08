@@ -5,7 +5,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Text, Integer, Boolean, JSON
+from sqlalchemy import String, Text, Integer, Boolean
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -33,8 +34,8 @@ class Course(Base):
     landing_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     landing_audience: Mapped[str | None] = mapped_column(Text, nullable=True)
     landing_support_note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    landing_hero_stats: Mapped[list | None] = mapped_column(JSON, nullable=True)
-    landing_benefits: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    landing_hero_stats: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    landing_benefits: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     landing_instructor_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     
     # Relationships

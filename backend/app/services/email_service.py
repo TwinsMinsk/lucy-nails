@@ -156,7 +156,7 @@ class EmailService:
             port=settings.SMTP_PORT,
             username=settings.SMTP_USER,
             password=settings.SMTP_PASSWORD,
-            start_tls=True,
+            start_tls=settings.SMTP_START_TLS,
             timeout=timeout,
         )
         logger.info("Email sent via SMTP recipient=%s", _recipient_label(email))

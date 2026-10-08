@@ -4,7 +4,7 @@
 
 Implement the approved launch plan for 1,000 visitors/day, 50 purchases/day and 50 concurrent learners. Only the self-paced tariff is sold. UTM and consented Yandex Metrika are required. A full refund revokes access and the certificate; normal access expiry does not invalidate an earned certificate.
 
-Baseline: `a055e2d`, isolated branch `oleg/launch-readiness`. Production checkout stays disabled until independent review, migrations, controlled payment/refund, delivery, device and recovery acceptance succeed. No production migration, push, deployment, financial transaction or enabling sales is included in local verification.
+Baseline: `a055e2d`, isolated branch `oleg/launch-readiness`. Production checkout stays disabled until independent review, migrations, controlled payment/refund, delivery, device and recovery acceptance succeed. Local verification does not establish production acceptance. The user authorized branch push and preparation for integration into master; draft PR #12 exists. Production deployment, real financial transactions and enabling sales remain distinct steps.
 
 ## Work checklist
 
@@ -13,7 +13,7 @@ Baseline: `a055e2d`, isolated branch `oleg/launch-readiness`. Production checkou
 - [x] C. Financial classification of legacy manual grants, consistent payment-date reports, ordered repeat-visit funnel, acquisition from course pages, campaign/ad breakdown, safe CSV, actual learning activity and Metrika goal code. Live counter configuration is an external gate.
 - [x] D. Permission-aware admin loading/actions, paginated searchable orders/notifications/users/access, unified UTC formatting, preview progress and honest dashboard error state.
 - [x] E. API-defined landing modules/gallery and single course identity for content, prices and checkout; tests distinguish API failure from empty publication.
-- [x] F. Runtime dependency updates, bounded verified image upload and documented secret-scan triage complete. Four historical Prodamus findings remain visible and require owner verification; this does not mark history CI green.
+- [x] F. Runtime dependency updates, bounded verified image upload and documented secret-scan triage complete. All four historical Prodamus findings were independently traced to an official public demo example and narrowly suppressed; current and historical scans and detection canaries pass.
 - [ ] G. PostgreSQL 17 complete backup/restore, secure staging configuration, health/worker monitoring and load tools complete locally; remote resources and acceptance remain open.
 - [x] H. Independent local implementation review, automated tests/lint/build/E2E, new-migration round-trip and synthetic load/recovery evidence complete. Full external CI/security and production acceptance are not declared complete.
 
@@ -41,25 +41,25 @@ Metrika counter identity/access, isolated demo payment form, backup bucket/crede
 
 ## Verified local candidate
 
-Independent verifier verdict: **APPROVE local implementation; production launch INCOMPLETE**. Fresh backend run: **311 passed, zero skipped**, 152.62s. No production resources were changed.
+Independent verifier verdict: **APPROVE local implementation; production launch INCOMPLETE**. Fresh follow-up backend run: **335 passed, zero skipped**, 141.69s. Independent follow-up review is recorded separately before its commit. No production resources were changed. An empty isolated Railway staging environment now has independent PostgreSQL 17 and Redis; application deployment and external acceptance are still pending.
 
 | Check | Evidence | Practical limit |
 | --- | --- | --- |
-| Backend regression | 311 passed, 0 skipped | Disposable PostgreSQL 17, no live provider |
+| Backend regression | 335 passed, 0 skipped | Disposable PostgreSQL 17, no live provider |
 | Frontend regression | 77 tests, TypeScript and ESLint pass | Mocked API contracts |
 | Full browser suite | 40 passed: 20 Chromium, 20 mobile WebKit, 45.8s | Isolated SSR fixture; physical devices still required |
 | Production build | Next.js 16.4.0 build passed | Local build, no remote deployment |
-| Runtime dependency audit | pip-audit and npm audit --omit=dev: zero known vulnerabilities | Full npm audit: 7 dev-only advisories (5 high, 2 moderate); reported fixes downgrade Next ESLint to 14 and typography to 0.5.4, so no forced incompatible downgrade was applied |
-| Migrations | Latest head 8c9d0e1f2a3b; downgrade to baseline 6a7b8c9d0e1f and upgrade pass | Existing schema drift described below |
+| Runtime dependency audit | pip-audit and npm audit --omit=dev: zero known vulnerabilities | Full npm audit: 5 high dev-only advisories remain in the upstream braces dependency chain with no patched release. Two typography advisories were removed with a scoped selector-parser override; generated Tailwind CSS is byte-identical. No incompatible Next ESLint downgrade was applied |
+| Migrations | Latest head 8c9d0e1f2a3b; downgrade to baseline 6a7b8c9d0e1f and upgrade pass | Model metadata now matches the existing migrated schema; alembic check reports no new upgrade operations |
 | Upload protection | Forged/missing Content-Length bounded before multipart parsing | 12 MiB total body, 10 MiB image, 20M pixels |
 | Backup recovery | Latest-head database and uploads restored to new isolated DB in 1.86s; hashes match | Synthetic local data, no production RPO/RTO proof |
 | Load smoke | 72/72 checks, zero HTTP errors, p95 263.86ms | Local API |
 | 20-minute load | Exit 0; 50 learners for 15 minutes, up to 100 for 5 minutes; 1,573 requests; 99.87% checks, 0.127% errors, p95 349.67ms | Two Docker-to-host dial timeouts included; no remote Railway capacity proof |
-| Secret scan | Current files: 0 findings; independent canaries: 3/3 detected | Git history: 4 unresolved Prodamus findings; historical CI gate remains red |
+| Secret scan | Current files and history: 0 findings; independent canaries: 4/4 detected | Narrow historical fingerprints cover only verified official public demo examples |
 
-The full `alembic check` **fails on pre-existing baseline drift**: five JSON model fields have JSONB migration types; analytics event ID and MFA user ID model unique-index declarations differ from separate unique constraints plus nonunique indexes in older migrations. Independent baseline comparison confirmed the five model files and four old migration files are unchanged from a055e2d. New email-verification and transaction-classification schema changes match their migrations. Do not rewrite applied migrations; resolve existing metadata drift separately before using autogeneration as an acceptance gate.
+The pre-existing baseline metadata drift is resolved without changing applied migrations: five model fields now declare JSONB, and analytics event ID / MFA user ID declarations match the existing unique constraints and ordinary indexes. A fresh PostgreSQL 17 upgrade and `alembic check` pass; CI now checks schema drift explicitly.
 
-[Secret-scan triage](../04_Setup_Ops/SECRET_SCAN_TRIAGE.md) records all 27 original findings and three additional current-scan false positives. Unknown Prodamus literals were removed from current documentation, but their provenance and historical revocation are not established. Read-only comparison found no matches among the current backend credentials. Exact reviewed examples use narrow path/rule/value exceptions; four unknown historical findings remain unsuppressed. Do not claim the Security workflow passes until the owner closes this gate.
+[Secret-scan triage](../04_Setup_Ops/SECRET_SCAN_TRIAGE.md) records all 27 original findings and the exact official provenance of the four historical Prodamus demo examples. Current files and refreshed history through candidate `8d1f946` have zero findings; four independent canaries are still detected. GitHub CI, scanner and individual CodeQL language jobs passed on that candidate; a separate CodeQL regex alert prompted a bounded hostname parser fix. The follow-up commit requires another complete GitHub run before merge.
 
 Verification also found and closed concurrency defects: stale password changes could race mailbox activation/session revocation; a payment-event FK lock could deadlock concurrent callbacks and misclassify the same provider payment. Deterministic regressions now cover both. Bcrypt no longer blocks the API event loop: ten-login probe gap decreased from 1.864s to 15.7ms using a bounded thread pool.
 
@@ -73,4 +73,4 @@ Both load runs separately created 11 orders, one paid purchase, one paid entitle
 4. Verify all 11 real lessons on desktop, physical iPhone and Android after >5 minutes idle. Iframe renewal is tested, but a reload may reset playback position; real Kinescope DRM remains a device gate.
 5. Owner performs the controlled actual Prodamus purchase/refund, receipt and finance reconciliation, confirms offer/privacy/refund obligations and then enables checkout using the admin switch. Limit advertising for the first 72 hours and reconcile daily.
 
-Do not enable advertising or sales solely on this local approval. Git push requires the user's explicit permission under AGENTS.md; production migrations/deployment remain a separate release step.
+Do not enable advertising or sales solely on this local approval. The user authorized push and preparation for master integration. Master automatically deploys to Railway; merge requires green checks, independent review and a verified production backup/rollout plan. Checkout remains disabled through deployment and acceptance.

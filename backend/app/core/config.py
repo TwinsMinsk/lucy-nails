@@ -9,6 +9,7 @@
 """
 
 from pathlib import Path
+import re
 from urllib.parse import urlparse
 
 from pydantic import field_validator, model_validator
@@ -103,6 +104,7 @@ class Settings(BaseSettings):
     # === SMTP (Email) ===
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
+    SMTP_START_TLS: bool = True
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM_NAME: str = "Lucy Nails Academy"
@@ -221,6 +223,16 @@ class Settings(BaseSettings):
                 errors.append("Staging URLs and COOKIE_DOMAIN must use an isolated staging subdomain")
         if any(urlparse(value).scheme != "https" for value in (self.FRONTEND_URL, self.BACKEND_URL)):
             errors.append("Deployed FRONTEND_URL and BACKEND_URL must use HTTPS")
+        if not self.SMTP_START_TLS:
+            if self.ENVIRONMENT.lower() == "production":
+                errors.append("SMTP_START_TLS must be true in production")
+            elif not re.fullmatch(
+                r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+railway\.internal",
+                self.SMTP_HOST.lower(),
+            ):
+                errors.append(
+                    "SMTP_START_TLS=false in staging requires a private *.railway.internal SMTP_HOST"
+                )
         if self.SMTP_REQUIRED_FOR_PAYMENT_EMAIL:
             has_resend = bool(self.RESEND_API_KEY)
             has_smtp = bool(self.SMTP_USER and self.SMTP_PASSWORD)

@@ -3,7 +3,6 @@ a95d891998282d5780e3d7d703928c1a11e18fb6:backend/tests/test_production_hardening
 2543e62f0a38969142a7682fe913ff0a46317070:frontend/src/lib/attribution.ts:generic-api-key:1
 
 # Exact reviewed historical Kinescope expired/truncated documentation examples.
-# Unknown historical Prodamus keys remain visible; see SECRET_SCAN_TRIAGE.md.
 b63204b9d986ed53b2ade85509c8c0eab07fac0e:Docs/integrations/KINESCOPE_API.md:generic-api-key:663
 b63204b9d986ed53b2ade85509c8c0eab07fac0e:Docs/integrations/KINESCOPE_API.md:generic-api-key:839
 b63204b9d986ed53b2ade85509c8c0eab07fac0e:Docs/integrations/KINESCOPE_API.md:generic-api-key:5596
@@ -13,3 +12,10 @@ b63204b9d986ed53b2ade85509c8c0eab07fac0e:Docs/integrations/KINESCOPE_API.md:jwt:
 b63204b9d986ed53b2ade85509c8c0eab07fac0e:Docs/integrations/KINESCOPE_API.md:jwt:669
 b63204b9d986ed53b2ade85509c8c0eab07fac0e:Docs/integrations/KINESCOPE_API.md:jwt:6045
 b63204b9d986ed53b2ade85509c8c0eab07fac0e:Docs/integrations/KINESCOPE_API.md:jwt:6058
+
+# Exact historical Prodamus public demo examples, verified against official docs.
+# Evidence and source URLs: Docs/04_Setup_Ops/SECRET_SCAN_TRIAGE.md.
+b63204b9d986ed53b2ade85509c8c0eab07fac0e:Docs/integrations/PRODAMUS_API.md:generic-api-key:895
+b63204b9d986ed53b2ade85509c8c0eab07fac0e:Docs/integrations/PRODAMUS_API.md:generic-api-key:1753
+b63204b9d986ed53b2ade85509c8c0eab07fac0e:Docs/integrations/PRODAMUS_API.md:generic-api-key:2576
+b63204b9d986ed53b2ade85509c8c0eab07fac0e:Docs/integrations/PRODAMUS_API.md:generic-api-key:2799

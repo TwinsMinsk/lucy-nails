@@ -71,6 +71,7 @@ jobs:
           test "$(alembic heads | wc -l)" -eq 1
           alembic downgrade -1
           alembic upgrade head
+          alembic check
 
       - name: Pytest
         env:

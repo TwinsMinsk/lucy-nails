@@ -14,6 +14,30 @@ import urllib.parse
 from pathlib import Path
 
 
+NONEMPTY_DATABASE_SQL = """
+WITH user_namespaces AS (
+    SELECT oid, nspname FROM pg_catalog.pg_namespace
+    WHERE nspname <> 'information_schema' AND nspname !~ '^pg_'
+)
+SELECT EXISTS (SELECT 1 FROM user_namespaces WHERE nspname <> 'public')
+    OR EXISTS (
+        SELECT 1 FROM pg_catalog.pg_depend d
+        JOIN user_namespaces n ON n.oid = d.refobjid
+        WHERE d.refclassid = 'pg_catalog.pg_namespace'::pg_catalog.regclass
+    )
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_extension WHERE extname <> 'plpgsql')
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_publication)
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_foreign_server)
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_foreign_data_wrapper)
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_event_trigger)
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_largeobject_metadata)
+    OR EXISTS (
+        SELECT oid FROM pg_catalog.pg_subscription
+        WHERE subdbid = (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database())
+    )
+"""
+
+
 def unpack_bundle(archive: Path, directory: Path) -> Path:
     with tarfile.open(archive, "r") as bundle:
         members = bundle.getmembers()
@@ -115,6 +139,32 @@ def main() -> int:
     if not pg_restore:
         parser.error("pg_restore is not installed or not in PATH")
 
+    psql = shutil.which("psql")
+    if not psql:
+        parser.error("psql is required to verify an empty restore target")
+    preflight = subprocess.run(
+        [
+            psql,
+            "--no-psqlrc",
+            "--no-password",
+            "--set=ON_ERROR_STOP=1",
+            "--tuples-only",
+            "--no-align",
+            "--dbname",
+            postgres_cli_url(args.database_url),
+            "--command",
+            NONEMPTY_DATABASE_SQL,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if preflight.returncode != 0:
+        raise RuntimeError("Unable to verify restore target database emptiness")
+    if preflight.stdout.strip() != "f":
+        raise RuntimeError("Restore target database must be empty")
+
     with tempfile.TemporaryDirectory(prefix="lucy-restore-") as temp:
         archive = (
             download_s3(args.source, Path(temp))
@@ -137,8 +187,6 @@ def main() -> int:
         subprocess.run(
             [
                 pg_restore,
-                "--clean",
-                "--if-exists",
                 "--exit-on-error",
                 "--no-owner",
                 "--no-privileges",

@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, JSON, String
+from sqlalchemy import DateTime, ForeignKey, JSON, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -11,9 +11,10 @@ from app.core.database import Base
 
 class AnalyticsEvent(Base):
     __tablename__ = "analytics_events"
+    __table_args__ = (UniqueConstraint("event_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    event_id: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    event_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     event_name: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     source: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     happened_at: Mapped[datetime] = mapped_column(

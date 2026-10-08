@@ -1,9 +1,9 @@
 # Триаж секретов перед запуском
 
 **Дата:** 08.10.2026
-**Статус:** текущие tracked/nonignored файлы проходят Gitleaks; историческое происхождение четырёх образцов Prodamus остаётся открытым.
+**Статус:** происхождение четырёх исторических образцов Prodamus подтверждено официальной публичной документацией; текущие файлы и история проходят Gitleaks, 4/4 контрольных секретов обнаружены.
 
-Проверка не обращалась к провайдерам и не проверяла пригодность найденных значений через API. Значения, JWT и подписи не включены в отчёт. Удаление литерала из текущего файла не отзывает ключ и не удаляет Git-историю.
+Проверка читала только публичную документацию провайдера и не проверяла пригодность найденных значений через платёжный или подписочный API. Значения, JWT и подписи не включены в отчёт. Удаление литерала из текущего файла не отзывает ключ и не удаляет Git-историю.
 
 ## Источники и область проверки
 
@@ -19,10 +19,10 @@
 |---|---:|---|---|---|
 | `.claude/skills/kinescope/SKILL.md` | 241 | `curl-auth-header` | Явный placeholder в Authorization; StartLine относится к началу curl, заголовок ниже | Только этот точный curl-текст и этот путь исключены из curl-auth-header |
 | `.claude/skills/kinescope/references/developer-guides.md` | 1012 | `curl-auth-header` | Явный placeholder в Authorization; StartLine относится к началу curl, заголовок ниже | Только этот точный curl-текст и этот путь исключены из curl-auth-header |
-| `Docs/integrations/PRODAMUS_API.md` | 895 | `generic-api-key` | Одинаковый 64-символьный образец ключа в четырёх PHP-примерах для demo.payform.ru; происхождение/отзыв не доказаны | OPEN исторически; текущий литерал заменён на `getenv('PRODAMUS_SECRET_KEY')` |
-| `Docs/integrations/PRODAMUS_API.md` | 1753 | `generic-api-key` | Одинаковый 64-символьный образец ключа в четырёх PHP-примерах для demo.payform.ru; происхождение/отзыв не доказаны | OPEN исторически; текущий литерал заменён на `getenv('PRODAMUS_SECRET_KEY')` |
-| `Docs/integrations/PRODAMUS_API.md` | 2576 | `generic-api-key` | Одинаковый 64-символьный образец ключа в четырёх PHP-примерах для demo.payform.ru; происхождение/отзыв не доказаны | OPEN исторически; текущий литерал заменён на `getenv('PRODAMUS_SECRET_KEY')` |
-| `Docs/integrations/PRODAMUS_API.md` | 2799 | `generic-api-key` | Одинаковый 64-символьный образец ключа в четырёх PHP-примерах для demo.payform.ru; происхождение/отзыв не доказаны | OPEN исторически; текущий литерал заменён на `getenv('PRODAMUS_SECRET_KEY')` |
+| `Docs/integrations/PRODAMUS_API.md` | 895 | `generic-api-key` | Одинаковый 64-символьный публичный образец ключа demo.payform.ru; точное совпадение с официальной документацией подтверждено 08.10.2026 | Только точный исторический fingerprint исключён; текущий литерал заменён на `getenv('PRODAMUS_SECRET_KEY')` |
+| `Docs/integrations/PRODAMUS_API.md` | 1753 | `generic-api-key` | Одинаковый 64-символьный публичный образец ключа demo.payform.ru; точное совпадение с официальной документацией подтверждено 08.10.2026 | Только точный исторический fingerprint исключён; текущий литерал заменён на `getenv('PRODAMUS_SECRET_KEY')` |
+| `Docs/integrations/PRODAMUS_API.md` | 2576 | `generic-api-key` | Одинаковый 64-символьный публичный образец ключа demo.payform.ru; точное совпадение с официальной документацией подтверждено 08.10.2026 | Только точный исторический fingerprint исключён; текущий литерал заменён на `getenv('PRODAMUS_SECRET_KEY')` |
+| `Docs/integrations/PRODAMUS_API.md` | 2799 | `generic-api-key` | Одинаковый 64-символьный публичный образец ключа demo.payform.ru; точное совпадение с официальной документацией подтверждено 08.10.2026 | Только точный исторический fingerprint исключён; текущий литерал заменён на `getenv('PRODAMUS_SECRET_KEY')` |
 | `Docs/integrations/KINESCOPE_API.md` | 663 | `generic-api-key` | Явно усечённый пример URL/ответа с конечным многоточием; неприменим как полный credential | Текущий пример заменён на placeholder; только перепроверенный исторический fingerprint исключён |
 | `Docs/integrations/KINESCOPE_API.md` | 839 | `generic-api-key` | Явно усечённый пример URL/ответа с конечным многоточием; неприменим как полный credential | Текущий пример заменён на placeholder; только перепроверенный исторический fingerprint исключён |
 | `Docs/integrations/KINESCOPE_API.md` | 5596 | `generic-api-key` | Явно усечённый пример URL/ответа с конечным многоточием; неприменим как полный credential | Текущий пример заменён на placeholder; только перепроверенный исторический fingerprint исключён |
@@ -58,26 +58,33 @@
 - `Docs/integrations/PRODAMUS_API.md`: ровно четыре литерала в исходных строках 895/1753/2576/2799 заменены на получение значения из environment; строки и остальной текст сохранены.
 - `Docs/integrations/KINESCOPE_API.md`: ровно четыре истёкших JWT и пять усечённых примеров заменены на явно невалидные placeholders. Строки не добавлялись и не удалялись.
 - `.gitleaks.toml`: сохраняет все правила через `extend.useDefault=true`. Для curl применяется AND: точный путь плюс полный точный текст конкретного curl-примера с placeholder (CRLF/LF эквивалентны). Для трёх дополнительных находок применяется AND: точный путь плюс точное не-секретное значение. Нет исключения каталога Docs, расширения md, всех JWT или всех demo-ключей.
-- `.gitleaksignore`: добавлены ровно девять fingerprint вида commit:path:rule:line для исторических Kinescope-примеров; исторические значения перепроверены локально через git show (JWT exp либо конечное многоточие). Четыре исторические находки Prodamus намеренно не исключены. Новое значение/новый коммит не совпадёт с таким fingerprint.
-- Три искусственных canary на тех же разрешённых путях были обнаружены новым сканом: curl с другим токеном, реальное value-shaped значение PRIVATE_KEY_PEM и другое значение MFA fixture. Canary находятся только в игнорируемом локальном тестовом снимке; не внесены в runtime/документы.
+- `.gitleaksignore`: добавлены девять fingerprint вида commit:path:rule:line для исторических Kinescope-примеров и четыре для проверенных публичных demo-примеров Prodamus. Kinescope перепроверен локально через git show (JWT exp либо конечное многоточие); Prodamus — точным приватным сравнением с официальными публичными страницами. Исключения ограничены конкретным коммитом, путём, правилом и строкой; широкого исключения demo-ключей нет.
+- Четыре искусственных canary на тех же путях обнаружены новым сканом: curl с другим токеном, реальное value-shaped значение PRIVATE_KEY_PEM, другое значение MFA fixture и новый синтетический ключ Prodamus. Canary находятся только в игнорируемом локальном тестовом снимке; не внесены в runtime/документы.
 
 ## Проверки
 
 | Проверка | Результат | Локальный артефакт |
 |---|---|---|
 | Current dir, стандартные правила, до исправлений | exit 1, 30 находок | `secret-scan-current-redacted.json` |
-| Current dir, новая конфигурация, после исправлений | exit 0, 0 находок | `secret-scan-current-final-redacted.json` |
-| Canary на точных исключённых путях, та же конфигурация | ожидаемый exit 1, 3/3 искусственных значения обнаружены | `secret-scan-canary-redacted.json` |
-| Git history до HEAD, итоговая конфигурация и fingerprints | **exit 1, 140 коммитов, четыре открытые исторические находки Prodamus** | `secret-scan-history-final-redacted.json` |
+| Current dir, итоговая конфигурация, после исправлений | exit 0, 999 файлов, 0 находок | `secret-scan-current-public-redacted.json` |
+| Canary на точных исключённых путях, итоговая конфигурация | ожидаемый exit 1, 4/4 искусственных значения обнаружены | `secret-scan-canary-public-redacted.json` |
+| Git history до HEAD, итоговая конфигурация и fingerprints | **exit 0, 0 находок; 149 достижимых коммитов, Gitleaks обработал 141 коммит** | `secret-scan-history-public-redacted.json` |
 
-Команды сканирования: `gitleaks dir /scan --config /scan/.gitleaks.toml --redact=100 --report-format json` и `gitleaks git /history --config /config/.gitleaks.toml --gitleaks-ignore-path /config/.gitleaksignore --log-opts=HEAD --redact=100 --report-format json`. Полные отчёты сохраняются локально с redact=100; в чат передавались только пути, правила, количества и статусы.
+Команды сканирования: `gitleaks dir /scan --config /config/.gitleaks.toml --gitleaks-ignore-path /config/.gitleaksignore --redact=100 --report-format json` и `gitleaks git /history --config /config/.gitleaks.toml --gitleaks-ignore-path /config/.gitleaksignore --log-opts=FETCH_HEAD --redact=100 --report-format json`. Исторический снимок обновлён локальным fetch из текущего checkout до `8d1f946bdbe40fe9514e1655b37dd6fb0b526dda`; источник истории не изменялся. Полные отчёты сохраняются локально с redact=100; в чат передавались только пути, правила, количества и статусы.
 
 Конфигурация проверена по [официальной документации Gitleaks v8.24.3](https://github.com/gitleaks/gitleaks/blob/v8.24.3/README.md): extend.useDefault и rule allowlists с condition=AND. TOML разобран, 17 точных исключений проверены, глобального allowlist нет.
 
-## Открытая операторская проверка
+## Подтверждённое публичное происхождение Prodamus
 
-Четыре исторические находки Prodamus не закрыты и не добавлены в allowlist. Владелец должен установить происхождение образца и статус отзыва у провайдера; если образец принадлежал рабочему магазину, согласовать ротацию/отзыв и проверку использования. Доказательства текущего отсутствия и 0/27 совпадений не заменяют эту проверку. Ни ротация, ни переписывание Git-истории, ни тест найденного ключа здесь не выполнялись.
+08.10.2026 четыре значения из коммита `b63204b9d986ed53b2ade85509c8c0eab07fac0e` извлечены локально через `git show` и сравнены внутри Python с содержимым официальных публичных страниц. Все четыре литерала идентичны, длина каждого — 64 символа. Все четыре страницы вернули HTTP 200, содержат точное значение в видимом примере и адрес `demo.payform.ru`. Литерал не передавался в URL, поисковый запрос, логи или отчёт.
 
-Итоговый history-скан сохранил только четыре строки Prodamus в коммите `b63204b9d986ed53b2ade85509c8c0eab07fac0e`. Таким образом **history gate CI остаётся красным**; текущий checkout зелёный, историческая проверка требует решения владельца.
+| Историческая строка | Официальный источник | Результат и контекст |
+|---|---|---|
+| 895 | [Документация для самостоятельной интеграции сервисов](https://help.prodamus.ru/payform/integracii/rest-api/instrukcii-dlya-samostoyatelnaya-integracii-servisov) | HTTP 200, exact match; раздел «Пример программного кода формирования ссылки для демо-формы», явное обозначение «Секретный ключ демо-формы» |
+| 1753 | [Управление статусами подписки](https://help.prodamus.ru/payform/integracii/rest-api-1/setactivity) | HTTP 200, exact match; пример запроса к `https://demo.payform.ru/rest/setActivity/` |
+| 2576 | [Управление скидкой по подписке](https://help.prodamus.ru/payform/integracii/rest-api-1/setsubscriptiondiscount) | HTTP 200, exact match; пример запроса к `https://demo.payform.ru/rest/setSubscriptionDiscount/` |
+| 2799 | [Установка даты следующего платежа по подписке](https://help.prodamus.ru/payform/integracii/rest-api-1/setsubscriptionpaymentdate) | HTTP 200, exact match; пример запроса к `https://demo.payform.ru/rest/setSubscriptionPaymentDate/` |
 
-Проверка `.github/workflows/security.yml` подтверждает: Gitleaks action получает полную историю через fetch-depth=0. Поэтому зелёный dir-скан не позволяет объявить history job зелёным.
+Это доказательство публичного иллюстративного происхождения конкретных исторических находок. Сравнение с доступными текущими backend-секретами остаётся 0/27; оно не является доказательством отзыва или отсутствия прошлой компрометации. Отзыв, ротация, проверка пригодности ключа и переписывание Git-истории не выполнялись. Исторические исключения закрывают только эти четыре подтверждённых образца.
+
+Проверка `.github/workflows/security.yml` подтверждает: Gitleaks action получает полную историю через fetch-depth=0. Поэтому dir-скан и history-скан проверяются отдельно.
