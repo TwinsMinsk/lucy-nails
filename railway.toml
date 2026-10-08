@@ -1,5 +1,5 @@
 [build]
-builder = "NIXPACKS"
+builder = "RAILPACK"
 
 [common]
 restartPolicyType = "ON_FAILURE"
