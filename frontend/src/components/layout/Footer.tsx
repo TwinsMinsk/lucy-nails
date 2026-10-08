@@ -30,10 +30,10 @@ export function Footer() {
                 </div>
 
                 <div className="flex flex-col items-center md:items-start gap-1 text-[10px] text-text-secondary/60 border-t pt-4">
-                    <p>Смирнова Людмила Анатольевна</p>
+                    <p>ИП Смирнова Людмила Анатольевна</p>
                     <div className="flex flex-wrap justify-center md:justify-start gap-x-4 gap-y-1">
                         <p>ИНН: 784217026925</p>
-                        <p>Режим налогообложения: НПД (Самозанятый)</p>
+                        <p>ОГРНИП: 326784700145379</p>
                     </div>
                     <div className="flex flex-wrap justify-center md:justify-start gap-x-4 gap-y-1">
                         <p>Email: Luci4ek@gmail.com</p>
