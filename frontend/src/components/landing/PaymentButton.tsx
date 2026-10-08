@@ -10,7 +10,7 @@ import { captureCheckoutAttribution } from "@/lib/attribution";
 import { sendYandexGoal, trackPublicEvent } from "@/lib/analytics-client";
 
 interface PaymentButtonProps {
-  /** UUID курса с API или `"default"` — первый опубликованный курс на бэкенде */
+  /** Canonical published course ID; null disables checkout. */
   courseId: string | null;
   tariff: "self";
   children?: React.ReactNode;
@@ -19,18 +19,13 @@ interface PaymentButtonProps {
   location?: "pricing" | "dashboard_renewal";
 }
 
-function resolveCourseIdForCheckout(raw: string | null): string {
-  const s = raw?.trim();
-  if (!s) return "default";
-  return s;
-}
-
 export function PaymentButton({ courseId, tariff, children, className, location = "pricing" }: PaymentButtonProps) {
   const [loading, setLoading] = useState(false);
   const [guestOpen, setGuestOpen] = useState(false);
-  const effectiveCourseId = resolveCourseIdForCheckout(courseId);
+  const effectiveCourseId = courseId?.trim() || null;
 
   const handlePayment = async () => {
+    if (!effectiveCourseId) return;
     void trackPublicEvent("cta_click", { tariff, location }, effectiveCourseId);
     const hasSession = typeof document !== "undefined" && document.cookie.includes("auth_session=1");
 
@@ -80,15 +75,15 @@ export function PaymentButton({ courseId, tariff, children, className, location 
 
   return (
     <>
-      <GuestCheckoutDialog
+      {effectiveCourseId && <GuestCheckoutDialog
         open={guestOpen}
         onOpenChange={setGuestOpen}
         courseId={effectiveCourseId}
         tariff={tariff}
-      />
+      />}
       <Button
         onClick={handlePayment}
-        disabled={loading}
+        disabled={loading || !effectiveCourseId}
         className={
           className ??
           "relative overflow-hidden group w-full h-14 rounded-full text-sm uppercase tracking-[0.2em] font-bold bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white hover:to-[#db3f6e] transition-all duration-500 shadow-[0_10px_25px_rgba(219,63,110,0.3)] hover:shadow-[0_15px_35px_rgba(219,63,110,0.45)] hover:-translate-y-1 border-none ring-1 ring-white/10"

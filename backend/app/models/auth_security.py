@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, JSON, String, Text
+from sqlalchemy import ForeignKey, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -11,10 +11,11 @@ from app.core.database import Base
 
 class MfaCredential(Base):
     __tablename__ = "mfa_credentials"
+    __table_args__ = (UniqueConstraint("user_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     secret_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     backup_code_hashes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)

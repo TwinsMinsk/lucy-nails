@@ -2,6 +2,7 @@
 
 import csv
 import io
+import re
 from datetime import date, datetime, time, timedelta
 from typing import Literal
 
@@ -17,7 +18,7 @@ from app.models.certificate import Certificate
 from app.models.order import Order
 from app.models.outbox import OutboxMessage
 from app.models.progress import Progress
-from app.models.purchase import Purchase
+from app.models.purchase import Purchase, paid_financial_filter
 from app.models.refund import RefundRequest
 from app.models.user import User
 
@@ -57,7 +58,7 @@ class DeliveryReport(BaseModel):
 
 
 FUNNEL = [
-    ("landing_view", "Просмотр лендинга"),
+    ("landing_view", "Вход на лендинг / страницу курса"),
     ("cta_click", "Клик по CTA"),
     ("checkout_started", "Начало checkout"),
     ("payment_redirect", "Переход к оплате"),
@@ -65,13 +66,17 @@ FUNNEL = [
 ]
 
 
-def _date_bounds(date_from: date | None, date_to: date | None) -> tuple[date, date, datetime, datetime]:
+def _date_bounds(
+    date_from: date | None, date_to: date | None
+) -> tuple[date, date, datetime, datetime]:
     end_date = date_to or datetime.utcnow().date()
     start_date = date_from or end_date - timedelta(days=29)
     if start_date > end_date:
         raise HTTPException(status_code=422, detail="date_from must not exceed date_to")
     if (end_date - start_date).days > 730:
-        raise HTTPException(status_code=422, detail="Report range cannot exceed 730 days")
+        raise HTTPException(
+            status_code=422, detail="Report range cannot exceed 730 days"
+        )
     return (
         start_date,
         end_date,
@@ -95,12 +100,21 @@ async def report_overview(
     admin: User = Depends(require_permission("analytics.read")),
 ):
     start_date, end_date, start, end = _date_bounds(date_from, date_to)
-    purchase_filter = and_(Purchase.payment_status == "success", _money_date_filter(start, end))
-    gross = await db.scalar(select(func.coalesce(func.sum(Purchase.amount_kopecks), 0)).where(purchase_filter))
-    paid_orders = await db.scalar(select(func.count(Purchase.id)).where(purchase_filter))
+    purchase_filter = and_(paid_financial_filter(), _money_date_filter(start, end))
+    gross = await db.scalar(
+        select(func.coalesce(func.sum(Purchase.amount_kopecks), 0)).where(
+            purchase_filter
+        )
+    )
+    paid_orders = await db.scalar(
+        select(func.count(Purchase.id)).where(purchase_filter)
+    )
     refunded = await db.scalar(
         select(func.coalesce(func.sum(RefundRequest.amount_kopecks), 0)).where(
             RefundRequest.status == "processed",
+            select(Purchase.id)
+            .where(Purchase.id == RefundRequest.purchase_id, paid_financial_filter())
+            .exists(),
             RefundRequest.processed_at >= start,
             RefundRequest.processed_at < end,
         )
@@ -145,7 +159,7 @@ async def report_timeseries(
                 func.count(Purchase.id),
                 func.coalesce(func.sum(Purchase.amount_kopecks), 0),
             )
-            .where(Purchase.payment_status == "success", _money_date_filter(start, end))
+            .where(paid_financial_filter(), _money_date_filter(start, end))
             .group_by(payment_day)
         )
     ).all()
@@ -155,6 +169,11 @@ async def report_timeseries(
             select(refund_day, func.coalesce(func.sum(RefundRequest.amount_kopecks), 0))
             .where(
                 RefundRequest.status == "processed",
+                select(Purchase.id)
+                .where(
+                    Purchase.id == RefundRequest.purchase_id, paid_financial_filter()
+                )
+                .exists(),
                 RefundRequest.processed_at >= start,
                 RefundRequest.processed_at < end,
             )
@@ -206,8 +225,7 @@ async def report_funnel(
     ).all()
 
     # Join anonymous, user, and order identifiers through bridge events such as
-    # checkout_started. Then count distinct entities that reached every stage
-    # in order; repeated clicks and orphan purchases cannot inflate conversion.
+    # checkout_started, preserving the bridge for server-only order events.
     parents: dict[str, str] = {}
 
     def find(item: str) -> str:
@@ -223,7 +241,6 @@ async def report_funnel(
         if left_root != right_root:
             parents[right_root] = left_root
 
-    identified_rows: list[tuple[str, datetime, str]] = []
     for event_name, happened_at, anonymous_id, user_id, order_id in rows:
         identifiers = [
             value
@@ -238,26 +255,52 @@ async def report_funnel(
             continue
         for identifier in identifiers[1:]:
             union(identifiers[0], identifier)
-        identified_rows.append((event_name, happened_at, identifiers[0]))
 
-    entity_stages: dict[str, dict[str, datetime]] = {}
-    for event_name, happened_at, identifier in identified_rows:
-        stages_for_entity = entity_stages.setdefault(find(identifier), {})
-        previous_time = stages_for_entity.get(event_name)
-        if previous_time is None or happened_at < previous_time:
-            stages_for_entity[event_name] = happened_at
+    entity_events: dict[str, list[tuple[str, datetime, str | None]]] = {}
+    for event_name, happened_at, anonymous_id, user_id, order_id in rows:
+        identifier = next(
+            (
+                value
+                for value in (
+                    f"anonymous:{anonymous_id}" if anonymous_id else None,
+                    f"user:{user_id}" if user_id else None,
+                    f"order:{order_id}" if order_id else None,
+                )
+                if value
+            ),
+            None,
+        )
+        if identifier:
+            entity_events.setdefault(find(identifier), []).append(
+                (event_name, happened_at, str(order_id) if order_id else None)
+            )
 
+    # Denominator: eligible order journeys plus visitors without an ordered
+    # checkout. Shared acquisition/CTA anchors can introduce multiple orders;
+    # each order contributes at most once, including an abandoned checkout.
     counts = {event_name: 0 for event_name, _ in FUNNEL}
-    for reached in entity_stages.values():
-        previous_time: datetime | None = None
-        for event_name, _ in FUNNEL:
-            happened_at = reached.get(event_name)
-            if happened_at is None or (
-                previous_time is not None and happened_at < previous_time
-            ):
-                break
-            counts[event_name] += 1
-            previous_time = happened_at
+    stage_order = {name: index for index, (name, _) in enumerate(FUNNEL)}
+    for events in entity_events.values():
+        ordered = sorted(events, key=lambda event: (event[1], stage_order[event[0]]))
+        orders = {order_id for _, _, order_id in ordered if order_id}
+        candidates = orders or {None}
+        eligible_paths = []
+        best_public_prefix = 0
+        for candidate_order in candidates:
+            prefix = 0
+            for event_name, happened_at, order_id in ordered:
+                if order_id and order_id != candidate_order:
+                    continue
+                if event_name == FUNNEL[prefix][0]:
+                    prefix += 1
+                    if prefix == len(FUNNEL):
+                        break
+            best_public_prefix = max(best_public_prefix, min(prefix, 2))
+            if prefix >= 3:
+                eligible_paths.append(prefix)
+        for prefix in eligible_paths or [best_public_prefix]:
+            for name, _ in FUNNEL[:prefix]:
+                counts[name] += 1
     stages = []
     previous = None
     for event_name, label in FUNNEL:
@@ -275,35 +318,94 @@ async def report_funnel(
     return FunnelReport(stages=stages)
 
 
-async def _source_rows(db: AsyncSession, start: datetime, end: datetime):
-    source = func.coalesce(Order.first_utm_source, "(direct)").label("source")
-    rows = (
-        await db.execute(
+def _attribution_filters(source: str | None, campaign: str | None, content: str | None):
+    return [
+        column == value
+        for column, value in (
+            (func.coalesce(Order.first_utm_source, "(direct)"), source),
+            (func.coalesce(Order.first_utm_campaign, "(none)"), campaign),
+            (func.coalesce(Order.first_utm_content, "(none)"), content),
+        )
+        if value is not None
+    ]
+
+
+async def _source_rows(
+    db: AsyncSession,
+    start: datetime,
+    end: datetime,
+    basis: str = "payment",
+    source_filter: str | None = None,
+    campaign: str | None = None,
+    content: str | None = None,
+):
+    dimensions = [
+        func.coalesce(column, fallback).label(label)
+        for column, fallback, label in (
+            (Order.first_utm_source, "(direct)", "source"),
+            (Order.first_utm_campaign, "(none)", "campaign"),
+            (Order.first_utm_content, "(none)", "content"),
+        )
+    ]
+    filters = _attribution_filters(source_filter, campaign, content)
+    if basis == "payment":
+        statement = (
             select(
-                source,
+                *dimensions,
+                func.count(Purchase.id).label("orders"),
+                func.count(Purchase.id).label("paid_orders"),
+                func.coalesce(func.sum(Purchase.amount_kopecks), 0).label("gross"),
+            )
+            .select_from(Purchase)
+            .outerjoin(Order, Order.id == Purchase.order_id)
+            .where(paid_financial_filter(), _money_date_filter(start, end), *filters)
+        )
+    else:
+        statement = (
+            select(
+                *dimensions,
                 func.count(Order.id).label("orders"),
                 func.count(Purchase.id).label("paid_orders"),
                 func.coalesce(func.sum(Purchase.amount_kopecks), 0).label("gross"),
             )
+            .select_from(Order)
             .outerjoin(
-                Purchase,
-                and_(Purchase.order_id == Order.id, Purchase.payment_status == "success"),
+                Purchase, and_(Purchase.order_id == Order.id, paid_financial_filter())
             )
-            .where(Order.created_at >= start, Order.created_at < end)
-            .group_by(source)
-            .order_by(func.coalesce(func.sum(Purchase.amount_kopecks), 0).desc())
+            .where(Order.created_at >= start, Order.created_at < end, *filters)
+        )
+    rows = (
+        await db.execute(
+            statement.group_by(*dimensions).order_by(
+                func.coalesce(func.sum(Purchase.amount_kopecks), 0).desc()
+            )
         )
     ).all()
     return [
         {
             "source": row.source,
+            "campaign": row.campaign,
+            "content": row.content,
+            "basis": basis,
+            "date_basis": "paid_at_utc"
+            if basis == "payment"
+            else "order_created_at_utc",
             "orders": int(row.orders),
             "paid_orders": int(row.paid_orders),
             "gross_revenue_kopecks": int(row.gross),
-            "conversion_pct": round(row.paid_orders / row.orders * 100, 2) if row.orders else 0,
+            "conversion_pct": round(row.paid_orders / row.orders * 100, 2)
+            if row.orders
+            else 0,
         }
         for row in rows
     ]
+
+
+def _csv_safe(value):
+    if not isinstance(value, str):
+        return value
+    stripped = re.sub(r"^[\s\x00-\x1f\x7f\ufeff]*", "", value)
+    return "'" + value if stripped.startswith(("=", "+", "-", "@")) else value
 
 
 @router.get("/reports/sources")
@@ -311,17 +413,38 @@ async def report_sources(
     date_from: date | None = None,
     date_to: date | None = None,
     format: Literal["json", "csv"] = Query(default="json"),
+    basis: Literal["payment", "acquisition"] = Query(default="payment"),
+    source: str | None = Query(default=None, max_length=255),
+    campaign: str | None = Query(default=None, max_length=255),
+    content: str | None = Query(default=None, max_length=255),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("analytics.read")),
 ):
     _, _, start, end = _date_bounds(date_from, date_to)
-    rows = await _source_rows(db, start, end)
+    rows = await _source_rows(db, start, end, basis, source, campaign, content)
     if format == "json":
         return rows
     output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=list(rows[0]) if rows else ["source"])
+    writer = csv.DictWriter(
+        output,
+        fieldnames=list(rows[0])
+        if rows
+        else [
+            "source",
+            "campaign",
+            "content",
+            "basis",
+            "date_basis",
+            "orders",
+            "paid_orders",
+            "gross_revenue_kopecks",
+            "conversion_pct",
+        ],
+    )
     writer.writeheader()
-    writer.writerows(rows)
+    writer.writerows(
+        {key: _csv_safe(value) for key, value in row.items()} for row in rows
+    )
     return Response(
         content="\ufeff" + output.getvalue(),
         media_type="text/csv; charset=utf-8",
@@ -344,12 +467,16 @@ async def report_tariffs(
                 func.count(Purchase.id),
                 func.coalesce(func.sum(Purchase.amount_kopecks), 0),
             )
-            .where(Purchase.payment_status == "success", _money_date_filter(start, end))
+            .where(paid_financial_filter(), _money_date_filter(start, end))
             .group_by(Purchase.tariff)
         )
     ).all()
     return [
-        {"tariff": tariff, "paid_orders": int(count), "gross_revenue_kopecks": int(gross)}
+        {
+            "tariff": tariff,
+            "paid_orders": int(count),
+            "gross_revenue_kopecks": int(gross),
+        }
         for tariff, count, gross in rows
     ]
 
@@ -373,10 +500,12 @@ async def report_cohorts(
             )
             .outerjoin(
                 Purchase,
-                and_(Purchase.user_id == User.id, Purchase.payment_status == "success"),
+                and_(Purchase.user_id == User.id, paid_financial_filter()),
             )
             .outerjoin(Certificate, Certificate.user_id == User.id)
-            .where(User.role == "student", User.created_at >= start, User.created_at < end)
+            .where(
+                User.role == "student", User.created_at >= start, User.created_at < end
+            )
             .group_by(cohort)
             .order_by(cohort)
         )
@@ -400,11 +529,23 @@ async def report_progress(
     admin: User = Depends(require_permission("analytics.read")),
 ):
     _, _, start, end = _date_bounds(date_from, date_to)
-    active_students = await db.scalar(
-        select(func.count(func.distinct(Progress.user_id))).where(
-            Progress.updated_at >= start, Progress.updated_at < end
+    active_ids = (
+        select(Progress.user_id)
+        .where(Progress.updated_at >= start, Progress.updated_at < end)
+        .union(
+            select(AnalyticsEvent.user_id).where(
+                AnalyticsEvent.event_name.in_(
+                    ["lesson_activity", "lesson_started", "lesson_completed"]
+                ),
+                AnalyticsEvent.source == "server",
+                AnalyticsEvent.user_id.is_not(None),
+                AnalyticsEvent.happened_at >= start,
+                AnalyticsEvent.happened_at < end,
+            )
         )
+        .subquery()
     )
+    active_students = await db.scalar(select(func.count()).select_from(active_ids))
     completed_lessons = await db.scalar(
         select(func.count(Progress.id)).where(
             Progress.is_completed.is_(True),

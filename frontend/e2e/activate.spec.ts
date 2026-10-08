@@ -1,11 +1,11 @@
 import { expect, test, type Page } from "@playwright/test"
 
-const corsHeaders = {
-    "access-control-allow-origin": "http://127.0.0.1:3000",
+const corsHeaders = () => ({
+    "access-control-allow-origin": new URL(test.info().project.use.baseURL!).origin,
     "access-control-allow-credentials": "true",
     "access-control-allow-methods": "POST,OPTIONS",
     "access-control-allow-headers": "content-type,x-csrf-token",
-}
+})
 
 async function fillPasswords(page: Page) {
     // Wait for hydration: typing into SSR inputs before React attaches resets the controlled values.
@@ -25,20 +25,20 @@ test("activation link sets the first password and leads to login", async ({ page
     let activatePayload: Record<string, unknown> | undefined
     await page.route("**/api/auth/activate", async (route) => {
         if (route.request().method() === "OPTIONS") {
-            await route.fulfill({ status: 204, headers: corsHeaders })
+            await route.fulfill({ status: 204, headers: corsHeaders() })
             return
         }
         activatePayload = route.request().postDataJSON() as Record<string, unknown>
         await route.fulfill({
             status: 200,
             contentType: "application/json",
-            headers: corsHeaders,
+            headers: corsHeaders(),
             body: '{"message":"Account activated"}',
         })
     })
 
     await page.goto("/auth/activate?token=activation-test")
-    await expect(page.getByText("Создайте пароль", { exact: true })).toBeVisible()
+    await expect(page.getByText("Подтвердите email", { exact: true })).toBeVisible()
     await fillPasswords(page)
     // The token is kept in memory only; the address bar and history no longer carry it.
     await expect(page).toHaveURL(/\/auth\/activate$/)
@@ -61,13 +61,13 @@ test("reloading the activation page after the token was hidden explains what to 
 test("malformed activation token gets the friendly message, not validation details", async ({ page }) => {
     await page.route("**/api/auth/activate", async (route) => {
         if (route.request().method() === "OPTIONS") {
-            await route.fulfill({ status: 204, headers: corsHeaders })
+            await route.fulfill({ status: 204, headers: corsHeaders() })
             return
         }
         await route.fulfill({
             status: 422,
             contentType: "application/json",
-            headers: corsHeaders,
+            headers: corsHeaders(),
             body: JSON.stringify({
                 detail: [{ type: "string_too_short", loc: ["body", "token"], msg: "String should have at least 10 characters" }],
             }),
@@ -85,13 +85,13 @@ test("malformed activation token gets the friendly message, not validation detai
 test("expired activation link explains how to get a new one", async ({ page }) => {
     await page.route("**/api/auth/activate", async (route) => {
         if (route.request().method() === "OPTIONS") {
-            await route.fulfill({ status: 204, headers: corsHeaders })
+            await route.fulfill({ status: 204, headers: corsHeaders() })
             return
         }
         await route.fulfill({
             status: 400,
             contentType: "application/json",
-            headers: corsHeaders,
+            headers: corsHeaders(),
             body: '{"detail":"Invalid or expired activation token"}',
         })
     })

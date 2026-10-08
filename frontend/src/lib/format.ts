@@ -10,6 +10,14 @@ export function parseApiDate(value: string): Date {
     return new Date(isDateTime && !HAS_TIMEZONE.test(value) ? `${value}Z` : value)
 }
 
+export function formatApiDateTime(value?: string | null): string {
+    return value ? parseApiDate(value).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" }) : "—"
+}
+
+export function formatApiDate(value?: string | null): string {
+    return value ? parseApiDate(value).toLocaleDateString("ru-RU", { timeZone: "Europe/Moscow" }) : "—"
+}
+
 /** "1 день", "3 дня", "30 дней". */
 export function formatDays(days: number): string {
     const mod10 = days % 10

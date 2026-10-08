@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest"
 
-import { formatCourseDuration, formatDays, formatLessonDuration, parseApiDate } from "@/lib/format"
+import { formatApiDate, formatApiDateTime, formatCourseDuration, formatDays, formatLessonDuration, parseApiDate } from "@/lib/format"
+
+it("displays administrative UTC dates consistently in Moscow", () => {
+    expect(formatApiDateTime("2026-10-07T22:30:00")).toBe("08.10.2026, 01:30:00")
+    expect(formatApiDate("2026-10-07T22:30:00Z")).toBe("08.10.2026")
+    expect(formatApiDateTime(null)).toBe("—")
+    expect(formatApiDate(undefined)).toBe("—")
+})
 
 
 describe("parseApiDate", () => {

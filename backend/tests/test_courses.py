@@ -190,6 +190,7 @@ async def test_course_progress_counts_only_published_modules(client: AsyncClient
 
     user_result = await db.execute(select(User).where(User.email == "progress@t.com"))
     user = user_result.scalar_one()
+    user.email_verified_at = datetime.utcnow()
     db.add(
         Purchase(
             user_id=user.id,

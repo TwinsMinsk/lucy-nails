@@ -143,14 +143,25 @@ class KinescopeJwtService:
         self._require_configured()
         if not self._public_key_pem:
             raise JWTError("public key not derived; cannot verify")
-        decoded = jwt.decode(
-            token,
-            self._public_key_pem,
-            algorithms=[self.ALGORITHM],
-            audience=_JWT_AUDIENCE,
-            issuer=self._issuer,
-            options={"require": ["exp", "iat"]},
-        )
+        try:
+            if not isinstance(token, str) or len(token) > 8192:
+                raise JWTError("Invalid token length")
+            decoded = jwt.decode(
+                token,
+                self._public_key_pem,
+                algorithms=[self.ALGORITHM],
+                audience=_JWT_AUDIENCE,
+                issuer=self._issuer,
+                options={"require": ["exp", "iat"]},
+            )
+            if not isinstance(decoded.get("user_id"), str):
+                raise JWTError("Invalid user_id claim")
+            if decoded.get("lesson_id") is not None and not isinstance(decoded["lesson_id"], str):
+                raise JWTError("Invalid lesson_id claim")
+            issued_at = int(decoded["iat"])
+            expires_at = int(decoded["exp"])
+        except (ValueError, TypeError, RecursionError, OverflowError) as exc:
+            raise JWTError("Invalid DRM token") from exc
 
         user_id = str(decoded.get("user_id") or "").strip()
         if not user_id:
@@ -160,8 +171,8 @@ class KinescopeJwtService:
             user_id=user_id,
             email=decoded.get("email"),
             lesson_id=decoded.get("lesson_id"),
-            issued_at=int(decoded.get("iat", 0)),
-            expires_at=int(decoded.get("exp", 0)),
+            issued_at=issued_at,
+            expires_at=expires_at,
         )
 
 

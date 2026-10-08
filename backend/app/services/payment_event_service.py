@@ -48,7 +48,7 @@ def build_payment_event_data(payload: dict[str, Any]) -> PaymentEventData:
     amount_kopecks: int | None = None
     try:
         amount_kopecks = int(round(float(str(payload.get("sum", "")).replace(",", ".")) * 100))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         pass
     currency = clean("currency", 8)
     sanitized_payload = {

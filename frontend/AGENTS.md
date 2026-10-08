@@ -11,7 +11,7 @@ Next.js 16 (App Router) + React 19 приложение онлайн-школы 
 
 | File | Description |
 |------|-------------|
-| `package.json` | Скрипты `dev`/`build`/`start`/`lint`; **нет `npm test`** — регрессии ловятся lint + build + backend pytest |
+| `package.json` | Скрипты `dev`/`build`/`start`/`lint`, Vitest `test` и Playwright `test:e2e` |
 | `next.config.ts` | CSP-заголовки (разрешены Kinescope, YouTube, Cloudflare Insights), `images.remotePatterns` (Kinescope, Railway, `lucysmirnova.ru`, `api.lucysmirnova.ru/uploads`) |
 | `tsconfig.json` | `strict: true`, алиас `@/*` → `./src/*` |
 | `eslint.config.mjs` | `eslint-config-next` (core-web-vitals + typescript); намеренно ослаблены `react-hooks/set-state-in-effect`, `@typescript-eslint/no-explicit-any` (warn), `react/no-unescaped-entities` (off) — техдолг, см. комментарий в файле |
@@ -39,16 +39,18 @@ Next.js 16 (App Router) + React 19 приложение онлайн-школы 
 
 ### Testing Requirements
 
-Скрипта `npm test` **нет**. Перед коммитом:
+Перед коммитом:
 
 ```powershell
 npm run lint
+npm test -- --run
+npx tsc --noEmit --incremental false
 $env:NEXT_PUBLIC_API_URL = "http://127.0.0.1:8000/api"
 $env:NEXT_PUBLIC_SITE_URL = "http://localhost:3000"
 npm run build
 ```
 
-UI-регрессии дополнительно ловятся backend pytest (контракты API, которые потребляет фронт).
+Браузерная проверка: `npm run test:e2e`. По умолчанию Playwright запускает изолированные SSR API-фикстуры на 3016 и Next.js на 3015; существующие серверы не переиспользует. При явном `PLAYWRIGHT_BASE_URL` окружение готовит вызывающий. Это проверка контрактов, а не реальных платежей или воспроизведения Kinescope.
 
 ### Common Patterns
 
@@ -76,7 +78,7 @@ UI-регрессии дополнительно ловятся backend pytest (
 
 <!-- BEGIN:nextjs-agent-rules -->
 
-# This is NOT the Next.js you know
+## This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
 

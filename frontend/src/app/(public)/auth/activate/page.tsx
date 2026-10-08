@@ -83,7 +83,7 @@ function ActivateAccountForm() {
         return (
             <Card className="w-full max-w-md">
                 <CardHeader className="space-y-1">
-                    <CardTitle className="text-2xl font-bold text-center">Создайте пароль</CardTitle>
+                    <CardTitle className="text-2xl font-bold text-center">Подтвердите email</CardTitle>
                     <CardDescription className="text-center">
                         Код активации не найден. Откройте ссылку из письма ещё раз
                         или запросите новую через «Забыли пароль?» — укажите email, на который оформлен курс.
@@ -99,9 +99,9 @@ function ActivateAccountForm() {
     return (
         <Card className="w-full max-w-md">
             <CardHeader className="space-y-1">
-                <CardTitle className="text-2xl font-bold text-center">Создайте пароль</CardTitle>
+                <CardTitle className="text-2xl font-bold text-center">Подтвердите email</CardTitle>
                 <CardDescription className="text-center">
-                    Задайте пароль для входа в личный кабинет Lucy Nails Academy
+                    Задайте новый пароль для подтверждения email. Прежние сеансы будут завершены, покупки сохранятся.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">

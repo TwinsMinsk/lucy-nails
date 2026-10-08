@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.entitlement import Entitlement
-from app.models.purchase import Purchase
+from app.models.certificate import Certificate
+from app.models.purchase import Purchase, paid_financial_filter
 from app.models.refund import RefundRequest
 from app.services.access_service import AccessService
 from app.services.analytics_service import AnalyticsService
@@ -46,6 +47,8 @@ class RefundService:
             raise RefundError("Purchase not found")
         if purchase.payment_status != "success":
             raise RefundError("Only successful purchases can be refunded")
+        if await db.scalar(select(Purchase.id).where(Purchase.id == purchase.id, paid_financial_filter())) is None:
+            raise RefundError("Only a paid financial purchase can be refunded")
 
         allocated = await db.scalar(
             select(func.coalesce(func.sum(RefundRequest.amount_kopecks), 0)).where(
@@ -91,8 +94,12 @@ class RefundService:
             "note": refund.note,
         }
         previous_status = refund.status
+        if provider_reference is not None and not provider_reference.strip():
+            raise RefundError("Provider reference cannot be blank")
         if refund.status in {"processed", "rejected"} and refund.status != status:
             raise RefundError("Completed refund requests cannot be reopened")
+        if refund.status in {"processed", "rejected"}:
+            return refund, old_value
         allowed = {
             "requested": {"requested", "submitted", "processed", "rejected"},
             "submitted": {"submitted", "processed", "rejected"},
@@ -131,16 +138,31 @@ class RefundService:
                 entitlement_result = await db.execute(
                     select(Entitlement).where(
                         Entitlement.source_purchase_id == refund.purchase_id,
-                        Entitlement.status == "active",
                     )
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
                 )
                 entitlement = entitlement_result.scalar_one_or_none()
-                if entitlement is not None:
+                if entitlement is None:
+                    entitlement = AccessService.create_purchase_entitlement(purchase)
+                    db.add(entitlement)
+                    await db.flush()
+                if entitlement.status != "revoked":
                     await AccessService.revoke_entitlement(
                         db,
                         entitlement,
                         reason=f"Refund processed: {refund.reason}",
                     )
+                certificates = await db.scalars(select(Certificate).where(
+                    Certificate.user_id == purchase.user_id,
+                    Certificate.course_id == purchase.course_id,
+                    Certificate.status != "revoked",
+                ).with_for_update())
+                for certificate in certificates:
+                    certificate.status = "revoked"
+                    certificate.revoked_at = datetime.utcnow()
+                    certificate.revoked_by_id = actor_id
+                    certificate.revoke_reason = f"Refund processed: {refund.reason}"
             if previous_status != "processed" and purchase is not None:
                 await AnalyticsService.record_event(
                     db,

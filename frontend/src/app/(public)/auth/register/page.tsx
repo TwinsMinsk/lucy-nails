@@ -35,9 +35,8 @@ import {
     PersonalDataConsent,
 } from "@/components/legal/PersonalDataConsent"
 import { RegisterSchema } from "@/lib/schemas"
-import { register, login } from "@/lib/api"
+import { register } from "@/lib/api"
 import { CONSENT_VERSION } from "@/lib/legal"
-import { safeNextPath } from "@/lib/navigation"
 
 const CONSENT_ID = "register-consent"
 
@@ -84,21 +83,9 @@ export default function RegisterPage() {
             })
 
             toast.success("Регистрация успешна!", {
-                description: "Аккаунт создан. Выполняется вход..."
+                description: "Подтвердите email по ссылке из письма и задайте пароль для доступа к оплаченным урокам."
             })
-
-            // 2. Auto-login после успешной регистрации
-            await login({
-                email,
-                password: values.password,
-            })
-
-            toast.success("Добро пожаловать!", {
-                description: "Вход выполнен автоматически."
-            })
-
-            const next = new URLSearchParams(window.location.search).get("next")
-            router.push(safeNextPath(next))
+            router.push("/auth/login")
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Ошибка регистрации"
             toast.error("Ошибка", {

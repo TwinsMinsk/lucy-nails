@@ -1,0 +1,8 @@
+[build]
+builder = "RAILPACK"
+buildCommand = "pip install -r requirements.lock"
+
+[deploy]
+startCommand = "python -m app.workers.outbox"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

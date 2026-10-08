@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test"
 
-test("content manager enters only permitted admin sections without legacy admin role", async ({ page, context }) => {
+test("content manager enters only permitted admin sections without legacy admin role", async ({ page, context, baseURL }) => {
     const corsHeaders = {
-        "access-control-allow-origin": "http://127.0.0.1:3000",
+        "access-control-allow-origin": new URL(baseURL!).origin,
         "access-control-allow-credentials": "true",
     }
-    await context.addCookies([{ name: "auth_session", value: "1", domain: "127.0.0.1", path: "/" }])
+    await context.addCookies([{ name: "auth_session", value: "1", url: baseURL! }])
     await page.route("**/api/auth/me", async (route) => {
         await route.fulfill({
             status: 200,
@@ -15,6 +15,7 @@ test("content manager enters only permitted admin sections without legacy admin 
                 id: "00000000-0000-0000-0000-000000000123",
                 email: "content@example.test",
                 role: "student",
+                email_verified_at: "2026-08-26T00:00:00Z",
                 created_at: "2026-08-26T00:00:00Z",
             }),
         })

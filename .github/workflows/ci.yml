@@ -13,7 +13,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:15
+        image: postgres:17
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -71,6 +71,7 @@ jobs:
           test "$(alembic heads | wc -l)" -eq 1
           alembic downgrade -1
           alembic upgrade head
+          alembic check
 
       - name: Pytest
         env:

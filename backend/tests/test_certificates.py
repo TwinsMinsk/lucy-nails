@@ -48,7 +48,7 @@ async def _create_authenticated_student(
     Bypassing registration/login here avoids the shared rate limiter entirely while
     still exercising the real JWT-validation path (get_current_user) on every request.
     """
-    user = User(email=email, password_hash=get_password_hash(password), role="student")
+    user = User(email=email, password_hash=get_password_hash(password), role="student", email_verified_at=datetime.utcnow())
     db.add(user)
     await db.commit()
     await db.refresh(user)

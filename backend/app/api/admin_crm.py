@@ -27,7 +27,7 @@ from app.models.order import Order
 from app.models.outbox import OutboxMessage
 from app.models.payment_event import PaymentEvent
 from app.models.progress import Progress
-from app.models.purchase import Purchase
+from app.models.purchase import Purchase, paid_financial_filter
 from app.models.rbac import UserRoleAssignment
 from app.models.refund import RefundRequest
 from app.models.user import User
@@ -90,6 +90,12 @@ class StudentPage(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class AccessCourseItem(BaseModel):
+    id: UUID
+    title: str
+    access_days: int
 
 
 class StudentPurchase(BaseModel):
@@ -326,18 +332,20 @@ async def dashboard(
     )
     gross = await db.scalar(
         select(func.coalesce(func.sum(Purchase.amount_kopecks), 0)).where(
-            Purchase.payment_status == "success"
+            paid_financial_filter()
         )
     )
     refunded = await db.scalar(
-        select(func.coalesce(func.sum(RefundRequest.amount_kopecks), 0)).where(
-            RefundRequest.status == "processed"
+        select(func.coalesce(func.sum(RefundRequest.amount_kopecks), 0))
+        .join(Purchase, Purchase.id == RefundRequest.purchase_id)
+        .where(
+            RefundRequest.status == "processed", paid_financial_filter()
         )
     )
     pending_orders = await db.scalar(select(func.count(Order.id)).where(Order.status == "pending"))
     payment_errors = await db.scalar(
         select(func.count(PaymentEvent.id)).where(
-            PaymentEvent.processing_status == "rejected"
+            PaymentEvent.processing_status.in_(["rejected", "financial_incident"])
         )
     )
     dead_letters = await db.scalar(
@@ -393,6 +401,15 @@ async def system_status(
     )
 
 
+@router.get("/access-courses", response_model=list[AccessCourseItem])
+async def access_courses(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_permission("access.manage")),
+):
+    rows = await db.execute(select(Course.id, Course.title, Course.access_days).order_by(Course.title, Course.id))
+    return [AccessCourseItem(id=row.id, title=row.title, access_days=row.access_days) for row in rows]
+
+
 @router.get("/students", response_model=StudentPage)
 async def list_students(
     search: str | None = Query(default=None, max_length=255),
@@ -431,7 +448,7 @@ async def list_students(
     result = await db.execute(
         select(User, active_count.label("active_entitlements"))
         .where(*conditions)
-        .order_by(User.created_at.desc())
+        .order_by(User.created_at.desc(), User.id.desc())
         .offset(offset)
         .limit(limit)
     )
@@ -881,7 +898,7 @@ async def list_entitlements(
             .join(User, User.id == Entitlement.user_id)
             .join(Course, Course.id == Entitlement.course_id)
             .where(*conditions)
-            .order_by(Entitlement.expires_at.desc())
+            .order_by(Entitlement.expires_at.desc(), Entitlement.id.desc())
             .offset(offset)
             .limit(limit)
         )
@@ -931,7 +948,7 @@ async def list_orders(
             select(Order, Purchase.id)
             .outerjoin(Purchase, Purchase.order_id == Order.id)
             .where(*conditions)
-            .order_by(Order.created_at.desc())
+            .order_by(Order.created_at.desc(), Order.id.desc())
             .offset(offset)
             .limit(limit)
         )
@@ -972,6 +989,7 @@ async def list_orders(
 
 @router.get("/notifications", response_model=NotificationPage)
 async def list_notifications(
+    search: str | None = Query(default=None, max_length=255),
     status_filter: str | None = Query(default=None, alias="status", max_length=32),
     channel: str | None = Query(default=None, max_length=20),
     limit: int = Query(default=50, ge=1, le=200),
@@ -980,6 +998,9 @@ async def list_notifications(
     admin: User = Depends(require_permission("notifications.manage")),
 ):
     conditions = []
+    if search:
+        pattern = f"%{search.strip()}%"
+        conditions.append(or_(OutboxMessage.recipient.ilike(pattern), OutboxMessage.kind.ilike(pattern)))
     if status_filter:
         conditions.append(OutboxMessage.status == status_filter)
     if channel:
@@ -989,7 +1010,7 @@ async def list_notifications(
         await db.execute(
             select(OutboxMessage)
             .where(*conditions)
-            .order_by(OutboxMessage.created_at.desc())
+            .order_by(OutboxMessage.created_at.desc(), OutboxMessage.id.desc())
             .offset(offset)
             .limit(limit)
         )
@@ -1065,7 +1086,7 @@ async def reconciliation(
     )
     payment_errors = await db.scalar(
         select(func.count(PaymentEvent.id)).where(
-            PaymentEvent.processing_status == "rejected"
+            PaymentEvent.processing_status.in_(["rejected", "financial_incident"])
         )
     )
     processed_refund_total = (
@@ -1079,7 +1100,7 @@ async def reconciliation(
     )
     without_access = await db.scalar(
         select(func.count(Purchase.id)).where(
-            Purchase.payment_status == "success",
+            paid_financial_filter(),
             Purchase.expires_at > now,
             processed_refund_total < Purchase.amount_kopecks,
             ~select(Entitlement.id)

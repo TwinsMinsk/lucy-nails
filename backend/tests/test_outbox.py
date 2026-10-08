@@ -122,6 +122,7 @@ async def test_worker_skips_stale_group_removal_when_support_access_is_active(
 ):
     student = User(
         email="outbox-support@example.com",
+        email_verified_at=datetime.utcnow(),
         password_hash=get_password_hash("studentpass1"),
         role="student",
         telegram_id=445566,
@@ -174,6 +175,7 @@ async def test_worker_skips_stale_group_restore_when_support_access_is_inactive(
 ):
     student = User(
         email="outbox-inactive-support@example.com",
+        email_verified_at=datetime.utcnow(),
         password_hash=get_password_hash("studentpass1"),
         role="student",
         telegram_id=556677,
@@ -244,6 +246,7 @@ async def test_membership_delivery_serializes_with_entitlement_mutation(
     monkeypatch.setattr(settings, "TELEGRAM_SUPPORT_GROUP_ID", -100123)
     student = User(
         email=f"membership-lock-{mutation}@example.com",
+        email_verified_at=datetime.utcnow(),
         password_hash=get_password_hash("studentpass1"),
         role="student",
         telegram_id=667788,

@@ -214,6 +214,7 @@ export interface VideoPlayResponse {
     video_url: string;
     provider: string;
     title: string;
+    expires_in_seconds: number;
 }
 
 export interface LessonResponse {
@@ -235,6 +236,7 @@ export interface UserResponse {
     role: "student" | "admin";
     telegram_id?: number;
     created_at: string;
+    email_verified_at: string | null;
 }
 
 export interface TokenResponse {
@@ -318,6 +320,10 @@ export const register = async (credentials: RegisterCredentials): Promise<UserRe
         body: JSON.stringify(credentials),
     });
 };
+
+export const resendVerification = (email: string) => apiFetch<{ message: string }>("/auth/resend-verification", {
+    method: "POST", body: JSON.stringify({ email }),
+});
 
 /**
  * Получить профиль текущего пользователя
@@ -482,6 +488,7 @@ export interface MyCourseResponse {
     expires_at?: string | null;
     support_chat_url?: string | null;
     certificate_number?: string | null;
+    certificate_status?: "active" | "revoked" | null;
 }
 
 /**
@@ -1150,6 +1157,10 @@ export interface ReportFunnelStage {
 
 export interface ReportSource {
     source: string;
+    campaign: string;
+    content: string;
+    basis: "payment" | "acquisition";
+    date_basis: "paid_at_utc" | "order_created_at_utc";
     orders: number;
     paid_orders: number;
     gross_revenue_kopecks: number;
@@ -1228,25 +1239,29 @@ export const adminRevokeCertificate = (certificateId: string, reason: string) =>
         method: "POST", body: JSON.stringify({ reason }),
     });
 
-export const adminGetReportOverview = (params: { date_from?: string; date_to?: string } = {}) =>
+export const adminGetReportOverview = (params: ReportDateParams = {}) =>
     apiFetch<ReportOverview>(`/admin/reports/overview${queryString(params)}`);
-export const adminGetReportTimeseries = (params: { date_from?: string; date_to?: string } = {}) =>
+export const adminGetReportTimeseries = (params: ReportDateParams = {}) =>
     apiFetch<ReportTimeseriesPoint[]>(`/admin/reports/timeseries${queryString(params)}`);
-export const adminGetReportFunnel = (params: { date_from?: string; date_to?: string } = {}) =>
+export const adminGetReportFunnel = (params: ReportDateParams = {}) =>
     apiFetch<{ stages: ReportFunnelStage[] }>(`/admin/reports/funnel${queryString(params)}`);
-export const adminGetReportSources = (params: { date_from?: string; date_to?: string } = {}) =>
+export type ReportDateParams = {
+    date_from?: string; date_to?: string; source?: string; campaign?: string; content?: string;
+}
+
+export const adminGetReportSources = (params: ReportDateParams & { basis?: "payment" | "acquisition" } = {}) =>
     apiFetch<ReportSource[]>(`/admin/reports/sources${queryString(params)}`);
-export const adminGetReportTariffs = (params: { date_from?: string; date_to?: string } = {}) =>
+export const adminGetReportTariffs = (params: ReportDateParams = {}) =>
     apiFetch<ReportTariff[]>(`/admin/reports/tariffs${queryString(params)}`);
-export const adminGetReportCohorts = (params: { date_from?: string; date_to?: string } = {}) =>
+export const adminGetReportCohorts = (params: ReportDateParams = {}) =>
     apiFetch<ReportCohort[]>(`/admin/reports/cohorts${queryString(params)}`);
-export const adminGetReportProgress = (params: { date_from?: string; date_to?: string } = {}) =>
+export const adminGetReportProgress = (params: ReportDateParams = {}) =>
     apiFetch<ReportProgress>(`/admin/reports/progress${queryString(params)}`);
-export const adminGetReportRefunds = (params: { date_from?: string; date_to?: string } = {}) =>
+export const adminGetReportRefunds = (params: ReportDateParams = {}) =>
     apiFetch<ReportRefund[]>(`/admin/reports/refunds${queryString(params)}`);
-export const adminGetReportDelivery = (params: { date_from?: string; date_to?: string } = {}) =>
+export const adminGetReportDelivery = (params: ReportDateParams = {}) =>
     apiFetch<ReportDelivery>(`/admin/reports/delivery${queryString(params)}`);
-export const adminReportSourcesCsvUrl = (params: { date_from?: string; date_to?: string } = {}) =>
+export const adminReportSourcesCsvUrl = (params: ReportDateParams & { basis?: "payment" | "acquisition" } = {}) =>
     `${API_BASE_URL}/admin/reports/sources${queryString({ ...params, format: "csv" })}`;
 
 export const adminGetStudents = (params: {
@@ -1255,6 +1270,9 @@ export const adminGetStudents = (params: {
 
 export const adminGetStudent = (userId: string) =>
     apiFetch<AdminStudentDetail>(`/admin/students/${userId}`);
+
+export interface AdminAccessCourse { id: string; title: string; access_days: number; }
+export const adminGetAccessCourses = () => apiFetch<AdminAccessCourse[]>("/admin/access-courses");
 
 export interface AdminCreateStudentRequest {
     email: string;
@@ -1325,7 +1343,7 @@ export const adminGetOrders = (params: {
 } = {}) => apiFetch<PageResponse<AdminOrder>>(`/admin/orders${queryString(params)}`);
 
 export const adminGetNotifications = (params: {
-    status?: string; channel?: string; limit?: number; offset?: number;
+    search?: string; status?: string; channel?: string; limit?: number; offset?: number;
 } = {}) => apiFetch<PageResponse<AdminNotification>>(`/admin/notifications${queryString(params)}`);
 
 export const adminRetryNotification = (messageId: string, reason: string) =>
@@ -1430,9 +1448,19 @@ export interface GalleryItemUpdate {
 
 export interface LandingPayload {
     course_id: string | null;
+    course: LandingCourseSnapshot | null;
     hero: LandingHeroPayload;
     modules: LandingModulePayload[];
     gallery: GalleryItem[];
+}
+
+export interface LandingCourseSnapshot {
+    id: string;
+    title: string;
+    price_self: number;
+    access_days: number;
+    lessons_count: number;
+    total_duration: number;
 }
 
 export const getLandingPayload = async (): Promise<LandingPayload> => {
@@ -1594,10 +1622,13 @@ export interface CertificateResponse {
     png_url: string | null;
     pdf_url: string | null;
     issued_at: string;
+    status: "active" | "revoked";
+    revoked_at: string | null;
+    revoke_reason: string | null;
 }
 
 export interface CertificateStatusResponse {
-    status: "not_available" | "available" | "issued";
+    status: "not_available" | "available" | "issued" | "revoked";
     progress_percent: number;
     certificate: CertificateResponse | null;
 }

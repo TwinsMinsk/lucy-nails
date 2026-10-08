@@ -5,7 +5,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Text, Integer, Boolean, ForeignKey, JSON
+from sqlalchemy import String, Text, Integer, Boolean, ForeignKey
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -31,7 +32,7 @@ class Lesson(Base):
     promo_kinescope_video_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     promo_poster_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     promo_description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    promo_highlights: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    promo_highlights: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     
     # Relationships
     module: Mapped["Module"] = relationship(back_populates="lessons")

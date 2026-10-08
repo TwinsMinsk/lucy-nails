@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -14,6 +14,7 @@ from app.models.module import Module
 from app.models.purchase import Purchase
 from app.models.outbox import OutboxMessage
 from app.models.user import User
+from app.models.refund import RefundRequest
 from app.core.config import settings
 from app.services.outbox_service import enqueue_outbox_message
 from app.services.support_access_service import (
@@ -42,6 +43,22 @@ NATURALLY_ENDED_STATUSES = ("active", "expired")
 
 class AccessService:
     """Use entitlements as the source of truth, with a temporary legacy fallback."""
+
+    @staticmethod
+    async def is_purchase_fully_refunded(db: AsyncSession, purchase: Purchase) -> bool:
+        refunded = await db.scalar(select(func.coalesce(func.sum(RefundRequest.amount_kopecks), 0)).where(
+            RefundRequest.purchase_id == purchase.id,
+            RefundRequest.status == "processed",
+        ))
+        return int(refunded or 0) >= purchase.amount_kopecks and purchase.amount_kopecks > 0
+
+    @staticmethod
+    async def _lock_for_access_change(db: AsyncSession, entitlement: Entitlement) -> None:
+        if entitlement.source_purchase_id is not None:
+            purchase = await db.scalar(select(Purchase).where(Purchase.id == entitlement.source_purchase_id).with_for_update())
+            if purchase is not None and await AccessService.is_purchase_fully_refunded(db, purchase):
+                raise ValueError("Fully refunded access cannot be restored or extended")
+        await db.refresh(entitlement, with_for_update=True)
 
     @staticmethod
     async def get_active_entitlement(
@@ -73,6 +90,9 @@ class AccessService:
         *,
         now: datetime | None = None,
     ) -> bool:
+        user = await db.get(User, user_id)
+        if user is None or (user.role != "admin" and user.email_verified_at is None):
+            return False
         current_time = now or datetime.utcnow()
         entitlement = await AccessService.get_active_entitlement(
             db, user_id, course_id, now=current_time
@@ -251,6 +271,7 @@ class AccessService:
         days: int,
         reason: str,
     ) -> None:
+        await AccessService._lock_for_access_change(db, entitlement)
         if entitlement.status == "revoked":
             raise ValueError("Revoked access cannot be extended")
         now = datetime.utcnow()
@@ -269,6 +290,7 @@ class AccessService:
         *,
         reason: str,
     ) -> None:
+        await AccessService._lock_for_access_change(db, entitlement)
         if entitlement.status != "active":
             raise ValueError("Only active access can be suspended")
         entitlement.status = "suspended"
@@ -287,6 +309,7 @@ class AccessService:
         *,
         reason: str,
     ) -> None:
+        await AccessService._lock_for_access_change(db, entitlement)
         if entitlement.status != "suspended":
             raise ValueError("Only suspended access can be restored")
         if entitlement.expires_at <= datetime.utcnow():

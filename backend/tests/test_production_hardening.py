@@ -108,6 +108,24 @@ def test_production_config_rejects_demo_mode():
     assert "PRODAMUS_DEMO_MODE must be false in production" in str(exc_info.value)
 
 
+def test_isolated_staging_has_production_safety_and_demo_payments():
+    config = _valid_prod(
+        ENVIRONMENT="staging",
+        PRODAMUS_DEMO_MODE=True,
+        FRONTEND_URL="https://staging.lucysmirnova.ru",
+        BACKEND_URL="https://api.staging.lucysmirnova.ru",
+        COOKIE_DOMAIN="staging.lucysmirnova.ru",
+        TRUSTED_HOSTS="api.staging.lucysmirnova.ru",
+    )
+    assert config.is_deployed
+    with pytest.raises(ValidationError):
+        _valid_prod(ENVIRONMENT="staging", DEBUG=True)
+    with pytest.raises(ValidationError):
+        _valid_prod(ENVIRONMENT="staging", PRODAMUS_DEMO_MODE=True)
+    with pytest.raises(ValidationError):
+        _valid_prod(ENVIRONMENT="staging", PRODAMUS_DEMO_MODE=False)
+
+
 def test_production_config_requires_drm_signing_key():
     with pytest.raises(ValidationError) as exc_info:
         _valid_prod(KINESCOPE_JWT_PRIVATE_KEY_PEM="", KINESCOPE_JWK_KID="")
@@ -119,7 +137,9 @@ def test_production_config_requires_drm_basic_auth():
     with pytest.raises(ValidationError) as exc_info:
         _valid_prod(KINESCOPE_DRM_BASIC_USER="", KINESCOPE_DRM_BASIC_PASS="")
 
-    assert "KINESCOPE_DRM_BASIC_USER and KINESCOPE_DRM_BASIC_PASS are required" in str(exc_info.value)
+    assert "KINESCOPE_DRM_BASIC_USER and KINESCOPE_DRM_BASIC_PASS are required" in str(
+        exc_info.value
+    )
 
 
 def test_production_config_requires_shared_cookie_domain():
@@ -168,3 +188,64 @@ def test_production_config_requires_telegram_operations_channel():
         _valid_prod(TELEGRAM_BOT_TOKEN="", TELEGRAM_BOT_USERNAME="")
 
     assert "Telegram bot token and username are required" in str(exc_info.value)
+
+
+@pytest.mark.parametrize("host", ["smtp.example.com", "mailpit.railway.internal"])
+def test_production_rejects_disabled_smtp_starttls(host):
+    with pytest.raises(ValidationError, match="SMTP_START_TLS"):
+        _valid_prod(SMTP_HOST=host, SMTP_START_TLS=False)
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "smtp.example.com",
+        "railway.internal",
+        "mailpit.railway.internal.example.com",
+        "localhost",
+        "smtp.example.com@private.railway.internal",
+    ],
+)
+def test_staging_rejects_cleartext_smtp_outside_private_railway(host):
+    with pytest.raises(ValidationError, match="SMTP_START_TLS"):
+        _valid_prod(
+            ENVIRONMENT="staging",
+            PRODAMUS_DEMO_MODE=True,
+            FRONTEND_URL="https://staging.lucysmirnova.ru",
+            BACKEND_URL="https://api.staging.lucysmirnova.ru",
+            COOKIE_DOMAIN="staging.lucysmirnova.ru",
+            SMTP_HOST=host,
+            SMTP_START_TLS=False,
+        )
+
+
+def test_staging_allows_explicit_private_smtp_sink_without_starttls():
+    config = _valid_prod(
+        ENVIRONMENT="staging",
+        PRODAMUS_DEMO_MODE=True,
+        FRONTEND_URL="https://staging.lucysmirnova.ru",
+        BACKEND_URL="https://api.staging.lucysmirnova.ru",
+        COOKIE_DOMAIN="staging.lucysmirnova.ru",
+        SMTP_HOST="mailpit.railway.internal",
+        SMTP_START_TLS=False,
+        RESEND_API_KEY="",
+        SMTP_USER="sink-user",
+        SMTP_PASSWORD="sink-password",
+    )
+    assert config.SMTP_START_TLS is False
+
+
+@pytest.mark.parametrize("environment", ["development", "test"])
+def test_local_smtp_can_disable_starttls(environment):
+    config = Settings(
+        _env_file=None,
+        ENVIRONMENT=environment,
+        SMTP_HOST="localhost",
+        SMTP_START_TLS=False,
+    )
+    assert config.SMTP_START_TLS is False
+
+
+def test_smtp_starttls_defaults_to_enabled(monkeypatch):
+    monkeypatch.delenv("SMTP_START_TLS", raising=False)
+    assert _valid_prod().SMTP_START_TLS is True

@@ -10,7 +10,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -25,14 +25,16 @@ from app.core.config import settings
 from app.core.database import async_session_maker
 from app.core.rate_limit import limiter
 from app.core.security import get_password_hash
+from app.core.upload_limits import UploadSizeLimitMiddleware
 from app.models.user import User
+from app.services.operations_health_service import operations_snapshot
 
 logger = logging.getLogger(__name__)
 _CORRELATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 
 def _is_production() -> bool:
-    return settings.ENVIRONMENT.lower() == "production"
+    return settings.is_deployed
 
 
 def _cors_allow_origins() -> list[str]:
@@ -205,6 +207,7 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(UploadSizeLimitMiddleware)
 
 if _is_production():
     hosts = [h.strip() for h in (settings.TRUSTED_HOSTS or "").split(",") if h.strip()]
@@ -239,6 +242,21 @@ async def health_check():
         logger.exception("Health check: database unreachable")
         return JSONResponse(status_code=503, content={"status": "db_unreachable"})
     return {"status": "ok"}
+
+
+@app.get("/health/operations", include_in_schema=False)
+async def operations_health(x_monitoring_token: str = Header(default="")):
+    if len(settings.MONITORING_TOKEN) < 32:
+        raise HTTPException(status_code=503, detail="Operational monitoring is not configured")
+    if not secrets.compare_digest(x_monitoring_token.encode(), settings.MONITORING_TOKEN.encode()):
+        raise HTTPException(status_code=401, detail="Invalid monitoring token")
+    try:
+        async with async_session_maker() as session:
+            snapshot = await operations_snapshot(session)
+        return JSONResponse(status_code=200 if snapshot["status"] == "ok" else 503, content=snapshot)
+    except Exception:
+        logger.exception("Operational health check failed")
+        return JSONResponse(status_code=503, content={"status": "unavailable"})
 
 
 # Serve uploaded admin files (course banners, lesson posters, etc.) when

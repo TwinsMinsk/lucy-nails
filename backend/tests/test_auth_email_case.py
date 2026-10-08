@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_password_hash
 from app.models.user import User
-from app.services.email_service import EmailService
+from app.models.outbox import OutboxMessage
 
 
 @pytest.mark.asyncio
@@ -63,24 +63,17 @@ async def test_register_duplicate_is_case_insensitive(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_forgot_password_is_case_insensitive(client: AsyncClient, monkeypatch):
+async def test_forgot_password_is_case_insensitive(client: AsyncClient, db: AsyncSession):
     await client.post(
         "/api/auth/register",
         json={"email": "forgot@example.com", "password": "password123", "offer_accepted": True, "personal_data_consent": True},
     )
 
-    sent_to: list[str] = []
-
-    async def fake_send_password_reset(email: str, reset_url: str) -> None:
-        sent_to.append(email)
-
-    monkeypatch.setattr(EmailService, "send_password_reset", fake_send_password_reset)
-
     r = await client.post("/api/auth/forgot-password", json={"email": "FORGOT@Example.com"})
     assert r.status_code == 200
-    # Reset email must be found and sent to the account, proving the mixed-case
-    # request resolved to the (already lowercase) stored user.
-    assert sent_to == ["forgot@example.com"]
+    messages = (await db.scalars(select(OutboxMessage).where(OutboxMessage.recipient == "forgot@example.com"))).all()
+    assert len(messages) == 2
+    assert all(message.kind == "email_verification" for message in messages)
 
 
 @pytest.mark.asyncio

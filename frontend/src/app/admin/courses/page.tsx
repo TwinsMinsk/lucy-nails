@@ -1,5 +1,6 @@
 "use client"
 
+import { formatApiDate } from "@/lib/format";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -170,14 +171,7 @@ export default function AdminCoursesPage() {
         }
     };
 
-    const formatDate = (dateString: string) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString("ru-RU", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
-        });
-    };
+    const formatDate = formatApiDate;
 
     const handleVideoHealth = async () => {
         setIsCheckingVideos(true);

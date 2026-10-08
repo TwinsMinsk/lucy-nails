@@ -103,7 +103,7 @@ pydantic-core==2.27.2
     # via pydantic
 pydantic-settings==2.7.1
     # via -r backend/requirements.txt
-pyjwt==2.13.0
+pyjwt==2.15.0
     # via -r backend/requirements.txt
 pyotp==2.9.0
     # via -r backend/requirements.txt

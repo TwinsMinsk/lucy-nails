@@ -90,6 +90,7 @@ class VideoPlayResponse(BaseModel):
     video_url: str = Field(..., description="URL для embed-плеера")
     provider: str = Field("kinescope", description="Провайдер видео")
     title: str = Field(..., description="Название урока")
+    expires_in_seconds: int = Field(..., ge=1)
     
     class Config:
         from_attributes = True

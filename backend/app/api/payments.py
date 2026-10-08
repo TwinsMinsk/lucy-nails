@@ -24,6 +24,7 @@ from pydantic import (
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
 from app.core.database import async_session_maker
@@ -158,7 +159,7 @@ async def _get_or_create_user(
     unusable_secret = secrets.token_urlsafe(48)
     user = User(
         email=email,
-        password_hash=get_password_hash(unusable_secret),
+        password_hash=await run_in_threadpool(get_password_hash, unusable_secret),
         phone=phone,
         role="student",
     )
@@ -348,14 +349,15 @@ async def _record_purchase_once(
     webhook_email = _normalize_email(payload.get("customer_email"))
     async with async_session_maker() as db:
         existing_event = await db.scalar(
-            select(PaymentEvent.id).where(PaymentEvent.event_hash == event_data.event_hash)
+            select(PaymentEvent).where(PaymentEvent.event_hash == event_data.event_hash)
         )
         if existing_event is not None:
+            if existing_event.processing_status not in {"processed", "duplicate", "financial_incident"}:
+                raise HTTPException(status_code=422, detail=existing_event.error_detail or "Payment was rejected")
             return webhook_email
 
         payment_event = new_payment_event(event_data, order_id=order_uuid)
         db.add(payment_event)
-        await db.flush()
 
         existing_pay = await db.execute(select(Purchase).where(Purchase.payment_id == payment_key))
         existing_purchase = existing_pay.scalars().first()
@@ -401,7 +403,7 @@ async def _record_purchase_once(
         amount_str: str = str(payload.get("sum", "0")).replace(",", ".")
         try:
             paid_kopecks = int(round(float(amount_str) * 100))
-        except ValueError:
+        except (ValueError, OverflowError):
             paid_kopecks = 0
 
         expected_kopecks = (
@@ -421,6 +423,37 @@ async def _record_purchase_once(
         if currency not in ("rub", "rur"):
             logger.error("Prodamus webhook: unsupported currency=%s", currency)
             raise HTTPException(status_code=422, detail="Unsupported currency")
+
+        if order is not None:
+            original_purchase = await db.scalar(select(Purchase).where(Purchase.order_id == order.id))
+            if original_purchase is not None:
+                if original_purchase.payment_id == payment_key:
+                    payment_event.purchase_id = original_purchase.id
+                    payment_event.processing_status = "duplicate"
+                    payment_event.processed_at = datetime.utcnow()
+                    await db.commit()
+                    return webhook_email
+                incident = await db.scalar(select(PaymentEvent.id).where(
+                    PaymentEvent.provider == "prodamus",
+                    PaymentEvent.external_event_id == event_data.external_event_id,
+                    PaymentEvent.order_id == order.id,
+                    PaymentEvent.processing_status == "financial_incident",
+                ).limit(1))
+                payment_event.purchase_id = original_purchase.id
+                payment_event.processing_status = "duplicate" if incident else "financial_incident"
+                payment_event.error_code = "duplicate_order_payment"
+                payment_event.error_detail = "Additional payment for an already paid order; reconcile with provider"
+                payment_event.processed_at = datetime.utcnow()
+                if incident is None:
+                    incident_key = hashlib.sha256(payment_key.encode("utf-8")).hexdigest()
+                    await enqueue_owner_telegram_alert(
+                        db,
+                        kind="owner_payment_incident",
+                        text=f"⚠️ Повторная оплата заказа {order.id}: {format_rub(paid_kopecks)}. Платёж {payment_key}. Доступ повторно не выдан; требуется сверка и решение о возврате.",
+                        dedupe_key=f"payment:{incident_key}:incident",
+                    )
+                await db.commit()
+                return webhook_email
 
         user, is_new_user = await _get_or_create_user(db, customer_email, customer_phone)
         if is_new_user and order is not None:
@@ -456,7 +489,7 @@ async def _record_purchase_once(
         await db.flush()
         await AccessService.enqueue_support_group_restore(db, entitlement)
         dedupe_hash = hashlib.sha256(payment_key.encode("utf-8")).hexdigest()
-        if is_new_user:
+        if user.email_verified_at is None:
             activation_token = create_account_activation_token(user.id, user.token_version)
             activation_url = (
                 f"{settings.FRONTEND_URL.rstrip('/')}/auth/activate?token={activation_token}"
@@ -484,7 +517,7 @@ async def _record_purchase_once(
                 },
                 dedupe_key=f"payment:{dedupe_hash}:access",
             )
-        if user.telegram_id is not None and settings.TELEGRAM_BOT_TOKEN:
+        if user.email_verified_at is not None and user.telegram_id is not None and settings.TELEGRAM_BOT_TOKEN:
             support_note = ""
             if tariff == "support" and settings.TELEGRAM_SUPPORT_GROUP_INVITE:
                 support_note = (

@@ -9,6 +9,8 @@
 """
 
 from pathlib import Path
+import re
+from urllib.parse import urlparse
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -55,6 +57,7 @@ class Settings(BaseSettings):
     
     # === Redis ===
     REDIS_URL: str = ""
+    MONITORING_TOKEN: str = ""
     
     # === Auth ===
     JWT_SECRET_KEY: str = "your-super-secret-key-change-in-production"
@@ -101,6 +104,7 @@ class Settings(BaseSettings):
     # === SMTP (Email) ===
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
+    SMTP_START_TLS: bool = True
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM_NAME: str = "Lucy Nails Academy"
@@ -164,10 +168,14 @@ class Settings(BaseSettings):
     UPLOAD_STORAGE_DIR: str = ""
     UPLOAD_PUBLIC_BASE_URL: str = ""
 
+    @property
+    def is_deployed(self) -> bool:
+        return self.ENVIRONMENT.lower() in {"production", "staging"}
+
     @model_validator(mode="after")
     def validate_production_safety(self):
         """Fail fast when production starts with unsafe defaults."""
-        if self.ENVIRONMENT.lower() != "production":
+        if not self.is_deployed:
             return self
 
         errors: list[str] = []
@@ -201,11 +209,30 @@ class Settings(BaseSettings):
             errors.append("PRODAMUS_SECRET_KEY is required in production")
         if not self.PRODAMUS_SHOP_ID:
             errors.append("PRODAMUS_SHOP_ID is required in production")
-        if self.PRODAMUS_DEMO_MODE:
+        if self.PRODAMUS_DEMO_MODE and self.ENVIRONMENT.lower() == "production":
             errors.append(
                 "PRODAMUS_DEMO_MODE must be false in production "
                 "(demo links collect no money and re-enable the demo-suffix signature)"
             )
+        if self.ENVIRONMENT.lower() == "staging":
+            if not self.PRODAMUS_DEMO_MODE:
+                errors.append("PRODAMUS_DEMO_MODE must be true in staging")
+            domain = self.COOKIE_DOMAIN.lower().lstrip(".")
+            hosts = [urlparse(value).hostname or "" for value in (self.FRONTEND_URL, self.BACKEND_URL)]
+            if "staging" not in domain.split(".") or not all(host == domain or host.endswith(f".{domain}") for host in hosts):
+                errors.append("Staging URLs and COOKIE_DOMAIN must use an isolated staging subdomain")
+        if any(urlparse(value).scheme != "https" for value in (self.FRONTEND_URL, self.BACKEND_URL)):
+            errors.append("Deployed FRONTEND_URL and BACKEND_URL must use HTTPS")
+        if not self.SMTP_START_TLS:
+            if self.ENVIRONMENT.lower() == "production":
+                errors.append("SMTP_START_TLS must be true in production")
+            elif not re.fullmatch(
+                r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+railway\.internal",
+                self.SMTP_HOST.lower(),
+            ):
+                errors.append(
+                    "SMTP_START_TLS=false in staging requires a private *.railway.internal SMTP_HOST"
+                )
         if self.SMTP_REQUIRED_FOR_PAYMENT_EMAIL:
             has_resend = bool(self.RESEND_API_KEY)
             has_smtp = bool(self.SMTP_USER and self.SMTP_PASSWORD)

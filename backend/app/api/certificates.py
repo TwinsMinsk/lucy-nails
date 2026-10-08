@@ -23,6 +23,7 @@ from app.schemas.certificate import (
 )
 from app.services.certificate_service import (
     CertificateService,
+    CertificateRevokedError,
     CertificateStorageNotConfiguredError,
     CourseNotCompletedError,
     CourseNotFoundError,
@@ -54,6 +55,8 @@ async def claim_certificate(
         )
     except CourseNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
+    except CertificateRevokedError:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Certificate revoked")
     except NoCourseAccessError:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Course access required")
     except CourseNotCompletedError:

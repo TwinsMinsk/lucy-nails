@@ -102,10 +102,20 @@ class GalleryReorderItem(BaseModel):
     order_index: int
 
 
+class LandingCourseSnapshot(BaseModel):
+    id: UUID
+    title: str
+    price_self: int
+    access_days: int
+    lessons_count: int
+    total_duration: int
+
+
 class LandingPayload(BaseModel):
     """Full landing payload returned by GET /api/landing for SSR."""
 
     course_id: UUID | None = None
+    course: LandingCourseSnapshot | None = None
     hero: LandingHeroResponse
     modules: list[LandingModuleResponse]
     gallery: list[GalleryItemResponse]
