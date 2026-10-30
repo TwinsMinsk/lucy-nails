@@ -428,14 +428,14 @@ async def test_course_selector_rejects_users_read_without_access_manage(client, 
 
 
 @pytest.mark.asyncio
-async def test_analyst_orders_search_pages_over_200_without_refund_permission(client, db):
+async def test_analyst_orders_page_over_200_without_refund_permission(client, db):
     headers = await _staff_headers(client, db, email="paged-analyst@example.com", role_name="analyst", permissions=["commerce.read"])
     course = Course(title="Paged course", price_self=5000, price_support=10000)
     db.add(course)
     await db.flush()
     db.add_all([Order(course_id=course.id, course_title=course.title, tariff="self", customer_email=f"paged-{index}@example.com", amount_kopecks=500000, currency="RUB", access_days=30, status="pending", status_token_hash=f"paged-order-{index}") for index in range(201)])
     await db.commit()
-    page = await client.get("/api/admin/orders?search=paged-&status=pending&limit=200&offset=200", headers=headers)
+    page = await client.get("/api/admin/orders?status=pending&limit=200&offset=200", headers=headers)
     assert page.status_code == 200, page.text
     assert page.json()["total"] == 201
     assert len(page.json()["items"]) == 1
@@ -443,6 +443,27 @@ async def test_analyst_orders_search_pages_over_200_without_refund_permission(cl
     assert (await client.get("/api/admin/reconciliation", headers=headers)).status_code == 200
     assert (await client.get("/api/admin/refunds", headers=headers)).status_code == 403
     assert (await client.post("/api/admin/refunds", json={"purchase_id": str(uuid4()), "amount_kopecks": 1, "reason": "Forbidden refund"}, headers=headers)).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_order_search_without_pii_read_matches_only_full_email(client, db):
+    headers = await _staff_headers(client, db, email="oracle-analyst@example.com", role_name="analyst", permissions=["commerce.read"])
+    course = Course(title="Oracle course", price_self=5000, price_support=10000)
+    db.add(course)
+    await db.flush()
+    db.add_all([Order(course_id=course.id, course_title=course.title, tariff="self", customer_email=email, amount_kopecks=500000, currency="RUB", access_days=30, status="pending", status_token_hash=f"oracle-order-{email}") for email in ["private.buyer@example.com", "other.buyer@example.com"]])
+    await db.commit()
+
+    # Partial patterns would let a masked-email reader recover hidden addresses character by character.
+    for search in ["private", "e.buyer@example.com", "p%@example.com", "p_ivate.buyer@example.com"]:
+        response = await client.get("/api/admin/orders", params={"search": search}, headers=headers)
+        assert response.status_code == 200, response.text
+        assert response.json()["total"] == 0, search
+
+    exact = await client.get("/api/admin/orders", params={"search": " Private.Buyer@Example.com "}, headers=headers)
+    assert exact.status_code == 200, exact.text
+    assert exact.json()["total"] == 1
+    assert exact.json()["items"][0]["customer_email"] == "p***@example.com"
 
 
 @pytest.mark.asyncio
