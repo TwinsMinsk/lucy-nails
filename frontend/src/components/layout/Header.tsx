@@ -127,7 +127,7 @@ export function Header() {
                                     <DropdownMenuLabel className="font-normal">
                                         <div className="flex flex-col space-y-1">
                                             <p className="text-sm font-medium leading-none">{user.role === 'admin' ? 'Администратор' : 'Студент'}</p>
-                                            <p className="text-xs leading-none text-muted-foreground">
+                                            <p className="ym-hide-content text-xs leading-none text-muted-foreground">
                                                 {user.email}
                                             </p>
                                         </div>
@@ -212,7 +212,7 @@ export function Header() {
                                                     </Avatar>
                                                     <div className="flex flex-col">
                                                         <span className="font-medium text-sm text-black">{user.role === 'admin' ? 'Админ' : 'Студент'}</span>
-                                                        <span className="text-xs text-muted-foreground">{user.email}</span>
+                                                        <span className="ym-hide-content text-xs text-muted-foreground">{user.email}</span>
                                                     </div>
                                                 </div>
                                                 {user.role === 'admin' && (

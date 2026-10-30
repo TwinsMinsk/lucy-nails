@@ -27,6 +27,7 @@ export function PaymentButton({ courseId, tariff, children, className, location 
   const handlePayment = async () => {
     if (!effectiveCourseId) return;
     void trackPublicEvent("cta_click", { tariff, location }, effectiveCourseId);
+    sendYandexGoal("checkout_open");
     const hasSession = typeof document !== "undefined" && document.cookie.includes("auth_session=1");
 
     if (!hasSession) {

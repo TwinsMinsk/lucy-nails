@@ -25,7 +25,7 @@
 | `(public)/` | Route group без auth: `auth/login` (пароль, MFA-код, настройка MFA с QR и резервными кодами, шаг подтверждения email, `?next=` через `safeNextPath`), `auth/register` (согласия `PersonalDataConsent`), `auth/activate` (первый пароль по ссылке из письма), `auth/forgot-password`, `auth/reset-password`, `courses/[id]` (публичная страница курса), `certificate/[number]` (публичная проверка сертификата, свой `not-found.tsx`) |
 | `(protected)/` | Route group за гвардом `src/proxy.ts`: `dashboard` (мои курсы, продление истёкшего доступа, сертификаты, чат куратора для тарифа `support`), `profile` (смена пароля, выход), `courses/[id]/lessons/[lessonId]` (просмотр урока: `VideoPlayer`, конспект через `sanitizeHtml`, прогресс, сертификат) |
 | `admin/` | Панель администратора, см. раздел ниже |
-| `payment-success/` | Страница возврата после оплаты Prodamus: `payment-status.tsx` опрашивает `/payments/orders/{order_id}/status?token=` (каждые 3 с, до 20 попыток), при `paid` убирает токен из URL и отправляет цель Метрики `purchase` |
+| `payment-success/` | Страница возврата после оплаты Prodamus: `payment-status.tsx` опрашивает `/payments/orders/{order_id}/status?token=` (каждые 3 с, до 20 попыток), при `paid` убирает токен из URL и отправляет цель Метрики `purchase` с суммой, валютой и курсом из ответа статуса (снимок заказа) |
 | `privacy/`, `terms/` | Статические юридические страницы |
 
 ### `admin/`

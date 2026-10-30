@@ -1,5 +1,6 @@
 export const CONSENT_STORAGE_KEY = "lucy_consent_v1"
-export const CONSENT_POLICY_VERSION = "2026-08-26"
+// Bumped when the analytics scope changes, so earlier consents are asked again.
+export const CONSENT_POLICY_VERSION = "2026-10-30"
 
 const FIRST_TOUCH_KEY = "lucy_attribution_first"
 const LAST_TOUCH_KEY = "lucy_attribution_last"

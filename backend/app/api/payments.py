@@ -925,7 +925,7 @@ async def get_payment_link(
 
 
 @router.get("/orders/{order_id}/status")
-async def get_order_status(order_id: str, token: str) -> dict[str, str]:
+async def get_order_status(order_id: str, token: str) -> dict[str, str | int | float]:
     order_uuid = _parse_persisted_order_id(order_id)
     if order_uuid is None:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -935,4 +935,13 @@ async def get_order_status(order_id: str, token: str) -> dict[str, str]:
     supplied_hash = _hash_status_token(token)
     if order is None or not hmac.compare_digest(order.status_token_hash, supplied_hash):
         raise HTTPException(status_code=404, detail="Order not found")
-    return {"status": order.status}
+    # Order snapshot, not the current course price: the success page reports it
+    # to Metrika as purchase revenue.
+    return {
+        "status": order.status,
+        "amount": order.amount_kopecks / 100,
+        "currency": order.currency,
+        "course_id": str(order.course_id),
+        "course_title": order.course_title,
+        "tariff": order.tariff,
+    }
