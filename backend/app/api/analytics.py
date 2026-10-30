@@ -13,6 +13,7 @@ from app.core.database import get_db
 from app.core.rate_limit import limiter
 from app.services.analytics_service import (
     AnalyticsService,
+    clean_attribution_value,
     contains_sensitive_analytics_value,
 )
 
@@ -81,12 +82,11 @@ class PublicAnalyticsEvent(BaseModel):
         "utm_campaign",
         "utm_content",
         "utm_term",
+        mode="before",
     )
     @classmethod
-    def reject_pii_attribution(cls, value: str | None) -> str | None:
-        if contains_sensitive_analytics_value(value):
-            raise ValueError("PII is not allowed in analytics attribution")
-        return value
+    def drop_unusable_attribution(cls, value: Any) -> str | None:
+        return clean_attribution_value(value)
 
     @model_validator(mode="after")
     def validate_event_time(self):

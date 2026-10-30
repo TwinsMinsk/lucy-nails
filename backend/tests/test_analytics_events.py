@@ -1,5 +1,6 @@
 """First-party analytics contracts: deduplication, attribution and PII safety."""
 
+from datetime import datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -7,9 +8,114 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.security import get_password_hash
 from app.models.analytics_event import AnalyticsEvent
 from app.models.course import Course
 from app.models.order import Order
+from app.models.user import User
+from app.services.analytics_service import (
+    AnalyticsService,
+    clean_attribution_value,
+    contains_sensitive_analytics_value,
+)
+
+
+CONTACT_VALUES = [
+    "+79991234567",
+    "+7 999 123-45-67",
+    "8 (999) 123-45-67",
+    "8-999-123-45-67",
+    "79991234567",
+    "89991234567",
+    "9991234567",
+    "375291234567",
+    "380501234567",
+    "37491234567",
+    "+4915112345678",
+    "4915112345678",
+    "lead_79991234567",
+    "student@example.com",
+    "phone=123",
+]
+
+
+async def _published_course(db: AsyncSession) -> Course:
+    course = Course(
+        title="Attributed course",
+        price_self=12000,
+        price_support=18000,
+        is_published=True,
+        access_days=30,
+    )
+    db.add(course)
+    await db.commit()
+    await db.refresh(course)
+    return course
+
+
+async def _guest_checkout(client: AsyncClient, course: Course, attribution):
+    return await client.post(
+        "/api/payments/guest-link",
+        json={
+            "course_id": str(course.id),
+            "tariff": "self",
+            "customer_email": "attributed@example.com",
+            "offer_accepted": True,
+            "personal_data_consent": True,
+            "attribution": attribution,
+        },
+    )
+
+
+async def _order_events(db: AsyncSession, order_id: UUID) -> list[AnalyticsEvent]:
+    return list(
+        (await db.execute(select(AnalyticsEvent).where(AnalyticsEvent.order_id == order_id)))
+        .scalars()
+        .all()
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "summer_sale",
+        "123456789",
+        "1234567890",
+        "12345678901",
+        "ad_12345678901",
+        "12345678901|5123456789|123456789",
+        "12345678901234567",
+        "7123456789012345678",
+        "550e8400-e29b-41d4-a716-446655440000",
+    ],
+)
+def test_numeric_identifiers_are_not_contact_data(value: str):
+    assert contains_sensitive_analytics_value(value) is False
+
+
+@pytest.mark.parametrize("value", [*CONTACT_VALUES, "4111111111111111"])
+def test_contact_data_is_detected(value: str):
+    assert contains_sensitive_analytics_value(value) is True
+
+
+@pytest.mark.parametrize(
+    "value",
+    [None, "", "   ", 123, "x" * 256, "abc\x00def", "bad\ud800", *CONTACT_VALUES],
+)
+def test_unusable_attribution_value_is_dropped(value):
+    assert clean_attribution_value(value) is None
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (" 12345678901 ", "12345678901"),
+        ("курс маникюра 2026", "курс маникюра 2026"),
+        ("x" * 255, "x" * 255),
+    ],
+)
+def test_usable_attribution_value_is_kept(value: str, expected: str):
+    assert clean_attribution_value(value) == expected
 
 
 @pytest.mark.asyncio
@@ -67,16 +173,6 @@ async def test_public_event_is_deduplicated_and_contains_no_pii(
     )
     assert disguised_pii.status_code == 422, disguised_pii.text
 
-    pii_utm = await client.post(
-        "/api/analytics/events",
-        json={
-            **payload,
-            "event_id": str(uuid4()),
-            "utm_campaign": "+7 999 123-45-67",
-        },
-    )
-    assert pii_utm.status_code == 422, pii_utm.text
-
     unknown_property = await client.post(
         "/api/analytics/events",
         json={
@@ -96,6 +192,108 @@ async def test_public_event_is_deduplicated_and_contains_no_pii(
         },
     )
     assert pii_anonymous_id.status_code == 422, pii_anonymous_id.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", CONTACT_VALUES)
+async def test_public_event_drops_contact_data_from_utm(
+    client: AsyncClient, db: AsyncSession, value: str
+):
+    event_id = str(uuid4())
+
+    response = await client.post(
+        "/api/analytics/events",
+        json={
+            "event_id": event_id,
+            "event_name": "landing_view",
+            "source": "web",
+            "anonymous_id": str(uuid4()),
+            "utm_source": "yandex",
+            "utm_term": value,
+            "properties": {"path": "/"},
+        },
+    )
+
+    assert response.status_code == 202, response.text
+    event = await db.scalar(
+        select(AnalyticsEvent).where(AnalyticsEvent.event_id == event_id)
+    )
+    assert event.utm_source == "yandex"
+    assert event.utm_term is None
+
+
+@pytest.mark.asyncio
+async def test_public_event_keeps_numeric_ad_id(client: AsyncClient, db: AsyncSession):
+    event_id = str(uuid4())
+
+    response = await client.post(
+        "/api/analytics/events",
+        json={
+            "event_id": event_id,
+            "event_name": "landing_view",
+            "source": "web",
+            "anonymous_id": str(uuid4()),
+            "utm_content": "12345678901",
+            "properties": {"path": "/"},
+        },
+    )
+
+    assert response.status_code == 202, response.text
+    event = await db.scalar(
+        select(AnalyticsEvent).where(AnalyticsEvent.event_id == event_id)
+    )
+    assert event.utm_content == "12345678901"
+
+
+@pytest.mark.asyncio
+async def test_landing_view_accepts_course_path_with_digit_heavy_uuid(
+    client: AsyncClient,
+):
+    response = await client.post(
+        "/api/analytics/events",
+        json={
+            "event_id": str(uuid4()),
+            "event_name": "landing_view",
+            "source": "web",
+            "anonymous_id": str(uuid4()),
+            "properties": {"path": "/courses/550e8400-e29b-41d4-a716-446655440000"},
+        },
+    )
+    assert response.status_code == 202, response.text
+
+
+@pytest.mark.asyncio
+async def test_record_event_never_stores_contact_data_in_utm(db: AsyncSession):
+    event_id = str(uuid4())
+
+    created = await AnalyticsService.record_event(
+        db,
+        event_id=event_id,
+        event_name="purchase_confirmed",
+        source="server",
+        utm_source="yandex",
+        utm_content="+79991234567",
+    )
+    await db.commit()
+
+    assert created is True
+    event = await db.scalar(
+        select(AnalyticsEvent).where(AnalyticsEvent.event_id == event_id)
+    )
+    assert event.utm_source == "yandex"
+    assert event.utm_content is None
+
+
+@pytest.mark.asyncio
+async def test_record_event_still_rejects_contact_data_in_properties(db: AsyncSession):
+    with pytest.raises(ValueError):
+        await AnalyticsService.record_event(
+            db,
+            event_id=str(uuid4()),
+            event_name="purchase_confirmed",
+            source="server",
+            properties={"label": "+79991234567"},
+        )
 
 
 @pytest.mark.asyncio
@@ -195,18 +393,154 @@ async def test_checkout_snapshots_first_and_last_touch_and_emits_server_events(
     ]
     assert all(event.anonymous_id == anonymous_id for event in events)
 
-    pii_identifier = await client.post(
-        "/api/payments/guest-link",
+
+@pytest.mark.asyncio
+async def test_checkout_keeps_numeric_ad_ids_in_attribution(
+    client: AsyncClient, db: AsyncSession
+):
+    course = await _published_course(db)
+
+    response = await _guest_checkout(
+        client,
+        course,
+        {
+            "anonymous_id": str(uuid4()),
+            "first_touch": {"utm_source": "yandex", "utm_content": "12345678901"},
+            "last_touch": {"utm_source": "yandex", "utm_term": "1234567890"},
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    order_id = UUID(response.json()["order_id"].split("|", 1)[1])
+    order = await db.get(Order, order_id)
+    assert order.first_utm_content == "12345678901"
+    assert order.last_utm_term == "1234567890"
+    events = await _order_events(db, order_id)
+    assert len(events) == 2
+    assert all(event.utm_content == "12345678901" for event in events)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", CONTACT_VALUES)
+async def test_checkout_drops_contact_data_from_attribution(
+    client: AsyncClient, db: AsyncSession, value: str
+):
+    course = await _published_course(db)
+    touch = {"utm_source": "yandex", "utm_content": value, "utm_term": value}
+
+    response = await _guest_checkout(
+        client,
+        course,
+        {"anonymous_id": str(uuid4()), "first_touch": touch, "last_touch": touch},
+    )
+
+    assert response.status_code == 200, response.text
+    order_id = UUID(response.json()["order_id"].split("|", 1)[1])
+    order = await db.get(Order, order_id)
+    assert order.first_utm_source == order.last_utm_source == "yandex"
+    assert order.first_utm_content is None
+    assert order.first_utm_term is None
+    assert order.last_utm_content is None
+    assert order.last_utm_term is None
+    events = await _order_events(db, order_id)
+    assert len(events) == 2
+    assert all(event.utm_source == "yandex" for event in events)
+    assert all(event.utm_content is None for event in events)
+    assert all(event.utm_term is None for event in events)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "attribution",
+    [
+        "garbage",
+        ["garbage"],
+        {"anonymous_id": "1730000000000-abc123def"},
+        {"anonymous_id": "tracking@example.com"},
+        {"first_touch": "garbage"},
+        {"last_touch": 123},
+        {"first_touch": {"utm_source": 123}},
+        {"first_touch": {"utm_content": "x" * 256}},
+        {"last_touch": {"utm_content": "abc\x00def"}},
+    ],
+)
+async def test_malformed_attribution_does_not_block_checkout(
+    client: AsyncClient, db: AsyncSession, attribution
+):
+    course = await _published_course(db)
+
+    response = await _guest_checkout(client, course, attribution)
+
+    assert response.status_code == 200, response.text
+    order_id = UUID(response.json()["order_id"].split("|", 1)[1])
+    order = await db.get(Order, order_id)
+    assert order.first_utm_source is None
+    assert order.first_utm_content is None
+    assert order.last_utm_content is None
+    events = await _order_events(db, order_id)
+    assert all(event.anonymous_id is None for event in events)
+
+
+@pytest.mark.asyncio
+async def test_malformed_anonymous_id_keeps_the_rest_of_attribution(
+    client: AsyncClient, db: AsyncSession
+):
+    course = await _published_course(db)
+
+    response = await _guest_checkout(
+        client,
+        course,
+        {
+            "anonymous_id": "1730000000000-abc123def",
+            "first_touch": {"utm_source": "instagram"},
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    order_id = UUID(response.json()["order_id"].split("|", 1)[1])
+    assert (await db.get(Order, order_id)).first_utm_source == "instagram"
+
+
+@pytest.mark.asyncio
+async def test_authenticated_checkout_accepts_numeric_and_drops_contact_utm(
+    client: AsyncClient, db: AsyncSession
+):
+    course = await _published_course(db)
+    db.add(
+        User(
+            email="attributed-user@example.com",
+            email_verified_at=datetime.utcnow(),
+            password_hash=get_password_hash("password123"),
+            role="student",
+        )
+    )
+    await db.commit()
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "attributed-user@example.com", "password": "password123"},
+    )
+    client.cookies.clear()
+
+    response = await client.post(
+        "/api/payments/link",
         json={
             "course_id": str(course.id),
             "tariff": "self",
-            "customer_email": "safe-customer@example.com",
-            "offer_accepted": True,
-            "personal_data_consent": True,
-            "attribution": {"anonymous_id": "tracking@example.com"},
+            "attribution": {
+                "first_touch": {
+                    "utm_content": "12345678901",
+                    "utm_term": "+79991234567",
+                },
+            },
         },
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
     )
-    assert pii_identifier.status_code == 422, pii_identifier.text
+
+    assert response.status_code == 200, response.text
+    order_id = UUID(response.json()["order_id"].split("|", 1)[1])
+    order = await db.get(Order, order_id)
+    assert order.first_utm_content == "12345678901"
+    assert order.first_utm_term is None
 
 
 @pytest.mark.asyncio

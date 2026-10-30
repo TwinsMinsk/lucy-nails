@@ -8,7 +8,7 @@ import json
 import logging
 import secrets
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -19,6 +19,8 @@ from pydantic import (
     Field,
     TypeAdapter,
     ValidationError,
+    ValidatorFunctionWrapHandler,
+    WrapValidator,
     field_validator,
 )
 from sqlalchemy import func, select
@@ -52,7 +54,7 @@ from app.services.payment_event_service import (
     record_terminal_payment_event,
 )
 from app.services.analytics_service import AnalyticsService
-from app.services.analytics_service import contains_sensitive_analytics_value
+from app.services.analytics_service import clean_attribution_value
 
 logger = logging.getLogger(__name__)
 
@@ -805,18 +807,27 @@ class AttributionTouch(BaseModel):
     utm_content: str | None = Field(default=None, max_length=255)
     utm_term: str | None = Field(default=None, max_length=255)
 
-    @field_validator("*", mode="after")
+    @field_validator("*", mode="before")
     @classmethod
-    def reject_personal_attribution(cls, value: str | None) -> str | None:
-        if contains_sensitive_analytics_value(value):
-            raise ValueError("Attribution must not contain personal data")
-        return value
+    def drop_unusable_attribution(cls, value: Any) -> str | None:
+        return clean_attribution_value(value)
+
+
+def _none_if_invalid(value: Any, handler: ValidatorFunctionWrapHandler) -> Any:
+    """A malformed part of optional attribution must not block a checkout."""
+    try:
+        return handler(value)
+    except ValidationError:
+        return None
 
 
 class CheckoutAttribution(BaseModel):
-    anonymous_id: UUID | None = None
-    first_touch: AttributionTouch | None = None
-    last_touch: AttributionTouch | None = None
+    anonymous_id: Annotated[UUID | None, WrapValidator(_none_if_invalid)] = None
+    first_touch: Annotated[AttributionTouch | None, WrapValidator(_none_if_invalid)] = None
+    last_touch: Annotated[AttributionTouch | None, WrapValidator(_none_if_invalid)] = None
+
+
+OptionalAttribution = Annotated[CheckoutAttribution | None, WrapValidator(_none_if_invalid)]
 
 
 class PaymentLinkRequest(BaseModel):
@@ -824,7 +835,7 @@ class PaymentLinkRequest(BaseModel):
     tariff: str  # only SELLABLE_TARIFFS; others get 400 "Invalid tariff"
     customer_email: str | None = None
     customer_phone: str | None = None
-    attribution: CheckoutAttribution | None = None
+    attribution: OptionalAttribution = None
 
 
 class GuestPaymentLinkRequest(BaseModel):
@@ -832,7 +843,7 @@ class GuestPaymentLinkRequest(BaseModel):
     tariff: str  # only SELLABLE_TARIFFS; others get 400 "Invalid tariff"
     customer_email: EmailStr
     customer_phone: str | None = None
-    attribution: CheckoutAttribution | None = None
+    attribution: OptionalAttribution = None
     # Both must be true; checked in the endpoint to return a readable Russian 422.
     offer_accepted: bool = False
     personal_data_consent: bool = False

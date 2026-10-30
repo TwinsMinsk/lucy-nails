@@ -15,8 +15,26 @@ EMAIL_PATTERN = re.compile(
     r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b",
     re.IGNORECASE,
 )
-PHONE_PATTERN = re.compile(r"(?:\+?\d[\s().-]*){10,}")
+# 10+ digits; a "+" or separators mean the value was written as a phone number.
+PHONE_CANDIDATE_PATTERN = re.compile(r"\+?\d(?:[\s().-]*\+?\d){9,}")
+# Ad systems put numeric IDs into UTM labels, so a bare digit run counts as a phone
+# only if it can be one for our buyers: 7/8/9 or 37 first (RU, KZ, BY, Baltics,
+# Caucasus) or 12-16 digits (a full international number, 15 at most, or a bank card).
+BARE_PHONE_PATTERN = re.compile(r"[789]\d{9,10}|37\d{8,9}|\d{12,16}")
+UUID_PATTERN = re.compile(
+    r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
+    re.IGNORECASE,
+)
 SENSITIVE_VALUE_FRAGMENTS = ("email=", "phone=", "token=", "password=")
+ATTRIBUTION_MAX_LENGTH = 255
+
+
+def _contains_phone(text: str) -> bool:
+    for match in PHONE_CANDIDATE_PATTERN.finditer(UUID_PATTERN.sub(" ", text)):
+        candidate = match.group()
+        if not candidate.isdigit() or BARE_PHONE_PATTERN.fullmatch(candidate):
+            return True
+    return False
 
 
 def contains_sensitive_analytics_value(value: Any) -> bool:
@@ -35,9 +53,28 @@ def contains_sensitive_analytics_value(value: Any) -> bool:
     lowered = normalized.lower()
     return bool(
         EMAIL_PATTERN.search(normalized)
-        or PHONE_PATTERN.search(normalized)
+        or _contains_phone(normalized)
         or any(fragment in lowered for fragment in SENSITIVE_VALUE_FRAGMENTS)
     )
+
+
+def clean_attribution_value(value: Any) -> str | None:
+    """Return a UTM label that is safe to store, or None to drop it.
+
+    Attribution is optional marketing data: it must never block a payment, so
+    unusable values are dropped instead of being rejected.
+    """
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    if (
+        not cleaned
+        or len(cleaned) > ATTRIBUTION_MAX_LENGTH
+        or not cleaned.isprintable()
+        or contains_sensitive_analytics_value(cleaned)
+    ):
+        return None
+    return cleaned
 
 
 class AnalyticsService:
@@ -85,15 +122,7 @@ class AnalyticsService:
                 normalized_anonymous_id = str(uuid.UUID(str(anonymous_id)))
             except (ValueError, AttributeError) as error:
                 raise ValueError("Analytics anonymous_id must be a UUID") from error
-        privacy_payload = {
-            "utm_source": utm_source,
-            "utm_medium": utm_medium,
-            "utm_campaign": utm_campaign,
-            "utm_content": utm_content,
-            "utm_term": utm_term,
-            "properties": properties or {},
-        }
-        if contains_sensitive_analytics_value(privacy_payload):
+        if contains_sensitive_analytics_value(properties or {}):
             raise ValueError(
                 "Analytics events must not contain personal or secret data"
             )
@@ -110,11 +139,11 @@ class AnalyticsService:
                 order_id=order_id,
                 course_id=course_id,
                 lesson_id=lesson_id,
-                utm_source=utm_source,
-                utm_medium=utm_medium,
-                utm_campaign=utm_campaign,
-                utm_content=utm_content,
-                utm_term=utm_term,
+                utm_source=clean_attribution_value(utm_source),
+                utm_medium=clean_attribution_value(utm_medium),
+                utm_campaign=clean_attribution_value(utm_campaign),
+                utm_content=clean_attribution_value(utm_content),
+                utm_term=clean_attribution_value(utm_term),
                 properties=properties or {},
                 created_at=datetime.utcnow(),
             )
