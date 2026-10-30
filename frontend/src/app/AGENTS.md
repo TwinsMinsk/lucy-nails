@@ -12,17 +12,17 @@
 | File | Description |
 |------|-------------|
 | `layout.tsx` | Root layout: шрифты через `next/font/google`, `Header`/`Footer` вокруг `children`, глобальные `<Metadata>` (title template `%s — Lucy Nails Academy`, OpenGraph/Twitter card, иконка `/icon.svg`), `AnalyticsBootstrap`, `ConsentBanner`, `<Toaster />` (sonner) |
-| `page.tsx` | Лендинг (`/`): hero, программа (`ProgramSection`), галерея (`NailsGallery`), тариф (`PaymentButton`). Контент, цена, срок доступа и `courseId` — из `getLandingContent()` (поле `course` в `LandingPayload`), модули — `getPublicCourseModules()` (ошибка → `null`). Без опубликованного курса цена не показывается ("Продажи пока недоступны"), оплата отключена. `generateMetadata` берёт title/description из hero |
+| `page.tsx` | Лендинг (`/`): hero, программа (`ProgramSection`), галерея (`NailsGallery`), тариф (`PaymentButton`). Контент, цена, срок доступа и `courseId` — из `getLandingContent()` (поле `course` в `LandingPayload`), модули — `getPublicCourseModules()` (ошибка → `null`). Без опубликованного курса цена не показывается ("Продажи пока недоступны"), оплата отключена. `generateMetadata`: title и description для поиска — `HOME_TITLE`/`HOME_DESCRIPTION` из `lib/seo.ts`, OpenGraph и Twitter — из hero. JSON-LD (`Organization`, `Person`, `Course` с ценой из `course`) рендерит `components/seo/JsonLd.tsx` |
 | `globals.css` | Tailwind v4 (`@import "tailwindcss"`), typography-плагин, кастомные CSS-переменные темы (`--primary`, `--surface`, `--text-primary` и т.д. в oklch), кастомный `@utility container` (Tailwind v4 убрал авто-центрирование — возвращено вручную) |
 | `error.tsx`, `global-error.tsx`, `not-found.tsx` | Граница ошибок, граница ошибок корневого layout (рендерит свои `<html>`/`<body>`), страница 404 |
 | `robots.ts` | `MetadataRoute.Robots`: disallow `/admin`, `/dashboard`, `/profile`, `/courses/*/lessons/*`; ссылка на `sitemap.xml` |
-| `sitemap.ts` | `MetadataRoute.Sitemap`: статичные `/`, `/privacy`, `/terms` + динамические `/courses/:id` из `getPublishedCourses()` (fallback на статичные при ошибке API) |
+| `sitemap.ts` | `MetadataRoute.Sitemap`: статичные `/`, `/privacy`, `/terms` + динамические `/courses/:id` из `getPublishedCourses()`, кроме курса лендинга (у него canonical `/`) (fallback на статичные при ошибке API) |
 
 ## Subdirectories
 
 | Directory | Purpose |
 |-----------|---------|
-| `(public)/` | Route group без auth: `auth/login` (пароль, MFA-код, настройка MFA с QR и резервными кодами, шаг подтверждения email, `?next=` через `safeNextPath`), `auth/register` (согласия `PersonalDataConsent`), `auth/activate` (первый пароль по ссылке из письма), `auth/forgot-password`, `auth/reset-password`, `courses/[id]` (публичная страница курса), `certificate/[number]` (публичная проверка сертификата, свой `not-found.tsx`) |
+| `(public)/` | Route group без auth: `auth/login` (пароль, MFA-код, настройка MFA с QR и резервными кодами, шаг подтверждения email, `?next=` через `safeNextPath`), `auth/register` (согласия `PersonalDataConsent`), `auth/activate` (первый пароль по ссылке из письма), `auth/forgot-password`, `auth/reset-password` (общий `auth/layout.tsx` задаёт title и `noindex`: сами страницы клиентские и `metadata` экспортировать не могут), `courses/[id]` (публичная страница курса; у курса лендинга canonical `/`), `certificate/[number]` (публичная проверка сертификата, свой `not-found.tsx`) |
 | `(protected)/` | Route group за гвардом `src/proxy.ts`: `dashboard` (мои курсы, продление истёкшего доступа, сертификаты, чат куратора для тарифа `support`), `profile` (смена пароля, выход), `courses/[id]/lessons/[lessonId]` (просмотр урока: `VideoPlayer`, конспект через `sanitizeHtml`, прогресс, сертификат) |
 | `admin/` | Панель администратора, см. раздел ниже |
 | `payment-success/` | Страница возврата после оплаты Prodamus: `payment-status.tsx` опрашивает `/payments/orders/{order_id}/status?token=` (каждые 3 с, до 20 попыток), при `paid` убирает токен из URL и отправляет цель Метрики `purchase` |
@@ -65,7 +65,7 @@ Unit-тесты рядом с кодом: `home.test.tsx` (метаданные,
 
 ### Common Patterns
 
-- Метаданные страницы задаются через `export const metadata: Metadata` (статические) или `generateMetadata` (динамические: лендинг, `courses/[id]`, `certificate/[number]`). Суффикс сайта добавляет title template из `layout.tsx`.
+- Метаданные страницы задаются через `export const metadata: Metadata` (статические) или `generateMetadata` (динамические: лендинг, `courses/[id]`, `certificate/[number]`). Суффикс сайта добавляет title template из `layout.tsx`; к `page.tsx` того же сегмента (лендинг) шаблон не применяется. Next.js заменяет `openGraph` и `twitter` родителя целиком, поэтому страница со своим `openGraph` разворачивает `baseOpenGraph` из `lib/seo.ts`.
 - Динамические `params` — `Promise`: `await params` на сервере, `use(params)` в клиентском компоненте (страница урока).
 - Данные: `getLandingPayload` и `getPublishedCourses` — `next: { revalidate: 120 }` (ISR); `getPublicCourse`/`getPublicCourseModules` — `apiFetch` без кэша; `verifyCertificate` — `cache: "no-store"`; приватные — через `apiFetch` с cookie-сессией.
 - Курс/уроки: canonical источник структуры — `ModuleResponse`/`LessonBriefResponse` из `src/lib/api.ts`; лендинг-копирайт мержится поверх через `src/lib/landing/loader.ts`.

@@ -10,24 +10,37 @@ import { getPublicCourse, getPublicCourseModules, CourseResponse, ModuleResponse
 import { notFound } from "next/navigation";
 import { CoursePaymentCTA } from "@/components/course/CoursePaymentCTA";
 import { landingCourse } from "@/lib/landing/course-content";
+import { getLandingContent } from "@/lib/landing/loader";
 import { formatCourseDuration, formatDays, formatLessonDuration } from "@/lib/format";
+import { baseOpenGraph } from "@/lib/seo";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
     const { id } = await params;
 
     try {
-        const course = await getPublicCourse(id);
+        const [course, landing] = await Promise.all([getPublicCourse(id), getLandingContent()]);
+        const description = course.description || "Онлайн-курс Lucy Nails Academy по дизайну ногтей.";
+        const images = course.cover_image_url ? [course.cover_image_url] : undefined;
+        // The landing page sells this course with fuller content, so it is the page to index.
+        const canonical = landing.course?.id === id ? "/" : `/courses/${id}`;
         return {
             title: course.title,
-            description: course.description || "Онлайн-курс Lucy Nails Academy по дизайну ногтей.",
+            description,
             alternates: {
-                canonical: `/courses/${id}`,
+                canonical,
             },
             openGraph: {
+                ...baseOpenGraph,
                 title: course.title,
-                description: course.description || "Онлайн-курс Lucy Nails Academy по дизайну ногтей.",
-                url: `/courses/${id}`,
-                images: course.cover_image_url ? [course.cover_image_url] : undefined,
+                description,
+                url: canonical,
+                images,
+            },
+            twitter: {
+                card: "summary_large_image",
+                title: course.title,
+                description,
+                images,
             },
         };
     } catch {

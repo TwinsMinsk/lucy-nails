@@ -3,7 +3,7 @@ import { Home, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export const metadata = {
-  title: "Страница не найдена — Lucy Nails Academy",
+  title: "Страница не найдена",
 };
 
 export default function NotFound() {

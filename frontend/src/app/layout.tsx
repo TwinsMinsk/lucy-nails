@@ -6,6 +6,7 @@ import "./globals.css";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { getPublicSiteUrl } from "@/lib/env";
+import { baseOpenGraph } from "@/lib/seo";
 import { AnalyticsBootstrap } from "@/components/analytics/AnalyticsBootstrap";
 import { ConsentBanner } from "@/components/analytics/ConsentBanner";
 
@@ -29,10 +30,8 @@ export const metadata: Metadata = {
   },
   description: "Авторские онлайн-курсы маникюра и дизайна ногтей с защищёнными видео-уроками.",
   openGraph: {
-    type: "website",
-    locale: "ru_RU",
+    ...baseOpenGraph,
     url: siteUrl,
-    siteName: "Lucy Nails Academy",
     title: "Обучающие курсы по маникюру от Люси Смирновой",
     description: "Авторские онлайн-курсы маникюра и дизайна ногтей с защищёнными видео-уроками.",
   },

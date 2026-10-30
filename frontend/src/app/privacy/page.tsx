@@ -1,4 +1,17 @@
+import type { Metadata } from "next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { baseOpenGraph } from "@/lib/seo";
+
+const title = "Политика конфиденциальности";
+const description = "Политика обработки персональных данных на сайте Lucy Nails Academy.";
+
+export const metadata: Metadata = {
+    title,
+    description,
+    alternates: { canonical: "/privacy" },
+    openGraph: { ...baseOpenGraph, title, description, url: "/privacy" },
+    twitter: { card: "summary_large_image", title, description },
+};
 
 export default function PrivacyPage() {
     return (

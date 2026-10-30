@@ -1,4 +1,17 @@
+import type { Metadata } from "next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { baseOpenGraph } from "@/lib/seo";
+
+const title = "Публичная оферта";
+const description = "Публичная оферта ИП Смирновой Л. А. на покупку онлайн-курсов Lucy Nails Academy.";
+
+export const metadata: Metadata = {
+    title,
+    description,
+    alternates: { canonical: "/terms" },
+    openGraph: { ...baseOpenGraph, title, description, url: "/terms" },
+    twitter: { card: "summary_large_image", title, description },
+};
 
 export default function PublicOfferPage() {
     return (

@@ -32,12 +32,12 @@ export function Header() {
     // Determines if we are on the landing page
     const isLanding = pathname === "/";
 
-    // Define links based on context
+    // Define links based on context. The "/" prefix keeps them working outside the landing page.
     const landingLinks = [
-        { href: "#about", label: "О курсе" },
-        { href: "#program", label: "Программа" },
-        { href: "#gallery", label: "Галерея" },
-        { href: "#pricing", label: "Стоимость" },
+        { href: "/#about", label: "О курсе" },
+        { href: "/#program", label: "Программа" },
+        { href: "/#gallery", label: "Галерея" },
+        { href: "/#pricing", label: "Стоимость" },
     ];
 
     const dashboardLinks = [
@@ -70,15 +70,16 @@ export function Header() {
 
     // Smooth scroll handler for anchor links
     const handleScroll = (e: React.MouseEvent<HTMLAnchorElement, MouseEvent>, href: string) => {
-        if (href.startsWith("#")) {
+        const hashIndex = href.indexOf("#");
+        if (hashIndex !== -1) {
             e.preventDefault();
-            const targetId = href.replace("#", "");
-            const elem = document.getElementById(targetId);
+            const hash = href.slice(hashIndex);
+            const elem = document.getElementById(hash.slice(1));
             elem?.scrollIntoView({
                 behavior: "smooth",
             });
             // Update URL hash without scroll jump (optional)
-            window.history.pushState({}, "", href);
+            window.history.pushState({}, "", hash);
         }
     };
 

@@ -4,6 +4,7 @@ import Home, { generateMetadata } from "@/app/page"
 import { getLandingContent } from "@/lib/landing/loader"
 import { landingCourse } from "@/lib/landing/course-content"
 import { getPublishedCourses, getPublicCourseModules } from "@/lib/api"
+import { HOME_DESCRIPTION, HOME_TITLE } from "@/lib/seo"
 
 vi.mock("@/lib/landing/loader", () => ({ getLandingContent: vi.fn() }))
 vi.mock("@/lib/api", () => ({ getPublishedCourses: vi.fn(), getPublicCourseModules: vi.fn() }))
@@ -12,12 +13,30 @@ vi.mock("@/components/landing/NailsGallery", () => ({ NailsGallery: () => null }
 vi.mock("@/components/landing/PaymentButton", () => ({ PaymentButton: ({ courseId }: { courseId: string | null }) => <button data-course-id={courseId || ""} disabled={!courseId}>Purchase</button> }))
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-it("uses the canonical CMS identity in landing metadata", async () => {
+it("uses the search snippet for the page and the CMS identity for social cards", async () => {
     vi.mocked(getLandingContent).mockResolvedValue({ course: { id: "canonical", title: "Canonical", price_self: 7200, access_days: 45, lessons_count: 2, total_duration: 3600 }, hero: { ...landingCourse, title: "Renamed CMS course", description: "Published CMS description", instructorImageUrl: null }, modules: [], gallery: [] })
     const metadata = await generateMetadata()
-    expect(metadata.title).toBe("Renamed CMS course")
-    expect(metadata.description).toBe("Published CMS description")
-    expect(metadata.openGraph?.title).toBe("Renamed CMS course")
+    expect(metadata.title).toBe(HOME_TITLE)
+    expect(metadata.description).toBe(HOME_DESCRIPTION)
+    expect(metadata.openGraph).toMatchObject({ title: "Renamed CMS course", description: "Published CMS description", siteName: "Lucy Nails Academy", locale: "ru_RU" })
+    expect(metadata.twitter).toMatchObject({ title: "Renamed CMS course", description: "Published CMS description" })
+})
+
+it("describes the published course in JSON-LD with its CMS price", async () => {
+    vi.mocked(getLandingContent).mockResolvedValue({ course: { id: "canonical", title: "Canonical", price_self: 7200, access_days: 45, lessons_count: 2, total_duration: 3600 }, hero: { ...landingCourse, title: "Renamed </script> course", instructorImageUrl: null }, modules: [], gallery: [] })
+    vi.mocked(getPublicCourseModules).mockResolvedValue([])
+    const { container } = render(await Home())
+    const script = container.querySelector('script[type="application/ld+json"]')
+    expect(script?.innerHTML).not.toContain("</script>")
+    const course = JSON.parse(script?.textContent ?? "{}")["@graph"].find((item: { "@type": string }) => item["@type"] === "Course")
+    expect(course).toMatchObject({ name: "Renamed </script> course", offers: { category: "Paid", price: 7200, priceCurrency: "RUB" }, hasCourseInstance: { courseMode: "Online", courseWorkload: "PT60M" } })
+})
+
+it("omits the course from JSON-LD with no publication", async () => {
+    vi.mocked(getLandingContent).mockResolvedValue({ course: null, hero: { ...landingCourse, instructorImageUrl: null }, modules: [], gallery: [] })
+    const { container } = render(await Home())
+    const graph = JSON.parse(container.querySelector('script[type="application/ld+json"]')?.textContent ?? "{}")["@graph"]
+    expect(graph.map((item: { "@type": string }) => item["@type"])).toEqual(["Organization", "Person"])
 })
 
 it("binds the canonical CMS course to displayed price access and checkout", async () => {

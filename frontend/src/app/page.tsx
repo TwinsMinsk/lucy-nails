@@ -22,18 +22,29 @@ import { getPublicCourseModules, type ModuleResponse } from "@/lib/api";
 import { landingCourse } from "@/lib/landing/course-content";
 import { getLandingContent } from "@/lib/landing/loader";
 import { formatDays } from "@/lib/format";
+import { getPublicSiteUrl } from "@/lib/env";
+import { baseOpenGraph, buildHomeJsonLd, HOME_DESCRIPTION, HOME_TITLE } from "@/lib/seo";
+import { JsonLd } from "@/components/seo/JsonLd";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { hero } = await getLandingContent();
+  const image = hero.instructorImageUrl ?? "/landing/instructor-master.webp";
   return {
-    title: hero.title,
-    description: hero.description,
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
     alternates: { canonical: "/" },
     openGraph: {
+      ...baseOpenGraph,
       title: hero.title,
       description: hero.description,
       url: "/",
-      images: [hero.instructorImageUrl ?? "/landing/instructor-master.webp"],
+      images: [image],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: hero.title,
+      description: hero.description,
+      images: [image],
     },
   };
 }
@@ -73,6 +84,15 @@ export default async function Home() {
 
   return (
     <div className="flex flex-col min-h-screen bg-[#FDFBF9]">
+      <JsonLd
+        data={buildHomeJsonLd({
+          siteUrl: getPublicSiteUrl(),
+          course: publishedCourse,
+          title: hero.title,
+          description: hero.description || hero.subtitle,
+          imageUrl: instructorImageSrc,
+        })}
+      />
       {/* Hero Section */}
       <section id="about" className="relative overflow-hidden min-h-[calc(100vh-70px)] flex items-center py-8 lg:py-0 bg-[#fff1f4]">
 
