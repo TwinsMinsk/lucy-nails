@@ -110,6 +110,8 @@ backups/
 # Исходники уроков, нарезки промо, выход промо-пайплайна — не в Git
 promo-clips/
 video-lessons/
+video-lessons-remastered/
+scripts/subtitles/.venv/
 photo-work/
 scripts/promo/output/
 

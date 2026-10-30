@@ -1,0 +1,16 @@
+# Subtitle remaster pipeline (own venv, Python 3.12 — CTranslate2 has no 3.14 wheels)
+faster-whisper>=1.1.0
+numpy>=1.26
+pillow>=10.0.0
+google-genai>=0.3.0
+openai>=1.50.0
+python-dotenv>=1.0.0
+
+# Морфология русского: предохранитель «это настоящее слово?» + генерация парадигм
+pymorphy3>=2.0.2
+pymorphy3-dicts-ru
+
+# CUDA runtime DLLs for CTranslate2 on Windows (cuBLAS + cuDNN 9).
+# Without these faster-whisper falls back to CPU.
+nvidia-cublas-cu12
+nvidia-cudnn-cu12>=9,<10

@@ -17,7 +17,7 @@
   - [`frontend/src/AGENTS.md`](frontend/src/AGENTS.md) → [`app/`](frontend/src/app/AGENTS.md) · [`components/`](frontend/src/components/AGENTS.md) · [`lib/`](frontend/src/lib/AGENTS.md)
   - [`frontend/public/AGENTS.md`](frontend/public/AGENTS.md) — статика и фото работ
   - [`frontend/e2e/AGENTS.md`](frontend/e2e/AGENTS.md) — Playwright-сценарии
-- [`scripts/AGENTS.md`](scripts/AGENTS.md) — dev-скрипты; детали: [`promo/`](scripts/promo/AGENTS.md), [`kinescope/`](scripts/kinescope/AGENTS.md)
+- [`scripts/AGENTS.md`](scripts/AGENTS.md) — dev-скрипты; детали: [`promo/`](scripts/promo/AGENTS.md), [`kinescope/`](scripts/kinescope/AGENTS.md), [`subtitles/`](scripts/subtitles/AGENTS.md)
 - [`ops/AGENTS.md`](ops/AGENTS.md) — конфиги бэкапа, Postgres-init и сервисов Railway
 - [`Docs/AGENTS.md`](Docs/AGENTS.md) — карта документации
 

@@ -18,7 +18,8 @@
 | [`scripts/load/`](scripts/load/) | Staging-only k6 launch gate |
 | [`ops/`](ops/) | Backup image и init test database |
 | [`scripts/promo/`](scripts/promo/) | Пайплайн промо (Whisper, нарезка, upload/sync); метаданные — [`program.json`](scripts/promo/program.json) |
-| `promo-clips/`, `video-lessons/` | Локальные тяжёлые mp4-артефакты; исключены из Git |
+| [`scripts/subtitles/`](scripts/subtitles/) | Пересборка субтитров уроков и мягкий цветокор; результат — `video-lessons-remastered/<slug>/`, исходники не меняются |
+| `promo-clips/`, `video-lessons/`, `video-lessons-remastered/` | Локальные тяжёлые mp4-артефакты; исключены из Git |
 | [`Docs/`](Docs/) | PRD, архитектура, фазы, задачи, ops |
 
 ## Backend (`backend/`)
