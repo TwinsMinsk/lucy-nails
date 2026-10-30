@@ -9,13 +9,13 @@
 | [`README.md`](README.md) | Быстрый старт |
 | [`AGENTS.md`](AGENTS.md) | Главный вход для Cursor Agent |
 | [`pyproject.toml`](pyproject.toml) | Настройки Ruff (Python) |
-| [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | CI (ruff, pytest, ESLint, Next build) |
+| [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | CI (см. «Тесты и качество») |
 | [`.env.example`](.env.example) | Шаблон env для backend и общих ключей |
-| [`compose.dev.yml`](compose.dev.yml) | Локальные PostgreSQL 15 + Redis 7 |
+| [`compose.dev.yml`](compose.dev.yml) | Локальные PostgreSQL 17 + Redis 7 |
 | [`scripts/`](scripts/) | PowerShell: `dev.ps1`, setup, и т.д. |
-| [`scripts/ops/`](scripts/ops/) | PostgreSQL backup/restore с checksum/S3 |
+| [`scripts/ops/`](scripts/ops/) | PostgreSQL backup/restore с checksum/S3; разовая очистка токена бота из журналов доставки |
 | [`scripts/load/`](scripts/load/) | Staging-only k6 launch gate |
-| [`ops/`](ops/) | Backup image и init test database |
+| [`ops/`](ops/) | Backup image, init test database, конфиг backup для Railway |
 | [`scripts/promo/`](scripts/promo/) | Пайплайн промо (Whisper, нарезка, upload/sync); метаданные — [`program.json`](scripts/promo/program.json) |
 | `promo-clips/`, `video-lessons/` | Локальные тяжёлые mp4-артефакты; исключены из Git |
 | [`Docs/`](Docs/) | PRD, архитектура, фазы, задачи, ops |
@@ -31,6 +31,7 @@
 | [`backend/app/schemas/`](backend/app/schemas/) | Pydantic схемы |
 | [`backend/app/services/`](backend/app/services/) | Бизнес-логика и интеграции (Prodamus, Kinescope, email, …) |
 | [`backend/app/bot/`](backend/app/bot/) | Telegram bot (handlers, entry) |
+| [`backend/app/workers/`](backend/app/workers/) | Outbox-воркер: доставка email и Telegram, отдельный процесс |
 | [`backend/alembic/`](backend/alembic/) | Миграции БД |
 | [`backend/tests/`](backend/tests/) | Pytest + httpx AsyncClient |
 | [`backend/requirements.lock`](backend/requirements.lock) | Зафиксированные runtime зависимости Python 3.11 |
@@ -46,7 +47,7 @@
 | [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts) | Клиент API, `NEXT_PUBLIC_API_URL` |
 | [`frontend/src/lib/schemas.ts`](frontend/src/lib/schemas.ts) | Схемы/валидации (Zod и т.п.) |
 | [`frontend/components.json`](frontend/components.json) | Конфиг shadcn/ui |
-| [`frontend/package.json`](frontend/package.json) | Скрипты: `dev`, `build`, `lint` |
+| [`frontend/package.json`](frontend/package.json) | Скрипты: `dev`, `build`, `start`, `lint`, `test` и `test:unit` (Vitest), `test:e2e` (Playwright) |
 | [`frontend/e2e/`](frontend/e2e/) | Playwright Chromium/WebKit critical-flow tests |
 | [`frontend/.env.example`](frontend/.env.example) | Шаблон для `frontend/.env.local` |
 
@@ -61,7 +62,7 @@
 - Development seed запускается только при `ENVIRONMENT=development`; не расширять его на staging/production.
 - CORS origins и trusted hosts fail-closed в production; при изменении proxy topology повторять cookie/CSRF edge tests.
 - Крупный backend admin router в [`backend/app/api/admin.py`](backend/app/api/admin.py) и frontend API client в [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts) — кандидаты на доменную декомпозицию.
-- Pydantic v2 deprecation warnings и один legacy admin test skip находятся в P2 текущего аудита.
+- Pydantic v2 deprecation warnings (`from_orm`, `class Config`) находятся в P2 текущего аудита.
 
 ## Backlog рефакторинга
 

@@ -6,8 +6,8 @@
 
 | Окружение | Где живёт | База | Секреты / платежи |
 |-----------|-----------|------|-------------------|
-| **local** | Ваша машина (Windows + PowerShell) | PostgreSQL 15 `nails_course` + `test_nails_course`, Redis 7 | Тестовые / sandbox ключи по возможности |
-| **staging** | Отдельный Railway environment | Отдельные PostgreSQL 15 + Redis | Prodamus demo, test email/bot/chat, без боевых денег |
+| **local** | Ваша машина (Windows + PowerShell) | PostgreSQL 17 `nails_course` + `test_nails_course`, Redis 7 | Тестовые / sandbox ключи по возможности |
+| **staging** | Отдельный Railway environment | Отдельные PostgreSQL 17 + Redis | Prodamus demo, test email/bot/chat, без боевых денег |
 | **production** | Railway | Production PostgreSQL + Redis | Боевые ключи только здесь |
 
 **Правило:** не используйте production `DATABASE_URL` как «рабочую» базу при ежедневной разработке. Для платежей и Telegram — только staging или изолированные тестовые аккаунты.
@@ -36,13 +36,13 @@ Railway задаёт переменные через Dashboard (секреты �
 ```powershell
 python -m venv backend\venv
 .\backend\venv\Scripts\Activate.ps1
-pip install -r backend\requirements.txt
+pip install -r backend\requirements-dev.lock -r backend\requirements-tooling.lock
 ```
 
-Без активированного venv можно вызывать:
+Эти lock-файлы использует CI: они содержат runtime-зависимости, pytest, Ruff и pip-audit. Без активированного venv можно вызывать:
 
 ```powershell
-.\backend\venv\Scripts\pip.exe install -r backend\requirements.txt
+.\backend\venv\Scripts\pip.exe install -r backend\requirements-dev.lock -r backend\requirements-tooling.lock
 ```
 
 ### 3) PostgreSQL, Redis и базы
@@ -136,7 +136,7 @@ $env:PYTHONPATH = "backend"
 
 При необходимости однократно создайте тестовую БД через [`backend/scripts/create_test_db.py`](../../backend/scripts/create_test_db.py) (если файл есть и актуален в вашей ветке).
 
-Важно: тестовые фикстуры создают схему через SQLAlchemy metadata, а CI отдельно выполняет `alembic upgrade head` на основной тестовой БД. При изменении моделей проверяйте и тесты, и миграции, чтобы не получить расхождение схем.
+Важно: тестовые фикстуры создают схему через SQLAlchemy metadata, а CI отдельно выполняет `alembic upgrade head`, откат последней миграции и `alembic check` на основной тестовой БД. При изменении моделей проверяйте и тесты, и миграции, чтобы не получить расхождение схем.
 
 ### Frontend: unit, линт, production-сборка и E2E
 
@@ -161,19 +161,21 @@ Set-Location ..
 
 В CI эти переменные задаются в workflow автоматически. Runtime dependency audits выполняются командами `pip-audit --strict -r backend/requirements.lock` и `npm audit --omit=dev --audit-level=high`; security workflow запускает CodeQL и Gitleaks.
 
-## Railway: миграции и два сервиса
+## Railway: миграции и сервисы
 
 Настройки сервисов хранятся в самом Railway, файлов конфигурации в репозитории нет; значения — в [LAUNCH_OPERATIONS.md](LAUNCH_OPERATIONS.md). Для сервиса **backend** `startCommand` запускает сначала `alembic upgrade head`, затем `uvicorn` — так же по смыслу, как в [`backend/Procfile`](../../backend/Procfile). Это снижает риск расхождения схемы БД между деплоями.
+
+**Автодеплоя из `master` нет:** merge ничего не выкатывает, деплой запускается вручную — порядок в [DEPLOY_GUIDE.md](DEPLOY_GUIDE.md), шаг 6.
 
 **Важно:** переменные `NEXT_PUBLIC_*` для фронта должны быть доступны на этапе **build** в Railway — см. [DEPLOY_GUIDE.md](DEPLOY_GUIDE.md).
 
 ## Git и ветки (рабочий цикл)
 
-1. Актуальная `main` (или принятый у вас default branch):
+1. Актуальная `master` (default branch):
 
    ```powershell
-   git checkout main
-   git pull origin main
+   git checkout master
+   git pull origin master
    ```
 
 2. Ветка задачи:
@@ -191,7 +193,7 @@ Set-Location ..
    git push -u origin feature/kratkoe-opisanie
    ```
 
-5. Pull Request на `main`; после review — merge; Railway обычно деплоит с `main` (настройте в Dashboard при необходимости).
+5. Pull Request на `master`; после review — merge. Деплой на Railway после merge запускается отдельно и вручную ([DEPLOY_GUIDE.md](DEPLOY_GUIDE.md), шаг 6).
 
 Для изменений только в БД всегда коммитьте файл миграции в [`backend/alembic/versions`](../../backend/alembic/versions) и прогоняйте Alembic на staging до production.
 
@@ -199,26 +201,26 @@ Set-Location ..
 
 Подробный go/no-go чеклист MVP: [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 
-- **`ENVIRONMENT=production`**, **`DEBUG=false`** (или не задавать DEBUG в пользу значения по умолчанию в коде).
+- **`ENVIRONMENT=production`**, **`DEBUG=false`** (задавать обязательно: значение по умолчанию в коде `true`, и с ним приложение не стартует).
 - **CORS:** задать `CORS_ORIGINS` (через запятую) или оставить пустым — тогда разрешён только `FRONTEND_URL`.
-- **Trusted Host:** при необходимости задать `TRUSTED_HOSTS` (через запятую) для middleware `TrustedHostMiddleware`.
+- **Trusted Host:** обязательно задать `TRUSTED_HOSTS` (через запятую) для middleware `TrustedHostMiddleware`, без него приложение не стартует.
 - **Prodamus:** боевые `PRODAMUS_URL`, `PRODAMUS_SECRET_KEY`, `PRODAMUS_SHOP_ID` при необходимости; webhook в личном кабинете Prodamus → `BACKEND_URL` + `/api/payments/webhook`.
 - **Kinescope:** в production обязателен `KINESCOPE_API_KEY` (mock/embed fallback отключён).
 - **Публичные URL:** `FRONTEND_URL`, `BACKEND_URL` — для редиректов оплаты и `urlNotification`.
-- **Seed с тестовыми паролями** выполняется только если `ENVIRONMENT != production`.
+- **Seed тестовых пользователей** выполняется только при `ENVIRONMENT=development`.
 - После деплоя с новыми моделями: **`alembic upgrade head`** на целевой БД.
 
 ## Prodamus + email + тестовая оплата (Railway / staging)
 
-**Флоу:** гостевая оплата с лендинга (`POST /api/payments/guest-link`) или зарегистрированный пользователь (`POST /api/payments/link`). После успешной оплаты Prodamus вызывает **`POST {BACKEND_URL}/api/payments/webhook`** — там создаётся (если нужно) пользователь и в email уходит временный пароль ([`backend/app/services/email_service.py`](../../backend/app/services/email_service.py)).
+**Флоу:** гостевая оплата с лендинга (`POST /api/payments/guest-link`) или зарегистрированный пользователь (`POST /api/payments/link`). После успешной оплаты Prodamus вызывает **`POST {BACKEND_URL}/api/payments/webhook`** — там создаётся (если нужно) пользователь и в той же транзакции в outbox ставится письмо: ссылка активации `/auth/activate` для аккаунта без подтверждённого email, иначе уведомление о доступе. Письмо отправляет outbox-воркер ([`backend/app/workers/outbox.py`](../../backend/app/workers/outbox.py), [`backend/app/services/email_service.py`](../../backend/app/services/email_service.py)).
 
 ### Переменные на Railway (staging для тестовых платежей)
 
 1. **`BACKEND_URL`** — публичный URL API (например `https://xxx.up.railway.app`), без `/api` в конце.
 2. **`FRONTEND_URL`** — публичный URL сайта (редиректы `urlSuccess` / `urlReturn`).
 3. **`PRODAMUS_URL`**, **`PRODAMUS_SECRET_KEY`**, **`PRODAMUS_SHOP_ID`** — из личного кабинета Prodamus / Payform.
-4. **`ENVIRONMENT=staging`** или **`development`** — чтобы в ссылке оплаты оставался **`demo_mode=1`** (тестовые платежи). Боевой режим — только **`ENVIRONMENT=production`** без демо-режима в ссылке.
-5. **SMTP (Gmail):** `SMTP_HOST`, `SMTP_PORT=587`, `SMTP_USER`, `SMTP_PASSWORD` (App Password из [Google App Passwords](https://myaccount.google.com/apppasswords)), `SMTP_FROM_NAME`. При необходимости жёстко требовать письмо: `SMTP_REQUIRED_FOR_PAYMENT_EMAIL=true` вместе с production-валидатором.
+4. **`ENVIRONMENT=staging`** или **`development`** — чтобы в ссылке оплаты оставался **`demo_mode=1`** (тестовые платежи); на staging также обязателен `PRODAMUS_DEMO_MODE=true`. Боевой режим — только **`ENVIRONMENT=production`** без демо-режима в ссылке.
+5. **Email:** `RESEND_API_KEY` и `EMAIL_FROM` (основной вариант: Railway блокирует исходящий SMTP ниже тарифа Pro) или **SMTP (Gmail):** `SMTP_HOST`, `SMTP_PORT=587`, `SMTP_USER`, `SMTP_PASSWORD` (App Password из [Google App Passwords](https://myaccount.google.com/apppasswords)), `SMTP_FROM_NAME`. По умолчанию `SMTP_REQUIRED_FOR_PAYMENT_EMAIL=true`: production и staging не стартуют без настроенного транспорта.
 
 ### ЛК Prodamus
 
@@ -228,9 +230,9 @@ Set-Location ..
 ### Ручная проверка после деплоя
 
 1. С лендинга: «Оплатить» без входа → модалка email/телефон → форма Prodamus с пометкой демо-режима → оплата тестовой картой.
-2. Логи backend: нет `Invalid signature`, есть `Webhook processed` и при новом пользователе — `Credentials email sent` (или `Failed to send credentials email` при ошибке SMTP — платёж уже записан).
-3. В БД: строка в `users` и `purchases` с `payment_status=success`.
-4. Вход по email/паролю из письма → курс в кабинете.
+2. Логи backend: нет `Prodamus webhook: invalid signature`. Логи worker: `Email sent via Resend` или `Email sent via SMTP`. Ошибка доставки не отменяет платёж: сообщение остаётся в `outbox_messages` и повторяется.
+3. В БД: строка в `users` и `purchases` с `payment_status=success`, в `outbox_messages` у нового пользователя сообщение `account_activation` со статусом `sent`.
+4. По ссылке из письма (`/auth/activate`) задать пароль → курс в кабинете.
 5. Повтор того же webhook-тела с тем же `order_num` / ключом идемпотентности — второй `Purchase` не создаётся.
 
 ## Безопасность секретов

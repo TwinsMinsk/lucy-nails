@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Ops / деплой
 
-- Railway: настройки Backend, worker и Frontend хранятся в самом Railway, файлов конфигурации у них нет; значения — `Docs/04_Setup_Ops/LAUNCH_OPERATIONS.md`.
+- Railway: настройки Backend, worker и Frontend хранятся в самом Railway, файлов конфигурации у них нет; значения — `Docs/04_Setup_Ops/LAUNCH_OPERATIONS.md`. Автодеплоя нет: порядок ручного деплоя в `Docs/04_Setup_Ops/DEPLOY_GUIDE.md`.
 - GitHub Actions: `.github/workflows/ci.yml` — эталон команд проверки.
 - Локально Windows: `scripts/*.ps1`, гайды `Docs/04_Setup_Ops/`.
 - Меняя деплой или env — обновляй соответствующий документ в `Docs/04_Setup_Ops/` и при необходимости `DEPLOY_GUIDE.md`.

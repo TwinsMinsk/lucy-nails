@@ -11,7 +11,7 @@
 
 Cron-контейнер собирается из `ops/backup/Dockerfile` и запускает `scripts/ops/backup_postgres.py`. Переменные: `DATABASE_URL`, `BACKUP_S3_URI`, AWS credentials, опционально `BACKUP_S3_ENDPOINT`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_OWNER_CHAT_ID`.
 
-Успех подтверждается JSON-строкой `status=ok`, checksum и наличием `.dump` + `.sha256` в bucket. При ошибке скрипт завершается с кодом 1 и отправляет owner alert.
+Успех подтверждается JSON-строкой `status=ok`, checksum и наличием архива и его `.sha256` в bucket: `.dump` содержит только БД, `.tar` — БД и uploads (при заданном `BACKUP_UPLOADS_DIR` или `BACKUP_UPLOADS_URL`). Для приёмки нужен полный `.tar`, см. [`LAUNCH_OPERATIONS.md`](LAUNCH_OPERATIONS.md). При ошибке скрипт завершается с кодом 1 и отправляет owner alert.
 
 ## Restore drill
 
@@ -33,3 +33,5 @@ python scripts/ops/restore_postgres.py s3://bucket/prefix/lucy-nails-YYYYMMDD.du
 5. В журнал инцидента внесены времена начала/окончания и фактические RPO/RTO.
 
 26.08.2026 локальный drill через готовый Docker-образ: архив 81 928 байт, SHA-256 `74fc2ca2eb1f6c7a4c22225b9785b6975b9888c3504c09f0346209e88f5af0bb`; восстановлено 28 таблиц, Alembic head `1b8c9d0e1f2a`. Первый прогон обнаружил несовместимость клиента PostgreSQL 17 с сервером 15, после чего образ был закреплён на `postgres:15` и повторный drill прошёл. Временная БД удалена. Это доказывает локальную процедуру, но не заменяет staging/S3 drill после создания внешних ресурсов.
+
+Сейчас [`ops/backup/Dockerfile`](../../ops/backup/Dockerfile), [`compose.dev.yml`](../../compose.dev.yml) и CI используют `postgres:17`. Последний локальный drill на этой версии (08.10.2026, Alembic head `8c9d0e1f2a3b`) описан в [`LAUNCH_OPERATIONS.md`](LAUNCH_OPERATIONS.md).

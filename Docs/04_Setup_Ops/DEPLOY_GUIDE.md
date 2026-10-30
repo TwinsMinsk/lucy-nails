@@ -1,6 +1,6 @@
 # 🚀 Deployment Guide: Railway + GitHub
 
-> **Обновлено:** 26.08.2026. Этот технический гайд дополняется обязательными [`STAGING.md`](STAGING.md) и [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md); deploy без закрытого checklist остаётся NO-GO.
+> **Обновлено:** 30.10.2026. Этот технический гайд дополняется обязательными [`STAGING.md`](STAGING.md) и [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md); deploy без закрытого checklist остаётся NO-GO. **Автодеплоя из `master` нет:** новая версия выкатывается вручную, см. шаг 6.
 
 Этот гайд поможет развернуть и запустить проект на платформе [Railway](https://railway.app/).
 Твой репозиторий: [https://github.com/TwinsMinsk/lucy-nails](https://github.com/TwinsMinsk/lucy-nails)
@@ -25,9 +25,8 @@
 # 1. Проверь статус (должно быть "clean" или готово к push)
 git status
 
-# 2. Отправь код в репозиторий
-git branch -M main
-git push -u origin main
+# 2. Отправь код в репозиторий (default-ветка — master)
+git push -u origin master
 ```
 
 *(Если спросит логин/пароль — используй свой GitHub аккаунт или Token)*
@@ -97,7 +96,7 @@ git push -u origin main
 | `NEXT_PUBLIC_SITE_URL` | `https://<твое-frontend-домен>.up.railway.app` (появится после деплоя фронта) |
 | `NEXT_PUBLIC_API_URL` | `https://<твой-backend-домен>.up.railway.app/api` |
 
-> **Важно:** Переменные, начинающиеся с `NEXT_PUBLIC_...`, нужно добавить **ТАКЖЕ** и в сервис **frontend**! Frontend собирается (Build) с этими переменными, поэтому они должны быть доступны на этапе сборки.
+> **Важно:** Переменные, начинающиеся с `NEXT_PUBLIC_...`, нужны сервису **frontend**, backend их не читает. Frontend собирается (Build) с этими переменными, поэтому они должны быть доступны на этапе сборки.
 
 ---
 
@@ -115,13 +114,13 @@ git push -u origin main
     - Зайди в Settings → Networking.
     - Нажми **"Generate Domain"**.
     - Это и есть ссылка на твой сайт!
-    - Обнови переменную `NEXT_PUBLIC_SITE_URL` в сервисе **backend** (для CORS и редиректов).
+    - Обнови `NEXT_PUBLIC_SITE_URL` в сервисе **frontend**, а `FRONTEND_URL` и `CORS_ORIGINS` в сервисе **backend** (для CORS и редиректов).
 
 ---
 
 ## ✅ Шаг 5: Первый запуск и проверка
 
-1.  После настройки переменных Railway автоматически перезапустит деплой (Redeploy).
+1.  После настройки переменных проверь в **Deployments**, что деплой запущен; если нет, запусти его вручную.
 2.  Следи за вкладкой **Deployments** → **View Logs**.
     - **Backend Logs:** при старте выполняются миграции Alembic (`alembic upgrade head`), затем должен быть `Application startup complete` от Uvicorn.
     - **Frontend Logs:** Должно быть `Ready in ... ms`.
@@ -141,3 +140,15 @@ python scripts/check_production_content.py
 6.  Открой публичный домен Frontend сервиса. Проверь регистрацию, вход, создание ссылки оплаты, webhook, появление доступа в кабинете и запуск урока.
 
 **Поздравляю! Твой проект в продакшене! 🎉**
+
+---
+
+## 🔁 Шаг 6: Выкатка новой версии
+
+Автодеплоя из `master` нет. В CI нет шага деплоя, а у сервисов Backend, worker и Frontend на Railway нет deployment triggers (проверено 30.10.2026). Merge в `master` и зелёный CI ничего не меняют в production, поэтому версии на сайте и в `master` могут расходиться.
+
+1.  Закрой [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) и сними свежую копию БД ([`BACKUP_RESTORE.md`](BACKUP_RESTORE.md)).
+2.  Запусти деплой релизного commit в Railway Dashboard (сервис → **Deployments**) или мутацией GraphQL `serviceInstanceDeployV2` с SHA этого commit.
+3.  Первым задеплой **Backend**: он выполняет `alembic upgrade head` при старте. Дождись статуса `SUCCESS` и ответа `/health`.
+4.  Затем задеплой **worker** (миграции не выполняет) и **Frontend**.
+5.  Проверь, что SHA на всех трёх сервисах совпадает с релизным, и запусти `scripts/smoke-production.ps1`.
