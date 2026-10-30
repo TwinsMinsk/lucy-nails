@@ -5,13 +5,13 @@
 
 ## Purpose
 
-Корень исходного кода Next.js-приложения: маршруты App Router (`app/`), React-компоненты (`components/`), клиентские и серверные утилиты и API-клиент (`lib/`), настройка Vitest (`test/`), а также `proxy.ts` (преемник middleware в Next.js 16), защищающий приватные и админ-маршруты редиректом на логин.
+Корень исходного кода Next.js-приложения: маршруты App Router (`app/`), React-компоненты (`components/`), клиентские и серверные утилиты и API-клиент (`lib/`), настройка Vitest (`test/`), а также `proxy.ts` (преемник middleware в Next.js 16): 301 с `www` на основной домен и редирект приватных и админ-маршрутов на логин.
 
 ## Key Files
 
 | File | Description |
 |------|-------------|
-| `proxy.ts` | Next.js proxy (`export function proxy`). Матчит `/dashboard/:path*`, `/profile/:path*`, `/courses/:path*`, `/admin/:path*`. Считает "защищёнными" пути под `/admin`, `/dashboard`, `/profile` и `/courses/[id]/lessons/*`; при отсутствии cookie `auth_session=1` редиректит на `/auth/login?next=<path>`. Это UX-guard, а не источник авторизации — реальная проверка прав всегда на backend (FastAPI `Depends`). |
+| `proxy.ts` | Next.js proxy (`export function proxy`). Матчит все пути, кроме `/_next/static` и `/_next/image`. Сначала отдаёт 301 с `www.<host из NEXT_PUBLIC_SITE_URL>` на основной домен с тем же путём и query: Cloudflare работает только как DNS, оба имени приходят в этот сервис. Редиректит только точный `www`-двойник, на фиксированный origin, поэтому открытого редиректа нет. Затем считает "защищёнными" пути под `/admin`, `/dashboard`, `/profile` и `/courses/[id]/lessons/*`; при отсутствии cookie `auth_session=1` редиректит на `/auth/login?next=<path>`. Это UX-guard, а не источник авторизации — реальная проверка прав всегда на backend (FastAPI `Depends`). |
 
 ## Subdirectories
 
@@ -27,12 +27,12 @@
 ### Working In This Directory
 
 - `proxy.ts` — только UX-редирект по наличию cookie `auth_session=1` (её выставляет `saveTokens` в `src/lib/api.ts` после логина, подтверждения MFA и refresh). Не путать с проверкой ролей/прав — это делает backend. Не полагаться на proxy как единственный слой защиты страниц.
-- При добавлении нового защищённого маршрута — обновить `matcher` и/или `isProtectedPath` в `proxy.ts`, иначе proxy его не увидит.
+- При добавлении нового защищённого маршрута — обновить `isProtectedPath` в `proxy.ts`. `matcher` широкий из-за редиректа с `www`: не сужать его до приватных путей.
 - Импорты между `app/`, `components/`, `lib/` — через алиас `@/*` (см. `tsconfig.json` в `frontend/`), не через относительные `../../..`.
 
 ### Testing Requirements
 
-Unit-тесты лежат рядом с кодом (`*.test.ts`, `*.test.tsx`; конфиг `../vitest.config.ts`). Запуск из `frontend/`: `npm test` или `npx vitest run <путь>`. Для `proxy.ts` автотестов нет: Playwright-спеки выставляют cookie заранее. Его изменения проверяются вручную (переход на защищённый путь без сессии → редирект на `/auth/login?next=...`) плюс `npm run build` / `npm run lint` из `frontend/`.
+Unit-тесты лежат рядом с кодом (`*.test.ts`, `*.test.tsx`; конфиг `../vitest.config.ts`). Запуск из `frontend/`: `npm test` или `npx vitest run <путь>`. `proxy.test.ts` проверяет 301 с `www` и редирект на логин. Playwright-спеки выставляют cookie заранее, поэтому вход без сессии в браузере проверяется вручную (защищённый путь → `/auth/login?next=...`).
 
 ### Common Patterns
 

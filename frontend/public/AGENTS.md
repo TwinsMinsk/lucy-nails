@@ -12,6 +12,7 @@
 | File | Description |
 |------|-------------|
 | `icon.svg` | Иконка сайта: `metadata.icons` в `src/app/layout.tsx` |
+| `yandex_408ae9938caf9983.html` | Подтверждение прав на `https://lucysmirnova.ru` в Яндекс Вебмастере. Не удалять и не менять: Вебмастер периодически перепроверяет файл |
 
 Остальные файлы в корне (`favicon.ico`, `icon.png`, `hero-bg-fluid.png`, `Whisk_*.png`, `instructor-placeholder.svg`, `file.svg`, `globe.svg`, `next.svg`, `vercel.svg`, `window.svg`) из кода не используются.
 
