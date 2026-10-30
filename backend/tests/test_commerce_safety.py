@@ -5,9 +5,11 @@ from sqlalchemy import func, select
 
 from app.core.config import settings
 from app.core.security import get_password_hash
+from app.models.analytics_event import AnalyticsEvent
 from app.models.certificate import Certificate
 from app.models.course import Course
 from app.models.entitlement import Entitlement
+from app.models.order import Order
 from app.models.outbox import OutboxMessage
 from app.models.payment_event import PaymentEvent
 from app.models.purchase import Purchase
@@ -274,6 +276,60 @@ async def test_rejected_event_replay_remains_rejected(client, db):
     second = await client.post("/api/payments/webhook", json=payload, headers=headers)
     assert first.status_code == second.status_code == 422
     assert first.json() == second.json()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("stored_utm", "expected_utm"),
+    [("12345678901", "12345678901"), ("+79991234567", None)],
+)
+async def test_attribution_stored_on_order_does_not_block_payment_webhook(
+    client, db, stored_utm, expected_utm
+):
+    """Orders created before PII validation may still hold a phone in a UTM label."""
+    course = Course(
+        title="Attributed", price_self=5000, price_support=10000, is_published=True
+    )
+    db.add(course)
+    await db.flush()
+    order = Order(
+        course_id=course.id,
+        course_title=course.title,
+        tariff="self",
+        customer_email="attributed-buyer@example.com",
+        amount_kopecks=500000,
+        currency="RUB",
+        access_days=course.access_days,
+        status="pending",
+        status_token_hash="0" * 64,
+        first_utm_content=stored_utm,
+    )
+    db.add(order)
+    await db.commit()
+    payload = {
+        "order_id": "attributed-payment",
+        "order_num": f"order|{order.id}",
+        "customer_email": "attributed-buyer@example.com",
+        "sum": "5000",
+        "currency": "rub",
+        "payment_status": "success",
+    }
+    headers = {"Sign": _make_signature(payload, settings.PRODAMUS_SECRET_KEY)}
+
+    response = await client.post("/api/payments/webhook", json=payload, headers=headers)
+
+    assert response.status_code == 200, response.text
+    assert await db.scalar(
+        select(func.count(Purchase.id)).where(
+            Purchase.payment_id == "attributed-payment"
+        )
+    ) == 1
+    event = await db.scalar(
+        select(AnalyticsEvent).where(
+            AnalyticsEvent.event_id == "purchase_confirmed:attributed-payment"
+        )
+    )
+    assert event.utm_content == expected_utm
 
 
 @pytest.mark.asyncio
