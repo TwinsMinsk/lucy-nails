@@ -45,6 +45,7 @@
 | `analytics_service.py` | `AnalyticsService.record_event` (идемпотентно по `event_id`, `ValueError` на PII и секретах в `properties`, UTM чистит при записи), `record_lesson_activity` (раз в день на урок), `contains_sensitive_analytics_value` (строгое правило для `properties`: любые 10+ цифр вне UUID), `clean_attribution_value` (метка или `None`: UTM не должна мешать оплате, поэтому непригодное значение отбрасывается; правило мягче, чтобы сохранять числовые ID рекламных систем). |
 | `audit_service.py` | `append_audit_log` — единственная точка записи аудита; таблица append-only (триггер в миграции). |
 | `operations_health_service.py` | `record_worker_heartbeat` (ключ в Redis с TTL 120 с), `operations_snapshot` (данные для `/health/operations` в `app/main.py`). |
+| `uploads_archive_service.py` | `build_uploads_archive`: временный tar всех файлов `UPLOAD_STORAGE_DIR` для `api/backup_export.py`, symlink — ошибка. Удалять файл должен вызывающий код. |
 
 ## For AI Agents
 

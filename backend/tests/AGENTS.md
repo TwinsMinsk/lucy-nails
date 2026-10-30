@@ -55,6 +55,8 @@
 | `test_operations_health.py` | `/health/operations`: секрет мониторинга, отсутствие воркера, отставание очереди. |
 | `test_production_hardening.py` | Проверяет регистрацию `SlowAPIMiddleware` в `app.main.app` и что `Settings(ENVIRONMENT="production", ...)` с небезопасными дефолтами (DEBUG=True, дефолтный `JWT_SECRET_KEY`, отсутствующие email/Kinescope/Prodamus/Redis/MFA-настройки) валится с `pydantic.ValidationError`; правила для staging и `FORWARDED_ALLOW_IPS`. |
 | `test_backup_bundle.py` | `scripts/ops/backup_postgres.py` и `scripts/ops/restore_postgres.py` в корне репозитория: упаковка, защита от выхода за каталог, отказ восстанавливать в непустую БД. |
+| `test_backup_job.py` | `scripts/ops/backup_postgres.py`: alert при ошибках конфигурации и сбоях без пароля БД и токена, получение загрузок по HTTP (обрыв, HTTP-ошибка, небезопасные члены tar), маркер источника, heartbeat только после полного успеха. |
+| `test_backup_export.py` | `GET /api/internal/backup/uploads.tar`: токен, состав архива, удаление временного файла, ошибка без раскрытия пути. |
 
 ## For AI Agents
 

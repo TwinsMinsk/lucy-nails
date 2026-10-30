@@ -58,7 +58,9 @@ class Settings(BaseSettings):
     # === Redis ===
     REDIS_URL: str = ""
     MONITORING_TOKEN: str = ""
-    
+    # Lets the backup job download uploads; the export stays off when shorter than 32 chars.
+    BACKUP_EXPORT_TOKEN: str = ""
+
     # === Auth ===
     JWT_SECRET_KEY: str = "your-super-secret-key-change-in-production"
     JWT_ALGORITHM: str = "HS256"

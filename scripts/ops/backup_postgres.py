@@ -2,9 +2,12 @@
 
 Required environment: DATABASE_URL. Optional: BACKUP_DIR, BACKUP_S3_URI,
 BACKUP_RETENTION_DAYS, BACKUP_S3_SSE (AES256 or aws:kms), BACKUP_S3_KMS_KEY_ID,
-TELEGRAM_BOT_TOKEN and TELEGRAM_OWNER_CHAT_ID for failure alerts.
-BACKUP_REQUIRE_UPLOADS=true requires BACKUP_UPLOADS_DIR and BACKUP_UPLOADS_MARKER.
-The latter must match the mounted root's .backup-source-marker UTF-8 contents.
+TELEGRAM_BOT_TOKEN and TELEGRAM_OWNER_CHAT_ID for failure alerts,
+BACKUP_HEARTBEAT_URL for a dead man's switch pinged after each complete run.
+Uploaded files come from a mounted BACKUP_UPLOADS_DIR or, when the volume belongs
+to another service, from BACKUP_UPLOADS_URL with BACKUP_UPLOADS_TOKEN.
+BACKUP_REQUIRE_UPLOADS=true requires one of those and BACKUP_UPLOADS_MARKER.
+The latter must match the source root's .backup-source-marker UTF-8 contents.
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -28,10 +32,15 @@ def postgres_cli_url(value: str) -> str:
     return value.replace("postgresql+asyncpg://", "postgresql://", 1)
 
 
+def log_warning(detail: str) -> None:
+    print(json.dumps({"status": "warning", "detail": detail}), file=sys.stderr)
+
+
 def notify_failure(message: str) -> None:
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.getenv("TELEGRAM_OWNER_CHAT_ID", "").strip()
     if not token or not chat_id:
+        log_warning("Failure alert is not configured")
         return
     payload = urllib.parse.urlencode(
         {"chat_id": chat_id, "text": f"⚠️ Backup Lucy Nails failed: {message[:1000]}"}
@@ -40,8 +49,18 @@ def notify_failure(message: str) -> None:
         urllib.request.urlopen(
             f"https://api.telegram.org/bot{token}/sendMessage", payload, timeout=10
         ).read()
-    except Exception:
-        pass
+    except Exception as exc:
+        log_warning(f"Failure alert was not delivered: {type(exc).__name__}")
+
+
+def ping_heartbeat() -> None:
+    url = os.getenv("BACKUP_HEARTBEAT_URL", "").strip()
+    if not url:
+        return
+    try:
+        urllib.request.urlopen(url, timeout=10).read()
+    except Exception as exc:
+        log_warning(f"Heartbeat ping failed: {type(exc).__name__}")
 
 
 def sha256(path: Path) -> str:
@@ -83,6 +102,39 @@ def verify_uploads_source(uploads: Path, expected_marker: str | None) -> None:
             raise RuntimeError("Backup upload source marker does not match")
 
 
+def fetch_uploads(url: str, token: str, directory: Path) -> Path:
+    archive = directory / "uploads-export.tar"
+    request = urllib.request.Request(url, headers={"X-Backup-Token": token})
+    try:
+        with urllib.request.urlopen(request, timeout=300) as response:
+            declared = response.headers.get("Content-Length")
+            with archive.open("wb") as target:
+                shutil.copyfileobj(response, target)
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"Uploads export returned HTTP {exc.code}") from None
+    except urllib.error.URLError:
+        raise RuntimeError("Uploads export is unreachable") from None
+    if declared is None or archive.stat().st_size != int(declared):
+        raise RuntimeError("Uploads export was truncated")
+
+    uploads = directory / "uploads-export"
+    uploads.mkdir()
+    root = uploads.resolve()
+    with tarfile.open(archive, "r") as bundle:
+        for member in bundle:
+            target = (uploads / member.name).resolve()
+            if (
+                not member.isfile()
+                or not target.is_relative_to(root)
+                or target.exists()
+            ):
+                raise RuntimeError("Unsafe uploads export member")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with bundle.extractfile(member) as source, target.open("wb") as stream:
+                shutil.copyfileobj(source, stream)
+    return uploads
+
+
 def bundle_uploads(
     database: Path,
     uploads: Path,
@@ -120,43 +172,61 @@ def main() -> int:
     parser.add_argument("--output-dir", default=os.getenv("BACKUP_DIR", "backups"))
     parser.add_argument("--uploads-dir", default=os.getenv("BACKUP_UPLOADS_DIR", ""))
     args = parser.parse_args()
+
+    def config_error(message: str) -> None:
+        # parser.error exits immediately, so the owner must be told first.
+        notify_failure(f"configuration error: {message}")
+        parser.error(message)
+
     database_url = os.getenv("DATABASE_URL", "").strip()
     if not database_url:
-        parser.error("DATABASE_URL is required")
+        config_error("DATABASE_URL is required")
     pg_dump = shutil.which("pg_dump")
     if not pg_dump:
-        parser.error("pg_dump is not installed or not in PATH")
+        config_error("pg_dump is not installed or not in PATH")
     require_uploads = os.getenv("BACKUP_REQUIRE_UPLOADS", "false").lower() == "true"
     source_marker = os.getenv("BACKUP_UPLOADS_MARKER", "").strip() or None
-    if require_uploads and not args.uploads_dir:
-        parser.error("BACKUP_UPLOADS_DIR is required for a complete backup")
+    uploads_url = os.getenv("BACKUP_UPLOADS_URL", "").strip()
+    uploads_token = os.getenv("BACKUP_UPLOADS_TOKEN", "").strip()
+    has_uploads_source = bool(args.uploads_dir or uploads_url)
+    if args.uploads_dir and uploads_url:
+        config_error("Set either BACKUP_UPLOADS_DIR or BACKUP_UPLOADS_URL, not both")
+    if uploads_url and not uploads_url.startswith(("https://", "http://")):
+        config_error("BACKUP_UPLOADS_URL must be an http(s) address")
+    if uploads_url and not uploads_token:
+        config_error("BACKUP_UPLOADS_TOKEN is required with BACKUP_UPLOADS_URL")
+    if require_uploads and not has_uploads_source:
+        config_error(
+            "BACKUP_UPLOADS_DIR or BACKUP_UPLOADS_URL is required for a complete backup"
+        )
     if require_uploads and not source_marker:
-        parser.error("BACKUP_UPLOADS_MARKER is required for a verified upload source")
-    if source_marker and not args.uploads_dir:
-        parser.error(
-            "BACKUP_UPLOADS_DIR is required when a source marker is configured"
+        config_error("BACKUP_UPLOADS_MARKER is required for a verified upload source")
+    if source_marker and not has_uploads_source:
+        config_error(
+            "BACKUP_UPLOADS_DIR or BACKUP_UPLOADS_URL is required "
+            "when a source marker is configured"
         )
     if args.uploads_dir:
         try:
             verify_uploads_source(Path(args.uploads_dir).resolve(), source_marker)
         except (OSError, UnicodeError, RuntimeError) as exc:
-            parser.error(str(exc))
+            config_error(str(exc))
     s3_uri = os.getenv("BACKUP_S3_URI", "").strip()
     if os.getenv("BACKUP_REQUIRE_S3", "false").lower() == "true" and not s3_uri:
-        parser.error("BACKUP_S3_URI is required for external backups")
+        config_error("BACKUP_S3_URI is required for external backups")
     if s3_uri and not s3_uri.startswith("s3://"):
-        parser.error("BACKUP_S3_URI must be an s3:// destination")
+        config_error("BACKUP_S3_URI must be an s3:// destination")
 
     output_dir = Path(args.output_dir).resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     final_path = (
-        output_dir / f"lucy-nails-{timestamp}{'.tar' if args.uploads_dir else '.dump'}"
+        output_dir / f"lucy-nails-{timestamp}{'.tar' if has_uploads_source else '.dump'}"
     )
     partial_path = output_dir / f".{final_path.name}.partial"
 
     uploads_summary = None
     try:
+        output_dir.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="lucy-backup-") as temporary:
             dump_path = Path(temporary) / "database.dump"
             subprocess.run(
@@ -172,10 +242,16 @@ def main() -> int:
                 ],
                 check=True,
             )
-            if args.uploads_dir:
+            if has_uploads_source:
+                # Fetched after pg_dump, so every file the dump references is included.
+                uploads_source = (
+                    Path(args.uploads_dir).resolve()
+                    if args.uploads_dir
+                    else fetch_uploads(uploads_url, uploads_token, Path(temporary))
+                )
                 uploads_summary = bundle_uploads(
                     dump_path,
-                    Path(args.uploads_dir).resolve(),
+                    uploads_source,
                     partial_path,
                     source_marker=source_marker,
                 )
@@ -201,6 +277,7 @@ def main() -> int:
             if modified < cutoff:
                 candidate.unlink()
 
+        ping_heartbeat()
         print(
             json.dumps(
                 {
@@ -208,7 +285,7 @@ def main() -> int:
                     "path": str(final_path),
                     "sha256": checksum,
                     "uploaded": bool(s3_uri),
-                    "includes_uploads": bool(args.uploads_dir),
+                    "includes_uploads": has_uploads_source,
                     "uploads": uploads_summary,
                 }
             )
@@ -216,7 +293,10 @@ def main() -> int:
         return 0
     except Exception as exc:
         partial_path.unlink(missing_ok=True)
-        detail = f"Backup failed: {type(exc).__name__}"
+        # Only this script's RuntimeErrors are safe to quote: a CalledProcessError
+        # message contains the pg_dump command line with the database password.
+        reason = str(exc) if type(exc) is RuntimeError else type(exc).__name__
+        detail = f"Backup failed: {reason}"
         notify_failure(detail)
         print(json.dumps({"status": "error", "detail": detail}), file=sys.stderr)
         return 1
