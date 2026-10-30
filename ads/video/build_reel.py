@@ -60,6 +60,7 @@ SFX = {
 }
 SFX_GAIN = {"pop": 0.35, "swish": 0.3, "shimmer": 0.35, "thump": 0.45, "end": 0.3, "tick": 0.4}
 STAT_W, STAT_GAP = 440, 40  # px; big-number plates over the window
+HEAD_SIZES, HEAD_WIDTH = (68, 76), 920  # px; headline lines (as in #h0/#h1) and the widest a line may get
 
 
 def clip_path(reel: str, clip: str) -> str:
@@ -445,7 +446,11 @@ def render_html(reel: str, spec: dict, p: dict, cues: list[dict], sfx_info: dict
     # Headline above the window: the hook stays as the reel's title until the end card.
     for i, h in enumerate(p["heads"]):
         cls = "head-line accent" if h.get("accent") else "head-line"
-        parts.append(f'<div class="{cls} clip" id="h{i}" data-start="{h["start"]:.3f}" '
+        # A long line shrinks to stay clear of the frame edges (Playfair averages ~0.53 em a character).
+        base = HEAD_SIZES[min(i, len(HEAD_SIZES) - 1)]
+        size = min(base, int(HEAD_WIDTH / (len(h["text"]) * 0.53)))
+        fit = f' style="font-size: {size}px"' if size < base else ""
+        parts.append(f'<div class="{cls} clip" id="h{i}"{fit} data-start="{h["start"]:.3f}" '
                      f'data-duration="{p["end_start"] - h["start"]:.3f}" data-track-index="2">'
                      f'<span>{esc(h["text"])}</span></div>')
         if h["start"] > 0:
@@ -649,10 +654,19 @@ TEMPLATE = """<!doctype html>
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("reel")
+    ap.add_argument("--hook", help="build a hook variant from the beat sheet's \"hooks\" (e.g. b) for A/B tests")
     args = ap.parse_args()
     reel = args.reel
 
     spec = json.loads((ADS / "campaign" / "reels" / f"{reel}.json").read_text(encoding="utf-8"))
+    name = reel
+    if args.hook:
+        # A variant changes only the opening: the headline and, optionally, the first shot. The voice stays.
+        variant = spec["hooks"][args.hook]
+        spec["headline"] = variant["headline"]
+        if "first" in variant:
+            spec["beats"][0]["clips"][0] = variant["first"]
+        name = f"{reel}-{args.hook}"
     words = json.loads((ADS / "cache" / "vo" / f"{reel}.words.json").read_text(encoding="utf-8"))
     timing = Timing(words)
     p = plan(spec, timing, reel)
@@ -663,7 +677,7 @@ def main() -> None:
     page = render_html(reel, spec, p, cues, sfx_info, words["duration"])
     out = VIDEO / "index.html"
     out.write_text(page, encoding="utf-8")
-    keep = ADS / "cache" / "compositions" / f"{reel}.html"
+    keep = ADS / "cache" / "compositions" / f"{name}.html"
     keep.parent.mkdir(parents=True, exist_ok=True)
     keep.write_text(page, encoding="utf-8")
 

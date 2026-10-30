@@ -55,3 +55,18 @@ cd ads/video; npx hyperframes@0.8.221 check .; npx hyperframes@0.8.221 render . 
 склейки, подписи и субтитры привязаны к словам и пересчитаются сами.
 
 Музыки в мастере нет: трек добавляется при публикации в Instagram (у бизнес-аккаунта библиотека ограничена).
+
+## Варианты хуков
+
+У R1, R3 и R8 в `reels/<reel>.json` есть `"hooks"`: другой заголовок и, при желании, другой первый кадр;
+голос и остальной ролик те же. Сборка варианта: `build_reel.py r03 --hook b`, рендер в
+`ads/out/r03/r03-hook-b-raw.mp4`, затем `finish.py r03 ... --name r03-hook-b`. Как их тестировать — в
+[`campaign/calendar.md`](campaign/calendar.md).
+
+## Страница для презентации
+
+`python ads/campaign/build_page.py` собирает `ads/out/presentation/index.html`: все ролики с плеером, тексты
+озвучки, подписи к постам, хуки, календарь и что нужно от Люси. Текст берётся из `scripts.md`, `captions.md`,
+`calendar.md` и `reels/*.json`, видео — облегчённые копии готовых роликов (пересоздаются, если ролик новее).
+Страница опубликована как Artifact (https://claude.ai/artifact/Bqs2KEZXPciboMNtezcxuZ, приватная — открывать доступ
+через меню Share); после пересборки её публикуют заново по тому же пути.
