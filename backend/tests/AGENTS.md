@@ -50,7 +50,7 @@
 | `test_environment_casing.py` | `ENVIRONMENT` с другим регистром и пробелами работает как обычное значение: `Settings`, `demo_mode` в ссылке Prodamus, режим production в Kinescope. |
 | `test_email_service.py` | SMTP-транспорт и STARTTLS. |
 | `test_email_attachments.py` | MIME и вложения, Resend-payload, экранирование HTML сертификата. |
-| `test_analytics_events.py` | Публичный сборщик: дедупликация, запрет PII и финансовых событий, атрибуция в заказе. |
+| `test_analytics_events.py` | Публичный сборщик: дедупликация, запрет PII в `properties` и финансовых событий, атрибуция в заказе, отбрасывание непригодных UTM вместо 422, различение числовых ID и телефонов. |
 | **Эксплуатация** | |
 | `test_operations_health.py` | `/health/operations`: секрет мониторинга, отсутствие воркера, отставание очереди. |
 | `test_production_hardening.py` | Проверяет регистрацию `SlowAPIMiddleware` в `app.main.app` и что `Settings(ENVIRONMENT="production", ...)` с небезопасными дефолтами (DEBUG=True, дефолтный `JWT_SECRET_KEY`, отсутствующие email/Kinescope/Prodamus/Redis/MFA-настройки) валится с `pydantic.ValidationError`; правила для staging и `FORWARDED_ALLOW_IPS`. |
