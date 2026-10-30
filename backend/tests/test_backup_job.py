@@ -134,6 +134,32 @@ def test_missing_alert_channel_is_logged(monkeypatch, capsys):
     assert "not configured" in capsys.readouterr().err
 
 
+def test_upload_passes_yandex_endpoint_and_kms_key(monkeypatch, tmp_path):
+    run = Mock()
+    monkeypatch.setattr(backup.subprocess, "run", run)
+    monkeypatch.setattr(backup.shutil, "which", lambda name: "aws")
+    monkeypatch.setenv("BACKUP_S3_ENDPOINT", "https://storage.yandexcloud.net")
+    monkeypatch.setenv("BACKUP_S3_SSE", "aws:kms")
+    monkeypatch.setenv("BACKUP_S3_KMS_KEY_ID", "kms-key-id")
+    archive = tmp_path / "archive.tar"
+    backup.upload_to_s3(archive, "s3://bucket/lucy-nails/")
+    command = run.call_args.args[0]
+    assert command[:3] == ["aws", "--endpoint-url", "https://storage.yandexcloud.net"]
+    assert "s3://bucket/lucy-nails/archive.tar" in command
+    assert command[command.index("--sse") + 1] == "aws:kms"
+    assert command[command.index("--sse-kms-key-id") + 1] == "kms-key-id"
+
+
+def test_upload_refuses_unencrypted_mode(monkeypatch, tmp_path):
+    run = Mock()
+    monkeypatch.setattr(backup.subprocess, "run", run)
+    monkeypatch.setattr(backup.shutil, "which", lambda name: "aws")
+    monkeypatch.setenv("BACKUP_S3_SSE", "none")
+    with pytest.raises(RuntimeError, match="AES256 or aws:kms"):
+        backup.upload_to_s3(tmp_path / "archive.tar", "s3://bucket/lucy-nails")
+    run.assert_not_called()
+
+
 class _ExportHandler(BaseHTTPRequestHandler):
     body = b""
     declared_length = None

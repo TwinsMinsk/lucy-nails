@@ -11,7 +11,7 @@
 
 | File | Description |
 |------|-------------|
-| [`backup/Dockerfile`](backup/Dockerfile) | Образ на `postgres:17` (даёт `pg_dump`, `pg_restore`, `psql`) плюс `awscli`, `ca-certificates`, `python3`. Копирует `scripts/ops/backup_postgres.py` и `restore_postgres.py` в `/app`; `CMD` запускает backup в `/tmp/backups`. Контекст сборки — корень репозитория |
+| [`backup/Dockerfile`](backup/Dockerfile) | Образ на `postgres:17` (даёт `pg_dump`, `pg_restore`, `psql`) плюс `awscli`, `ca-certificates`, `python3`. Копирует `scripts/ops/backup_postgres.py` и `restore_postgres.py` в `/app`; `CMD` запускает backup в `/tmp/backups`. Контекст сборки — корень репозитория. `AWS_*_CHECKSUM_*=when_required` отключает заголовки CRC64NVME, которые `aws-cli` 2.23+ шлёт по умолчанию |
 | [`postgres/init/01-test-database.sql`](postgres/init/01-test-database.sql) | Идемпотентно создаёт `test_nails_course` через `\gexec` (нужен `psql`) |
 | [`railway/backup.toml`](railway/backup.toml) | Backup cron: builder `DOCKERFILE`, `dockerfilePath = "ops/backup/Dockerfile"`, тот же старт, что `CMD` образа, `cronSchedule = "0 1 * * *"`, `restartPolicyType = "NEVER"` |
 | [`railway/worker.toml`](railway/worker.toml) | Outbox worker: builder `RAILPACK`, `pip install -r requirements.lock`, старт `python -m app.workers.outbox`, `ON_FAILURE` до 10 перезапусков. Пути заданы относительно корня сервиса `/backend` |
