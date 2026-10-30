@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Инфраструктурные конфиги без прикладного кода: образ backup-job, init-скрипт локального PostgreSQL и TOML-настройки Railway для сервисов, которых нет в корневом `railway.toml` (outbox worker и backup cron). Логика бэкапа живёт в [`scripts/ops/`](../scripts/ops/), процедуры — в [`Docs/04_Setup_Ops/`](../Docs/04_Setup_Ops/).
+Инфраструктурные конфиги без прикладного кода: образ backup-job, init-скрипт локального PostgreSQL и TOML-настройки Railway для backup cron. Backend, worker и Frontend настроены в самом Railway, файлов конфигурации у них нет. Логика бэкапа живёт в [`scripts/ops/`](../scripts/ops/), процедуры — в [`Docs/04_Setup_Ops/`](../Docs/04_Setup_Ops/).
 
 ## Key Files
 
@@ -14,7 +14,6 @@
 | [`backup/Dockerfile`](backup/Dockerfile) | Образ на `postgres:17` (даёт `pg_dump`, `pg_restore`, `psql`) плюс `awscli`, `ca-certificates`, `python3`. Копирует `scripts/ops/backup_postgres.py` и `restore_postgres.py` в `/app`; `CMD` запускает backup в `/tmp/backups`. Контекст сборки — корень репозитория. `AWS_*_CHECKSUM_*=when_required` отключает заголовки CRC64NVME, которые `aws-cli` 2.23+ шлёт по умолчанию |
 | [`postgres/init/01-test-database.sql`](postgres/init/01-test-database.sql) | Идемпотентно создаёт `test_nails_course` через `\gexec` (нужен `psql`) |
 | [`railway/backup.toml`](railway/backup.toml) | Backup cron: builder `DOCKERFILE`, `dockerfilePath = "ops/backup/Dockerfile"`, тот же старт, что `CMD` образа, `cronSchedule = "0 1 * * *"`, `restartPolicyType = "NEVER"` |
-| [`railway/worker.toml`](railway/worker.toml) | Outbox worker: builder `RAILPACK`, `pip install -r requirements.lock`, старт `python -m app.workers.outbox`, `ON_FAILURE` до 10 перезапусков. Пути заданы относительно корня сервиса `/backend` |
 
 ## Subdirectories
 
@@ -22,14 +21,14 @@
 |-----------|---------|
 | `backup/` | Образ для запуска `scripts/ops/*` |
 | `postgres/init/` | SQL для `/docker-entrypoint-initdb.d` локального контейнера |
-| `railway/` | Config-файлы сервисов Railway, которые не описаны в корневом `railway.toml` |
+| `railway/` | Config-файл backup cron; остальные сервисы настроены в самом Railway |
 
 ## For AI Agents
 
 ### Working In This Directory
 
-- **`railway.toml`.** Корневой файл описывает только `[service.backend]` и `[service.frontend]` и на `ops/railway/` не ссылается; рядом есть `backend/railway.toml` и `frontend/railway.toml`. Привязка TOML к сервису задаётся в настройках Railway, в репозитории её нет. Ожидаемые значения — в таблице [`LAUNCH_OPERATIONS.md`](../Docs/04_Setup_Ops/LAUNCH_OPERATIONS.md): worker — root `/backend`, config `/ops/railway/worker.toml`; backup — root `/`, config `/ops/railway/backup.toml`.
-- **Что доказывают TOML.** По `LAUNCH_OPERATIONS.md` эти файлы описывают задуманные настройки и не подтверждают действующие; там же описаны отказ от Config as Code и дата отключения. Перед правкой свериться с этим документом.
+- **Настройки Railway.** Backend, worker и Frontend настроены в самом Railway, ожидаемые значения — в таблице [`LAUNCH_OPERATIONS.md`](../Docs/04_Setup_Ops/LAUNCH_OPERATIONS.md). `railway.toml` в корень репозитория и в `backend/` или `frontend/` не возвращать: Backend и Frontend подхватывали такие файлы сами при `railwayConfigFile = null`, сначала из каталога сервиса, затем из корня репозитория. Backup — root `/`, config `/ops/railway/backup.toml`; такого сервиса в production нет.
+- **Как проверять.** Действующие настройки показывает последний деплой: `meta.configFile` должен быть null, `meta.serviceManifest` содержит сборку, старт, healthcheck и политику перезапуска. `railway config migrate status` 30.10.2026 писал, что TOML никто не читает, хотя деплои Backend и Frontend их читали, поэтому этой команде не верить. Railway перестаёт читать Config as Code 01.12.2026.
 - **`compose.dev.yml`.** Монтирует `postgres/init/` в `/docker-entrypoint-initdb.d` (read-only). Скрипт выполняется только при первой инициализации volume `lucy_postgres17_data`; для уже существующего volume — `backend/scripts/create_test_db.py` или [`postgresql_setup.md`](../Docs/04_Setup_Ops/postgresql_setup.md). CI этот файл не использует и создаёт БД сам.
 - **`scripts/ops`.** Перенос или переименование `backup_postgres.py`/`restore_postgres.py` ломает `COPY` в Dockerfile и импорты в `backend/tests/test_backup_bundle.py`. Восстановление в контейнере — `python3 /app/restore_postgres.py`.
 - **Версия PostgreSQL.** `postgres:17` задан в Dockerfile, `compose.dev.yml` и `.github/workflows/ci.yml`; менять согласованно. [`BACKUP_RESTORE.md`](../Docs/04_Setup_Ops/BACKUP_RESTORE.md) ещё упоминает закрепление на `postgres:15` и фиксирует несовместимость клиента 17 с сервером 15, а `STAGING.md` указывает PostgreSQL 15.
@@ -45,8 +44,8 @@
 
 ### Common Patterns
 
-- TOML — секции `[build]` и `[deploy]`, как в `backend/railway.toml`.
-- Команды продублированы: `startCommand` в `backup.toml` повторяет `CMD` Dockerfile, а `worker.toml` — строку `worker:` в `backend/Procfile`. Менять вместе.
+- TOML — секции `[build]` и `[deploy]`.
+- Команды продублированы: `startCommand` в `backup.toml` повторяет `CMD` Dockerfile, а команда старта worker в настройках Railway — строку `worker:` в `backend/Procfile`. Менять вместе.
 - Init SQL — числовой префикс в имени и идемпотентность (`WHERE NOT EXISTS`).
 
 ## Dependencies
@@ -54,7 +53,7 @@
 ### Internal
 
 - [`scripts/ops/backup_postgres.py`](../scripts/ops/backup_postgres.py), [`scripts/ops/restore_postgres.py`](../scripts/ops/restore_postgres.py), [`backend/tests/test_backup_bundle.py`](../backend/tests/test_backup_bundle.py)
-- [`compose.dev.yml`](../compose.dev.yml), [`railway.toml`](../railway.toml), [`backend/railway.toml`](../backend/railway.toml), [`frontend/railway.toml`](../frontend/railway.toml), [`backend/Procfile`](../backend/Procfile)
+- [`compose.dev.yml`](../compose.dev.yml), [`backend/Procfile`](../backend/Procfile)
 - [`backend/app/workers/outbox.py`](../backend/app/workers/outbox.py), [`backend/requirements.lock`](../backend/requirements.lock)
 - [`LAUNCH_OPERATIONS.md`](../Docs/04_Setup_Ops/LAUNCH_OPERATIONS.md), [`BACKUP_RESTORE.md`](../Docs/04_Setup_Ops/BACKUP_RESTORE.md), [`STAGING.md`](../Docs/04_Setup_Ops/STAGING.md), [`RELEASE_CHECKLIST.md`](../Docs/04_Setup_Ops/RELEASE_CHECKLIST.md), [`RUNBOOKS.md`](../Docs/04_Setup_Ops/RUNBOOKS.md)
 

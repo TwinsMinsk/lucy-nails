@@ -163,7 +163,7 @@ Set-Location ..
 
 ## Railway: миграции и два сервиса
 
-Файл [`railway.toml`](../../railway.toml): для сервиса **backend** `startCommand` запускает сначала `alembic upgrade head`, затем `uvicorn` — так же по смыслу, как в [`backend/Procfile`](../../backend/Procfile). Это снижает риск расхождения схемы БД между деплоями.
+Настройки сервисов хранятся в самом Railway, файлов конфигурации в репозитории нет; значения — в [LAUNCH_OPERATIONS.md](LAUNCH_OPERATIONS.md). Для сервиса **backend** `startCommand` запускает сначала `alembic upgrade head`, затем `uvicorn` — так же по смыслу, как в [`backend/Procfile`](../../backend/Procfile). Это снижает риск расхождения схемы БД между деплоями.
 
 **Важно:** переменные `NEXT_PUBLIC_*` для фронта должны быть доступны на этапе **build** в Railway — см. [DEPLOY_GUIDE.md](DEPLOY_GUIDE.md).
 

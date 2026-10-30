@@ -96,7 +96,7 @@ npm run test:e2e
 - **Транзакции:** не менять политику `commit`/`rollback` точечно; сначала сверить [`backend/app/core/database.py`](backend/app/core/database.py) и места явных `commit`.
 - **Next.js:** Server Components по умолчанию; `'use client'` только где нужна интерактивность.
 - **Изменение схемы БД:** всегда с миграцией Alembic в [`backend/alembic/versions/`](backend/alembic/versions/).
-- **Деплой:** Railway — [`railway.toml`](railway.toml), [`ops/railway/`](ops/railway/), гайды в [`Docs/04_Setup_Ops/`](Docs/04_Setup_Ops/).
+- **Деплой:** Railway — настройки сервисов хранятся в самом Railway, значения в [`LAUNCH_OPERATIONS.md`](Docs/04_Setup_Ops/LAUNCH_OPERATIONS.md), гайды в [`Docs/04_Setup_Ops/`](Docs/04_Setup_Ops/).
 
 ## Язык
 

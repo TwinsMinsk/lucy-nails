@@ -4,13 +4,12 @@
 **Generated:** 2026-07-06 · **Updated:** 2026-10-30
 
 ## Purpose
-Python-часть монорепозитория: FastAPI (async) API для платформы видео-курсов по маникюру, два отдельных процесса (outbox-воркер уведомлений и Telegram-бот), Alembic-миграции, pytest-тесты и одноразовые ops-скрипты. Деплоится на Railway как отдельный сервис (см. `Procfile`, `railway.toml`).
+Python-часть монорепозитория: FastAPI (async) API для платформы видео-курсов по маникюру, два отдельных процесса (outbox-воркер уведомлений и Telegram-бот), Alembic-миграции, pytest-тесты и одноразовые ops-скрипты. Деплоится на Railway как отдельный сервис (см. `Procfile`; настройки сервиса хранятся в Railway, значения — [`LAUNCH_OPERATIONS.md`](../Docs/04_Setup_Ops/LAUNCH_OPERATIONS.md)).
 
 ## Key Files
 | File | Description |
 |------|-------------|
 | `Procfile` | Railway processes: `web` (`alembic upgrade head`, затем `uvicorn app.main:app` с `--proxy-headers --forwarded-allow-ips`), `worker` (`python -m app.workers.outbox`), `bot` (`python -m app.bot.main`). |
-| `railway.toml` | Конфиг web-сервиса: сборка из `requirements.lock`, та же команда старта, что у `web`, healthcheck `/health`. Воркер вынесен в `../ops/railway/worker.toml`; корневой `../railway.toml` дублирует команду старта web, но собирает из `requirements.txt`. |
 | `alembic.ini` | Конфиг Alembic; `script_location = alembic`, `prepend_sys_path = .` (запускать из `backend/`), `sqlalchemy.url` — дефолт для локальной разработки (реальный URL подменяется в `alembic/env.py` из `settings.DATABASE_URL`). |
 | `requirements.txt` / `requirements.lock` | Только production runtime: FastAPI/Starlette, SQLAlchemy/asyncpg/Alembic, PyJWT+cryptography, Redis rate limit, email/Telegram/certificates. |
 | `requirements-dev.*` / `requirements-tooling.*` | Pytest/Ruff и отдельные audit/docs utilities; не устанавливаются в runtime image. |

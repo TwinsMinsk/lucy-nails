@@ -6,14 +6,28 @@ Status: local configuration and synthetic recovery prepared; isolated remote Pos
 
 Create an empty environment with PostgreSQL 17, dedicated Redis, backend, outbox worker and frontend. Do not duplicate production secrets/data. Separate domains, JWT/MFA/monitoring/payment/DRM keys, demo payment form, email destinations, owner chat, cookies and storage are required.
 
-| Service | Root | Config file | Gate |
+| Service | Root | Settings | Gate |
 | --- | --- | --- | --- |
-| Backend | `/backend` | `/backend/railway.toml` | `/health`, startup migrations |
-| Worker | `/backend` | `/ops/railway/worker.toml` | Redis heartbeat |
-| Frontend | `/frontend` | `/frontend/railway.toml` | `/`, build-time environment |
+| Backend | `/backend` | Railway service settings | `/health`, startup migrations |
+| Worker | `/backend` | Railway service settings | Redis heartbeat |
+| Frontend | `/frontend` | Railway service settings | `/`, build-time environment |
 | Backup | `/` | `/ops/railway/backup.toml` | 01:00 UTC daily, external full backup |
 
-These TOML files describe the intended legacy service settings; they do not prove effective Railway settings. The repository-root `railway.toml` now also selects `RAILPACK`; effective per-service settings are applied separately through direct service configuration. On 8 October the API rejected assigning railwayConfigFile to new staging services because Config as Code is deprecated. Per-service root, Railpack builder, build/start command, restart policy and frontend/API healthchecks were applied directly and read back on staging. Existing legacy services still read TOML until the documented 1 December 2026 cutoff; migrate to Infrastructure as Code before that date. See [official migration guide](https://docs.railway.com/infrastructure-as-code#migrating-from-config-as-code). Production settings remain a separate controlled rollout step. Remote staging uses `ENVIRONMENT=staging`, `DEBUG=false`, `PRODAMUS_DEMO_MODE=true` with a separate form. It enforces the production security checks and requires an isolated cookie/domain namespace, e.g. frontend `staging.lucysmirnova.ru`, API `api.staging.lucysmirnova.ru`, `COOKIE_DOMAIN=staging.lucysmirnova.ru`. Production continues to reject demo payments. Keep checkout disabled until isolation and synthetic fixtures are reviewed.
+Backend, worker and Frontend have no config file in the repository. Railway stops reading Config as Code on 1 December 2026, see the [official migration guide](https://docs.railway.com/infrastructure-as-code#migrating-from-config-as-code), so their TOML files were removed. The project does not use Infrastructure as Code: the settings live in Railway and are expected to be:
+
+| Service | Build command | Start command | Healthcheck |
+| --- | --- | --- | --- |
+| Backend | `pip install -r requirements.lock` | `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="${FORWARDED_ALLOW_IPS:-127.0.0.1}"` | `/health`, 30 s |
+| Worker | `pip install -r requirements.lock` | `python -m app.workers.outbox` | none |
+| Frontend | `npm ci && npm run build` | `npm start` | `/`, 30 s |
+
+All three use the `RAILPACK` builder and restart `ON_FAILURE` up to 10 times. The restart policy is not stored in the environment config: Railway resolves it to these values by default, so check it in the deployment metadata rather than in the settings.
+
+Read effective settings from the latest deployment: `meta.configFile` must be null and `meta.serviceManifest` shows what the service runs with. Do not rely on `railway config migrate status`: on 30 October 2026 it reported that no service read Config as Code while Backend and Frontend deployments still read their TOML. Do not add `railway.toml` back, including at the repository root: Railway picked these files up with `railwayConfigFile` null and fell back to the root file when the service directory had none.
+
+On 8 October the API rejected assigning railwayConfigFile to new staging services because Config as Code is deprecated. Per-service root, Railpack builder, build/start command, restart policy and frontend/API healthchecks were applied directly and read back on staging.
+
+Remote staging uses `ENVIRONMENT=staging`, `DEBUG=false`, `PRODAMUS_DEMO_MODE=true` with a separate form. It enforces the production security checks and requires an isolated cookie/domain namespace, e.g. frontend `staging.lucysmirnova.ru`, API `api.staging.lucysmirnova.ru`, `COOKIE_DOMAIN=staging.lucysmirnova.ru`. Production continues to reject demo payments. Keep checkout disabled until isolation and synthetic fixtures are reviewed.
 
 Frontend build variables: API URL, site URL, operator-provided Metrika counter ID (see frontend env template). Verify configured checkout/purchase goals with consented UTM journeys. Missing counter remains an advertising gate.
 

@@ -60,7 +60,7 @@
 - [`backend/app/core/config.py`](../backend/app/core/config.py), `backend/app/services/*`, `backend/alembic/versions/` — описываются в `ARCHITECTURE.md`/`integrations/`
 - `frontend/src/app/*`, `frontend/components.json` — описываются в `02_Features/`, `ARCHITECTURE.md`
 - [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — проверки, на которые ссылаются `DEVELOPMENT_WORKFLOW.md`/`RELEASE_CHECKLIST.md`
-- [`ops/`](../ops/AGENTS.md), [`scripts/ops/`](../scripts/ops/), [`scripts/load/`](../scripts/load/README.md), [`compose.dev.yml`](../compose.dev.yml), [`railway.toml`](../railway.toml) — описываются в `04_Setup_Ops/`
+- [`ops/`](../ops/AGENTS.md), [`scripts/ops/`](../scripts/ops/), [`scripts/load/`](../scripts/load/README.md), [`compose.dev.yml`](../compose.dev.yml) — описываются в `04_Setup_Ops/`
 - [`.github/workflows/security.yml`](../.github/workflows/security.yml), [`.gitleaks.toml`](../.gitleaks.toml), [`.gitleaksignore`](../.gitleaksignore) — описываются в `SECRET_SCAN_TRIAGE.md`
 
 ### External

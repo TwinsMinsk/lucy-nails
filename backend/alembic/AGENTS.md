@@ -4,7 +4,7 @@
 **Generated:** 2026-07-06 · **Updated:** 2026-10-30
 
 ## Purpose
-Миграции схемы БД поверх асинхронного SQLAlchemy 2 (`app/core/database.py: Base`). `env.py` конвертирует async-URL в sync-URL для самого Alembic, так что миграции пишутся и применяются синхронно (`psycopg2`), а приложение в рантайме работает через `asyncpg`. Применяются при старте web-процесса (`alembic upgrade head` в `../Procfile` и `../railway.toml`).
+Миграции схемы БД поверх асинхронного SQLAlchemy 2 (`app/core/database.py: Base`). `env.py` конвертирует async-URL в sync-URL для самого Alembic, так что миграции пишутся и применяются синхронно (`psycopg2`), а приложение в рантайме работает через `asyncpg`. Применяются при старте web-процесса (`alembic upgrade head` в `../Procfile` и в команде старта сервиса на Railway).
 
 ## Key Files
 | File | Description |

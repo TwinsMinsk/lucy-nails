@@ -114,7 +114,7 @@ Docs/      PRD, архитектура, ops-гайды, трекеры
 
 ### Деплой
 
-[`railway.toml`](railway.toml) — два сервиса в одном репо: backend (`alembic upgrade head && uvicorn`), frontend (`npm run build && npm start`). Подробности — [`Docs/04_Setup_Ops/DEPLOY_GUIDE.md`](Docs/04_Setup_Ops/DEPLOY_GUIDE.md).
+Настройки сервисов хранятся в самом Railway, файлов конфигурации в репозитории нет: backend (`alembic upgrade head && uvicorn`), worker (`python -m app.workers.outbox`), frontend (`npm ci && npm run build`, `npm start`). Значения — [`LAUNCH_OPERATIONS.md`](Docs/04_Setup_Ops/LAUNCH_OPERATIONS.md), подробности — [`Docs/04_Setup_Ops/DEPLOY_GUIDE.md`](Docs/04_Setup_Ops/DEPLOY_GUIDE.md).
 
 ## GitHub / репозиторий и аккаунт
 

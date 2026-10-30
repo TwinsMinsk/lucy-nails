@@ -9,10 +9,9 @@
 
 ## 📋 Шаг 0: Предварительная подготовка (Уже сделано мной)
 Я уже подготовил кодовую базу:
-1.  Создал `railway.toml` для управления Monorepo (Backend + Frontend).
-2.  Настроил `.gitignore` для защиты секретов.
-3.  Инициализировал Git и добавил твой репозиторий как `origin`.
-4.  Сделал первый коммит.
+1.  Настроил `.gitignore` для защиты секретов.
+2.  Инициализировал Git и добавил твой репозиторий как `origin`.
+3.  Сделал первый коммит.
 
 Тебе осталось только отправить код и настроить переменные.
 
@@ -42,6 +41,9 @@ git push -u origin main
 3.  Выбери репозиторий: `TwinsMinsk/lucy-nails`.
 4.  Нажми **"Deploy Now"**.
     Создайте frontend, backend web, outbox worker и Telegram bot как отдельные сервисы/процессы. PostgreSQL, Redis и backup job также раздельны — точная topology в [`STAGING.md`](STAGING.md).
+
+### Настройки сервисов
+Файлов конфигурации Railway в репозитории нет. Для каждого сервиса в **Settings** задай Root Directory, Build Command, Start Command и Healthcheck Path из таблиц в [`LAUNCH_OPERATIONS.md`](LAUNCH_OPERATIONS.md).
 
 ### Добавление Базы Данных
 1.  В открывшемся проекте нажми `Cmd+K` (или `Ctrl+K` или кнопку "New").
