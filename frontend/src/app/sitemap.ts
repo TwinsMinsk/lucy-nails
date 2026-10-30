@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 
 import { getPublishedCourses } from "@/lib/api";
 import { getPublicSiteUrl } from "@/lib/env";
+import { getLandingContent } from "@/lib/landing/loader";
 
 const siteUrl = getPublicSiteUrl();
 
@@ -35,10 +36,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   try {
-    const catalog = await getPublishedCourses();
+    const [catalog, landing] = await Promise.all([getPublishedCourses(), getLandingContent()]);
+    // The landing course page declares "/" as canonical, so only other courses are listed.
+    const landingCourseId = landing.course?.id;
     return [
       ...staticRoutes,
-      ...catalog.courses.map((course) => ({
+      ...catalog.courses.filter((course) => course.id !== landingCourseId).map((course) => ({
         url: `${siteUrl}/courses/${course.id}`,
         lastModified: optionalDate(course.created_at),
         changeFrequency: "weekly" as const,

@@ -3,8 +3,9 @@ import { Suspense } from "react";
 import { PaymentStatus } from "./payment-status";
 
 export const metadata = {
-  title: "Платёж принят — Lucy Nails Academy",
+  title: "Платёж принят",
   description: "Проверяем оплату. Доступ к курсу откроется сразу после подтверждения платежа.",
+  robots: { index: false, follow: false },
 };
 
 export default function PaymentSuccessPage() {
