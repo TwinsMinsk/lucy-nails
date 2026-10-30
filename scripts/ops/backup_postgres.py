@@ -7,7 +7,8 @@ BACKUP_HEARTBEAT_URL for a dead man's switch pinged after each complete run.
 Uploaded files come from a mounted BACKUP_UPLOADS_DIR or, when the volume belongs
 to another service, from BACKUP_UPLOADS_URL with BACKUP_UPLOADS_TOKEN.
 BACKUP_REQUIRE_UPLOADS=true requires one of those and BACKUP_UPLOADS_MARKER.
-The latter must match the source root's .backup-source-marker UTF-8 contents.
+The latter must match the source root's .backup-source-marker UTF-8 contents;
+on Railway the backend export fills that member with the volume's RAILWAY_VOLUME_ID.
 """
 
 from __future__ import annotations

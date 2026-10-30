@@ -21,6 +21,8 @@ def uploads(tmp_path, monkeypatch):
     (root / "certificates" / "a.pdf").write_bytes(b"pdf")
     monkeypatch.setattr(settings, "UPLOAD_STORAGE_DIR", str(root))
     monkeypatch.setattr(settings, "BACKUP_EXPORT_TOKEN", TOKEN)
+    monkeypatch.setattr(settings, "RAILWAY_VOLUME_ID", "")
+    monkeypatch.setattr(settings, "RAILWAY_VOLUME_MOUNT_PATH", "")
     return root
 
 
@@ -70,6 +72,44 @@ async def test_export_failure_is_generic_and_leaves_no_archive(client, uploads, 
     assert response.status_code == 500
     assert "missing" not in response.text
     assert set(_exports_left()) == before
+
+
+def _archive_members(archive: Path) -> dict[str, bytes]:
+    try:
+        with tarfile.open(archive) as bundle:
+            return {
+                member.name: bundle.extractfile(member).read()
+                for member in bundle.getmembers()
+            }
+    finally:
+        archive.unlink()
+
+
+def test_archive_uses_railway_volume_id_as_source_marker(uploads, monkeypatch):
+    monkeypatch.setattr(settings, "RAILWAY_VOLUME_ID", "volume-1")
+    monkeypatch.setattr(settings, "RAILWAY_VOLUME_MOUNT_PATH", str(uploads.parent))
+    members = _archive_members(build_uploads_archive(uploads))
+    # The identity wins over a stale file, and the member appears only once.
+    assert members[".backup-source-marker"] == b"volume-1"
+    assert members["banner.webp"] == b"banner"
+
+
+def test_archive_does_not_vouch_for_directory_outside_the_volume(
+    uploads, tmp_path, monkeypatch
+):
+    # Upload dir silently off the volume: Railway's ID must not mark it as verified.
+    (uploads / ".backup-source-marker").unlink()
+    monkeypatch.setattr(settings, "RAILWAY_VOLUME_ID", "volume-1")
+    monkeypatch.setattr(
+        settings, "RAILWAY_VOLUME_MOUNT_PATH", str(tmp_path / "other-mount")
+    )
+    members = _archive_members(build_uploads_archive(uploads))
+    assert ".backup-source-marker" not in members
+
+
+def test_archive_keeps_marker_file_outside_railway(uploads):
+    members = _archive_members(build_uploads_archive(uploads))
+    assert members[".backup-source-marker"] == b"course-source"
 
 
 def test_archive_refuses_symlinks_and_removes_partial_file(tmp_path, monkeypatch):

@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     MONITORING_TOKEN: str = ""
     # Lets the backup job download uploads; the export stays off when shorter than 32 chars.
     BACKUP_EXPORT_TOKEN: str = ""
+    # Injected by Railway into a service with a volume; identifies the uploads source.
+    RAILWAY_VOLUME_ID: str = ""
+    RAILWAY_VOLUME_MOUNT_PATH: str = ""
 
     # === Auth ===
     JWT_SECRET_KEY: str = "your-super-secret-key-change-in-production"
