@@ -2,6 +2,7 @@
 
 import uuid
 import re
+import unicodedata
 from datetime import datetime
 from typing import Any
 
@@ -17,28 +18,52 @@ EMAIL_PATTERN = re.compile(
 )
 # 10+ digits; a "+" or separators mean the value was written as a phone number.
 PHONE_CANDIDATE_PATTERN = re.compile(r"\+?\d(?:[\s().-]*\+?\d){9,}")
-# Ad systems put numeric IDs into UTM labels, so a bare digit run counts as a phone
-# only if it can be one for our buyers: 7/8/9 or 37 first (RU, KZ, BY, Baltics,
+# Ad systems put numeric IDs into UTM labels, so in a label a bare digit run counts as
+# a phone only if it can be one for our buyers: 7/8/9 or 37 first (RU, KZ, BY, Baltics,
 # Caucasus) or 12-16 digits (a full international number, 15 at most, or a bank card).
 BARE_PHONE_PATTERN = re.compile(r"[789]\d{9,10}|37\d{8,9}|\d{12,16}")
 UUID_PATTERN = re.compile(
-    r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
+    r"(?<![0-9a-f])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![0-9a-f])",
     re.IGNORECASE,
 )
+# Not a phone separator, so digits around a removed UUID do not join into one run.
+UUID_PLACEHOLDER = "_"
 SENSITIVE_VALUE_FRAGMENTS = ("email=", "phone=", "token=", "password=")
 ATTRIBUTION_MAX_LENGTH = 255
+# Control characters and lone surrogates: the database cannot store some of them.
+UNSTORABLE_CATEGORIES = {"Cc", "Cs"}
 
 
-def _contains_phone(text: str) -> bool:
-    for match in PHONE_CANDIDATE_PATTERN.finditer(UUID_PATTERN.sub(" ", text)):
-        candidate = match.group()
-        if not candidate.isdigit() or BARE_PHONE_PATTERN.fullmatch(candidate):
-            return True
-    return False
+def _without_format_chars(text: str) -> str:
+    # Zero-width characters must not hide a value from the patterns.
+    return "".join(char for char in text if unicodedata.category(char) != "Cf")
+
+
+def _contains_email_or_secret(text: str) -> bool:
+    lowered = text.lower()
+    return bool(EMAIL_PATTERN.search(text)) or any(
+        fragment in lowered for fragment in SENSITIVE_VALUE_FRAGMENTS
+    )
+
+
+def _phone_candidates(text: str) -> list[str]:
+    return PHONE_CANDIDATE_PATTERN.findall(UUID_PATTERN.sub(UUID_PLACEHOLDER, text))
+
+
+def _label_contains_contact(label: str) -> bool:
+    text = _without_format_chars(label)
+    return _contains_email_or_secret(text) or any(
+        not candidate.isdigit() or BARE_PHONE_PATTERN.fullmatch(candidate)
+        for candidate in _phone_candidates(text)
+    )
 
 
 def contains_sensitive_analytics_value(value: Any) -> bool:
-    """Detect contact data and secret-like values anywhere in event input."""
+    """Detect contact data and secret-like values anywhere in event input.
+
+    Stricter than the UTM label rule: event properties have no numeric IDs, so
+    any run of 10+ digits outside a UUID counts as a phone.
+    """
     if isinstance(value, dict):
         return any(
             contains_sensitive_analytics_value(key)
@@ -49,20 +74,16 @@ def contains_sensitive_analytics_value(value: Any) -> bool:
         return any(contains_sensitive_analytics_value(item) for item in value)
     if not isinstance(value, str):
         return False
-    normalized = value.strip()
-    lowered = normalized.lower()
-    return bool(
-        EMAIL_PATTERN.search(normalized)
-        or _contains_phone(normalized)
-        or any(fragment in lowered for fragment in SENSITIVE_VALUE_FRAGMENTS)
-    )
+    text = _without_format_chars(value)
+    return _contains_email_or_secret(text) or bool(_phone_candidates(text))
 
 
 def clean_attribution_value(value: Any) -> str | None:
     """Return a UTM label that is safe to store, or None to drop it.
 
     Attribution is optional marketing data: it must never block a payment, so
-    unusable values are dropped instead of being rejected.
+    unusable values are dropped instead of being rejected. Unicode spaces become
+    plain ones; other characters, such as emoji with zero-width joiners, are kept.
     """
     if not isinstance(value, str):
         return None
@@ -70,11 +91,13 @@ def clean_attribution_value(value: Any) -> str | None:
     if (
         not cleaned
         or len(cleaned) > ATTRIBUTION_MAX_LENGTH
-        or not cleaned.isprintable()
-        or contains_sensitive_analytics_value(cleaned)
+        or any(unicodedata.category(char) in UNSTORABLE_CATEGORIES for char in cleaned)
+        or _label_contains_contact(cleaned)
     ):
         return None
-    return cleaned
+    return "".join(
+        " " if unicodedata.category(char).startswith("Z") else char for char in cleaned
+    )
 
 
 class AnalyticsService:

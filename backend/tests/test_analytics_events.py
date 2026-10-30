@@ -34,9 +34,26 @@ CONTACT_VALUES = [
     "+4915112345678",
     "4915112345678",
     "lead_79991234567",
+    "+7\xa0999\xa0123\xa045\xa067",
+    "8 999 123 45 67",
+    "799​9123​4567",
+    "79\xad99123⁠4567",
     "student@example.com",
+    "student​@example.com",
     "phone=123",
+    "ph​one=123",
 ]
+# Allowed in UTM labels only: properties treat any 10+ digits as a phone.
+NUMERIC_AD_IDS = [
+    "1234567890",
+    "12345678901",
+    "ad_12345678901",
+    "12345678901|5123456789|123456789",
+    "12345678901234567",
+    "7123456789012345678",
+]
+# Last group has digits only, so without UUID handling it looks like a phone.
+DIGIT_HEAVY_UUID = "550e8400-e29b-41d4-a716-446655440000"
 
 
 async def _published_course(db: AsyncSession) -> Course:
@@ -80,27 +97,47 @@ async def _order_events(db: AsyncSession, order_id: UUID) -> list[AnalyticsEvent
     [
         "summer_sale",
         "123456789",
-        "1234567890",
-        "12345678901",
-        "ad_12345678901",
-        "12345678901|5123456789|123456789",
-        "12345678901234567",
-        "7123456789012345678",
-        "550e8400-e29b-41d4-a716-446655440000",
+        DIGIT_HEAVY_UUID,
+        f"course_{DIGIT_HEAVY_UUID}",
+        f"курс{DIGIT_HEAVY_UUID}",
+        f"cmp1234567 {DIGIT_HEAVY_UUID} 890",
     ],
 )
-def test_numeric_identifiers_are_not_contact_data(value: str):
+def test_short_numbers_and_uuids_are_not_contact_data(value: str):
     assert contains_sensitive_analytics_value(value) is False
 
 
-@pytest.mark.parametrize("value", [*CONTACT_VALUES, "4111111111111111"])
-def test_contact_data_is_detected(value: str):
+@pytest.mark.parametrize(
+    "value",
+    [
+        *CONTACT_VALUES,
+        *NUMERIC_AD_IDS,
+        "4111111111111111",
+        "12025550123",
+        "4951234567",
+        "3432123456",
+        "0501234567",
+    ],
+)
+def test_properties_rule_treats_any_ten_digits_as_sensitive(value: str):
     assert contains_sensitive_analytics_value(value) is True
 
 
 @pytest.mark.parametrize(
     "value",
-    [None, "", "   ", 123, "x" * 256, "abc\x00def", "bad\ud800", *CONTACT_VALUES],
+    [
+        None,
+        "",
+        "   ",
+        123,
+        "x" * 256,
+        "abc\x00def",
+        "abc\x7fdef",
+        "abc\tdef",
+        "bad\ud800",
+        *CONTACT_VALUES,
+        f"79991234567 {DIGIT_HEAVY_UUID}",
+    ],
 )
 def test_unusable_attribution_value_is_dropped(value):
     assert clean_attribution_value(value) is None
@@ -112,6 +149,17 @@ def test_unusable_attribution_value_is_dropped(value):
         (" 12345678901 ", "12345678901"),
         ("курс маникюра 2026", "курс маникюра 2026"),
         ("x" * 255, "x" * 255),
+        ("курс\xa0маникюра", "курс маникюра"),
+        ("весна 2026", "весна 2026"),
+        ("весна　2026", "весна 2026"),
+        ("👩‍💻 курс", "👩‍💻 курс"),
+        (f"course_{DIGIT_HEAVY_UUID}", f"course_{DIGIT_HEAVY_UUID}"),
+        (f"курс{DIGIT_HEAVY_UUID}", f"курс{DIGIT_HEAVY_UUID}"),
+        (
+            f"cmp1234567 {DIGIT_HEAVY_UUID} 890",
+            f"cmp1234567 {DIGIT_HEAVY_UUID} 890",
+        ),
+        *((value, value) for value in NUMERIC_AD_IDS),
     ],
 )
 def test_usable_attribution_value_is_kept(value: str, expected: str):
@@ -256,10 +304,29 @@ async def test_landing_view_accepts_course_path_with_digit_heavy_uuid(
             "event_name": "landing_view",
             "source": "web",
             "anonymous_id": str(uuid4()),
-            "properties": {"path": "/courses/550e8400-e29b-41d4-a716-446655440000"},
+            "properties": {"path": f"/courses/{DIGIT_HEAVY_UUID}"},
         },
     )
     assert response.status_code == 202, response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", ["12025550123", "4951234567", "12345678901"])
+async def test_public_event_rejects_bare_number_in_properties(
+    client: AsyncClient, value: str
+):
+    # "variant" is an allowed key, so only the value check can reject the event.
+    response = await client.post(
+        "/api/analytics/events",
+        json={
+            "event_id": str(uuid4()),
+            "event_name": "landing_view",
+            "source": "web",
+            "anonymous_id": str(uuid4()),
+            "properties": {"path": "/", "variant": value},
+        },
+    )
+    assert response.status_code == 422, response.text
 
 
 @pytest.mark.asyncio
@@ -294,6 +361,33 @@ async def test_record_event_still_rejects_contact_data_in_properties(db: AsyncSe
             source="server",
             properties={"label": "+79991234567"},
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", ["12025550123", "4951234567", "12345678901"])
+async def test_record_event_rejects_bare_number_in_properties(
+    db: AsyncSession, value: str
+):
+    with pytest.raises(ValueError):
+        await AnalyticsService.record_event(
+            db,
+            event_id=str(uuid4()),
+            event_name="purchase_confirmed",
+            source="server",
+            properties={"label": value},
+        )
+
+
+@pytest.mark.asyncio
+async def test_record_event_accepts_uuid_in_properties_path(db: AsyncSession):
+    created = await AnalyticsService.record_event(
+        db,
+        event_id=str(uuid4()),
+        event_name="landing_view",
+        source="server",
+        properties={"path": f"/courses/{DIGIT_HEAVY_UUID}"},
+    )
+    assert created is True
 
 
 @pytest.mark.asyncio
@@ -418,6 +512,30 @@ async def test_checkout_keeps_numeric_ad_ids_in_attribution(
     events = await _order_events(db, order_id)
     assert len(events) == 2
     assert all(event.utm_content == "12345678901" for event in events)
+
+
+@pytest.mark.asyncio
+async def test_checkout_keeps_labels_with_unicode_spaces_and_emoji(
+    client: AsyncClient, db: AsyncSession
+):
+    course = await _published_course(db)
+
+    response = await _guest_checkout(
+        client,
+        course,
+        {
+            "first_touch": {
+                "utm_campaign": "курс\xa0маникюра",
+                "utm_content": "👩‍💻 курс",
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    order_id = UUID(response.json()["order_id"].split("|", 1)[1])
+    order = await db.get(Order, order_id)
+    assert order.first_utm_campaign == "курс маникюра"
+    assert order.first_utm_content == "👩‍💻 курс"
 
 
 @pytest.mark.asyncio
