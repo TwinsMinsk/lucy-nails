@@ -103,6 +103,16 @@ def verify_uploads_source(uploads: Path, expected_marker: str | None) -> None:
             raise RuntimeError("Backup upload source marker does not match")
 
 
+def uploads_url_is_safe(url: str) -> bool:
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme == "https":
+        return True
+    host = parts.hostname or ""
+    return parts.scheme == "http" and (
+        host.endswith(".railway.internal") or host in {"localhost", "127.0.0.1", "::1"}
+    )
+
+
 def fetch_uploads(url: str, token: str, directory: Path) -> Path:
     archive = directory / "uploads-export.tar"
     request = urllib.request.Request(url, headers={"X-Backup-Token": token})
@@ -192,8 +202,8 @@ def main() -> int:
     has_uploads_source = bool(args.uploads_dir or uploads_url)
     if args.uploads_dir and uploads_url:
         config_error("Set either BACKUP_UPLOADS_DIR or BACKUP_UPLOADS_URL, not both")
-    if uploads_url and not uploads_url.startswith(("https://", "http://")):
-        config_error("BACKUP_UPLOADS_URL must be an http(s) address")
+    if uploads_url and not uploads_url_is_safe(uploads_url):
+        config_error("BACKUP_UPLOADS_URL must use https, http only for a private host")
     if uploads_url and not uploads_token:
         config_error("BACKUP_UPLOADS_TOKEN is required with BACKUP_UPLOADS_URL")
     if require_uploads and not has_uploads_source:

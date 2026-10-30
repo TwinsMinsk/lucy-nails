@@ -74,6 +74,17 @@ async def test_export_failure_is_generic_and_leaves_no_archive(client, uploads, 
     assert set(_exports_left()) == before
 
 
+@pytest.mark.asyncio
+async def test_export_is_rate_limited_because_each_call_rebuilds_the_archive(
+    client, uploads
+):
+    statuses = [
+        (await client.get(EXPORT_URL, headers={"X-Backup-Token": TOKEN})).status_code
+        for _ in range(11)
+    ]
+    assert statuses == [200] * 10 + [429]
+
+
 def _archive_members(archive: Path) -> dict[str, bytes]:
     try:
         with tarfile.open(archive) as bundle:

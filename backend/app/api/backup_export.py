@@ -4,11 +4,12 @@ import logging
 import secrets
 from pathlib import Path
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
 from app.core.config import settings
+from app.core.rate_limit import limiter
 from app.services.uploads_archive_service import build_uploads_archive
 
 logger = logging.getLogger(__name__)
@@ -16,8 +17,10 @@ router = APIRouter()
 
 
 # A sync route on purpose: FastAPI runs it in a thread, so archiving does not block the loop.
+# The job needs one call per run; each call rebuilds the whole archive on disk.
 @router.get("/backup/uploads.tar", include_in_schema=False)
-def export_uploads(x_backup_token: str = Header(default="")) -> FileResponse:
+@limiter.limit("10/hour")
+def export_uploads(request: Request, x_backup_token: str = Header(default="")) -> FileResponse:
     if len(settings.BACKUP_EXPORT_TOKEN) < 32:
         raise HTTPException(status_code=503, detail="Backup export is not configured")
     if not secrets.compare_digest(x_backup_token.encode(), settings.BACKUP_EXPORT_TOKEN.encode()):

@@ -58,7 +58,11 @@ def job_env(monkeypatch, tmp_path):
         ({"BACKUP_UPLOADS_URL": "https://api.test/uploads.tar"}, "TOKEN"),
         (
             {"BACKUP_UPLOADS_URL": "file:///etc/passwd", "BACKUP_UPLOADS_TOKEN": "t"},
-            "http",
+            "https",
+        ),
+        (
+            {"BACKUP_UPLOADS_URL": "http://api.test/uploads.tar", "BACKUP_UPLOADS_TOKEN": "t"},
+            "https",
         ),
     ],
 )
@@ -72,6 +76,22 @@ def test_configuration_error_reaches_the_owner(
     assert exc.value.code == 2
     assert len(alerts) == 1
     assert expected in alerts[0]
+
+
+@pytest.mark.parametrize(
+    "url,allowed",
+    [
+        ("https://api.lucysmirnova.ru/uploads.tar", True),
+        ("http://backend.railway.internal:8000/uploads.tar", True),
+        ("http://127.0.0.1:8000/uploads.tar", True),
+        ("http://localhost:8000/uploads.tar", True),
+        ("http://api.lucysmirnova.ru/uploads.tar", False),
+        ("http://railway.internal.example.test/uploads.tar", False),
+        ("ftp://api.lucysmirnova.ru/uploads.tar", False),
+    ],
+)
+def test_export_token_is_never_sent_over_an_open_network(url, allowed):
+    assert backup.uploads_url_is_safe(url) is allowed
 
 
 def test_missing_pg_dump_reaches_the_owner(monkeypatch, alerts, job_env):
