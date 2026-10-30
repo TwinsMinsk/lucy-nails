@@ -1,5 +1,6 @@
 """Transactional helpers for durable notification delivery."""
 
+import re
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from uuid import UUID
@@ -18,17 +19,45 @@ from app.services.support_access_service import (
 
 
 TELEGRAM_API_TIMEOUT_SECONDS = 10.0
+# A token inside a Telegram API URL (any shape, even one already rotated away)
+# or on its own.
+TELEGRAM_TOKEN_PATTERN = re.compile(
+    r"""(?<=api\.telegram\.org/bot)[^/\s'"]+|\d{5,}:[A-Za-z0-9_-]{20,}"""
+)
+REDACTED = "[REDACTED]"
+
+
+class TelegramApiError(RuntimeError):
+    """Telegram call failure whose text is safe to store and log.
+
+    The request URL contains the bot token, so httpx exceptions, whose text and
+    attributes carry that URL, must not leave _telegram_request.
+    """
+
+
+def redact_telegram_token(text: str) -> str:
+    if settings.TELEGRAM_BOT_TOKEN:
+        text = text.replace(settings.TELEGRAM_BOT_TOKEN, REDACTED)
+    return TELEGRAM_TOKEN_PATTERN.sub(REDACTED, text)
 
 
 async def _telegram_request(method: str, payload: dict) -> None:
     if not settings.TELEGRAM_BOT_TOKEN:
         raise RuntimeError("Telegram bot is not configured")
     url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/{method}"
-    async with httpx.AsyncClient(timeout=TELEGRAM_API_TIMEOUT_SECONDS) as client:
-        response = await client.post(url, json=payload)
-    response.raise_for_status()
+    try:
+        async with httpx.AsyncClient(timeout=TELEGRAM_API_TIMEOUT_SECONDS) as client:
+            response = await client.post(url, json=payload)
+    except httpx.HTTPError as exc:
+        raise TelegramApiError(
+            f"Telegram API {method} failed: {type(exc).__name__}"
+        ) from None
+    if not response.is_success:
+        raise TelegramApiError(
+            f"Telegram API {method} failed with HTTP {response.status_code}"
+        )
     if not response.json().get("ok"):
-        raise RuntimeError(f"Telegram API rejected {method}")
+        raise TelegramApiError(f"Telegram API rejected {method}")
 
 
 async def send_telegram_message(recipient: str, text: str) -> None:
@@ -240,7 +269,8 @@ async def process_outbox_batch(
             if not skipped:
                 await deliver(message)
         except Exception as exc:
-            error = str(exc)[:2000]
+            # Redact first: truncation could cut a token past recognition.
+            error = redact_telegram_token(str(exc))[:2000]
             db.add(
                 DeliveryAttempt(
                     outbox_message_id=message.id,

@@ -53,6 +53,12 @@ async def run_forever() -> None:
             await asyncio.sleep(settings.OUTBOX_POLL_SECONDS)
 
 
-if __name__ == "__main__":
+def configure_logging() -> None:
     logging.basicConfig(level=logging.INFO)
+    # httpx logs full request URLs at INFO, and Telegram URLs contain the bot token.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
+if __name__ == "__main__":
+    configure_logging()
     asyncio.run(run_forever())

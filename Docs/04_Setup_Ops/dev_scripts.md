@@ -76,6 +76,17 @@ npm run dev
 
 ---
 
+## Очистка токена Telegram из ошибок доставки
+
+```powershell
+python scripts/ops/redact_telegram_tokens.py
+python scripts/ops/redact_telegram_tokens.py --apply
+```
+
+Разовый скрипт: маскирует токен бота в `outbox_messages.last_error` и `delivery_attempts.error`. Без `--apply` только считает строки. Значения не выводит, запускать повторно безопасно. Нужны `asyncpg` и `DATABASE_URL`; файл `.env` скрипт не читает. Запускать после перезапуска воркера на исправленном коде.
+
+---
+
 ## Troubleshooting
 
 ### Ошибка: «Папка backend/frontend не найдена»
