@@ -1,7 +1,7 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-07-06 | Updated: 2026-07-06 -->
-
 # scripts/kinescope
+
+**Parent context:** `../AGENTS.md`
+**Generated:** 2026-07-06 · **Updated:** 2026-10-30
 
 ## Purpose
 
@@ -11,8 +11,8 @@
 
 | File | Description |
 |------|-------------|
-| [`setup_drm.py`](setup_drm.py) | Разовая настройка: генерирует RSA-2048 пару, сохраняет приватный PEM (по умолчанию `backend/secrets/kinescope_drm_private.pem`), заливает публичный ключ как JWK (`POST /v1/jwk`), регистрирует webhook DRM-проекта (`PUT /v1/drm/auth/{project_id}`) |
-| [`put_drm_auth_from_env.py`](put_drm_auth_from_env.py) | Перерегистрирует webhook Authorization Backend из переменных `.env` (`KINESCOPE_API_KEY`, `KINESCOPE_PROJECT_ID`, `KINESCOPE_DRM_BASIC_USER/PASS`) без генерации новых ключей |
+| [`setup_drm.py`](setup_drm.py) | Разовая настройка: генерирует RSA-2048 пару, сохраняет приватный PEM (по умолчанию `backend/secrets/kinescope_drm_private.pem`), заливает публичный ключ как JWK (`POST /v1/jwk`), регистрирует webhook DRM-проекта (`PUT /v1/drm/auth/{project_id}`). Обязателен `--webhook-url`; прочие флаги: `--project-id`, `--api-key`, `--key-path`, `--kid`, `--basic-user`/`--basic-pass`, `--key-expires-days`, `--skip-drm-auth` |
+| [`put_drm_auth_from_env.py`](put_drm_auth_from_env.py) | Перерегистрирует webhook Authorization Backend из переменных `.env` (`KINESCOPE_API_KEY`, `KINESCOPE_PROJECT_ID`, `KINESCOPE_DRM_BASIC_USER/PASS`) без генерации новых ключей. Флаги: `--env-file` (по умолчанию корневой `.env`), `--webhook-base` (по умолчанию production-origin backend — для staging передавать явно) |
 | [`drm_actions.py`](drm_actions.py) | Отладочный CLI: `sign-token` (подписать тестовый `drmauthtoken` RS256, опционально собрать embed-URL), `decode-token` (декод + верификация JWT), `list-jwks` (`GET /v1/jwk`), `get-drm-auth` (`GET /v1/drm/auth/<project_id>`); состояние Kinescope не меняет |
 | `.last-setup-output.txt` | Локальный вывод последнего запуска `setup_drm.py` — исключён из Git (`scripts/*/.last-setup-output.txt`), может содержать чувствительные значения; не читать вслух и не цитировать |
 
@@ -50,4 +50,6 @@
 - Kinescope REST API (`api.kinescope.io`: `/v1/jwk`, `/v1/drm/auth/{project_id}`)
 - `httpx`, `cryptography`, `python-jose`, `requests`
 
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+## Manual Notes
+
+Notes under this heading are written by humans and preserved on regeneration.

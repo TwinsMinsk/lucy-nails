@@ -1,7 +1,7 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-07-06 | Updated: 2026-07-06 -->
-
 # schemas
+
+**Parent context:** `../AGENTS.md`
+**Generated:** 2026-07-06 · **Updated:** 2026-10-30
 
 ## Purpose
 
@@ -11,7 +11,7 @@ Pydantic v2 схемы запросов/ответов, сгруппирован
 
 | File | Description |
 |------|-------------|
-| `auth.py` | `UserRegister`, `UserLogin`, `Token` (access/refresh/bearer), `UserResponse` (`from_attributes=True`) |
+| `auth.py` | `UserRegister`, `UserLogin`, `ChangePasswordRequest` (`current_password` + `new_password`), `ForgotPasswordRequest` (`email`), `ResetPasswordRequest` (`token` + `new_password`), `Token` (access/refresh/bearer), `UserResponse` (`from_attributes=True`). Новые пароли — `min_length=6` |
 | `course.py` | `CourseBase`/`CourseResponse` (+ `modules_count`/`lessons_count`/`total_duration`, заполняются вручную в `courses.py`), `CourseListResponse` |
 | `landing.py` | Схемы редактора лендинга: `HeroStat`, `LandingHeroResponse`/`LandingHeroUpdate`, `LandingModuleResponse`/`LandingModuleUpdate`, `GalleryItemBase`/`Create`/`Update`/`Response`, `GalleryReorderItem`, агрегирующий `LandingPayload` (для `GET /api/landing`) |
 | `lesson.py` | `LessonBase`/`LessonResponse`/`LessonDetailResponse` (+ `video_url`), `LessonOutlineResponse` — публичная схема без ID видео с фабрикой `from_lesson(lesson)`, распаковывающей JSON `promo_highlights.bullets` в `promo_bullets`, `VideoPlayResponse` |
@@ -26,7 +26,7 @@ Pydantic v2 схемы запросов/ответов, сгруппирован
 - Конфиг ORM-режима — `class Config: from_attributes = True` (старый Pydantic v1 стиль, а не `model_config = ConfigDict(...)`) — это устоявшийся паттерн во всех файлах модуля; не переписывать на `ConfigDict` точечно в одном файле.
 - Многие схемы дублируют `use_enum_values = True` вместе с `from_attributes = True` — сохранять оба флага при добавлении новых Response-схем над enum-полями (`role`, `tariff`, `payment_status`).
 - `LessonOutlineResponse.from_lesson()` — образец паттерна «фабрика на schema для схлопывания JSON-колонки в плоское поле»; для новых `promo_*`/`landing_*` JSON-полей следовать этому же подходу вместо ad-hoc парсинга в роутере.
-- Схемы для админ-CRUD (создание/обновление курса, модуля, урока) объявлены не здесь, а прямо в `app/api/admin.py` (`CourseCreateRequest` и т.п.) — так исторически сложилось для admin-only payload'ов; новые публичные/переиспользуемые схемы добавлять в `app/schemas/`, не в роутер.
+- Схемы для админ-CRUD (создание/обновление курса, модуля, урока) объявлены не здесь, а прямо в `app/api/admin.py` (`CourseCreateRequest`, `GrantAccessRequest`, `RevokeAccessRequest`/`RevokeAccessResponse` и т.п.) — так исторически сложилось для admin-only payload'ов; новые публичные/переиспользуемые схемы добавлять в `app/schemas/`, не в роутер.
 - Опциональные поля в `*Update`-схемах — всегда `| None = None` (или `Field(None, ...)`), обрабатываются в роутере через `model_dump(exclude_unset=True)` (см. `admin_landing.py`).
 
 ### Testing Requirements
@@ -37,7 +37,7 @@ $env:PYTHONPATH = "backend"
 python -m pytest backend/tests -v --tb=short
 ```
 
-Схемы не имеют отдельных unit-тестов — валидируются косвенно через API-тесты (`test_auth.py`, `test_courses.py`, `test_purchases.py`), которые бьют по `response_model`.
+Схемы не имеют отдельных unit-тестов — валидируются косвенно через API-тесты (`test_auth.py`, `test_auth_password.py`, `test_courses.py`, `test_purchases.py`), которые бьют по `response_model`.
 
 ### Common Patterns
 
@@ -71,4 +71,6 @@ def from_lesson(cls, lesson: Any) -> LessonOutlineResponse:
 ### External
 - `pydantic` v2 (`BaseModel`, `Field`, `EmailStr`, `TypeAdapter` — последний используется в `app/api/payments.py`, не здесь, но по той же схеме валидации)
 
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+## Manual Notes
+
+Notes under this heading are written by humans and preserved on regeneration.

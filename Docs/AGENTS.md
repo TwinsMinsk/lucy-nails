@@ -1,11 +1,11 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-07-06 | Updated: 2026-07-06 -->
-
 # Docs
+
+**Parent context:** `../AGENTS.md`
+**Generated:** 2026-07-06 · **Updated:** 2026-10-30
 
 ## Purpose
 
-Документация проекта: продуктовые требования, техническая архитектура, ops-гайды по разработке и деплою, документы по фичам и истории фаз, трекеры задач/техдолга, справочники интеграций и point-in-time аудиты. [`README.md`](README.md) в этом каталоге — короткий индекс по всем разделам ниже.
+Документация проекта: продуктовые требования, техническая архитектура, ops-гайды по разработке и деплою, документы по фичам и истории фаз, трекеры задач/техдолга, справочники интеграций и point-in-time аудиты. [`README.md`](README.md) в этом каталоге — короткий индекс по разделам ниже (кроме `audit/`, который в нём не указан).
 
 ## Key Files
 
@@ -26,7 +26,7 @@
 | [`05_Phases_History/`](05_Phases_History/) | Исторические отчёты завершённых фаз (Phase 1–4.1, обновления галереи/навигации/контента уроков) — контекст, не источник текущих правил |
 | [`06_Tracking/`](06_Tracking/) | [`TASKS.md`](06_Tracking/TASKS.md) (текущий трекер), [`POST_MVP_HARDENING.md`](06_Tracking/POST_MVP_HARDENING.md), [`REFACTORING_ROADMAP.md`](06_Tracking/REFACTORING_ROADMAP.md), `PROGRESS_REPORT.md`, [`CONTENT.md`](06_Tracking/CONTENT.md) (структура/контент курса, черновик) |
 | [`integrations/`](integrations/) | Справочники: [`KINESCOPE_API.md`](integrations/KINESCOPE_API.md), [`KINESCOPE_AUTH_BACKEND.md`](integrations/KINESCOPE_AUTH_BACKEND.md), [`PRODAMUS_API.md`](integrations/PRODAMUS_API.md) |
-| [`audit/`](audit/) | Аудиты на конкретную дату: [`landing-copy-audit-2026-05-10.md`](audit/landing-copy-audit-2026-05-10.md), [`audit-2026-06-26/`](audit/audit-2026-06-26/) (00-summary + тематические отчёты 01–06 + `BACKLOG.md`) |
+| [`audit/`](audit/) | Аудиты на конкретную дату: [`landing-copy-audit-2026-05-10.md`](audit/landing-copy-audit-2026-05-10.md), [`audit-2026-06-26/`](audit/audit-2026-06-26/) (00-summary + тематические отчёты 01–06 + `BACKLOG.md`), [`audit-2026-07-06/README.md`](audit/audit-2026-07-06/README.md) (аудит production-готовности: вердикт, P0–P3, ручной чек-лист владельца, роадмап по вехам, результаты живого смока денежного пути) |
 
 ## For AI Agents
 
@@ -63,4 +63,6 @@
 - Kinescope, Prodamus, Telegram — внешние интеграции, описанные в `integrations/` и `02_Features/`
 - Railway — платформа деплоя, [`DEPLOY_GUIDE.md`](04_Setup_Ops/DEPLOY_GUIDE.md)
 
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+## Manual Notes
+
+Notes under this heading are written by humans and preserved on regeneration.

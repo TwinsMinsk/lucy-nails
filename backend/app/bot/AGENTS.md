@@ -1,7 +1,7 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-07-06 | Updated: 2026-07-06 -->
-
 # bot
+
+**Parent context:** `../AGENTS.md`
+**Generated:** 2026-07-06 · **Updated:** 2026-10-30
 
 ## Purpose
 Отдельный Telegram-бот на библиотеке `python-telegram-bot` (не aiogram) для привязки Telegram-аккаунта студента к аккаунту на сайте через deep link. Это **самостоятельный процесс**, не роутер FastAPI и не запускается вместе с `uvicorn` — свой entry point (`main.py`), свой запуск (`scripts/run_bot.ps1` из корня репозитория), long polling.
@@ -18,7 +18,8 @@
 ## For AI Agents
 
 ### Working In This Directory
-- `BotAuthService.link_account` декодирует JWT тем же секретом/алгоритмом, что и веб-аутентификация (`settings.JWT_SECRET_KEY`, `settings.JWT_ALGORITHM`), ожидает claim `sub` = `UUID` пользователя. Если понадобится где-то ещё генерировать такой deep-link токен — использовать тот же формат payload (`sub` = str(user.id)).
+- `BotAuthService.link_account` декодирует JWT тем же секретом/алгоритмом, что и веб-аутентификация (`settings.JWT_SECRET_KEY`, `settings.JWT_ALGORITHM`), ожидает claim `sub` = `UUID` пользователя. Если понадобится где-то ещё генерировать такой deep-link токен — использовать тот же формат payload (`sub` = str(user.id)). Генератора deep-link токена в `backend/app/` сейчас нет.
+- В отличие от `get_current_user` (принимает только `type == "access"` и сверяет `ver` с `User.token_version`), `link_account` проверяет лишь подпись и `sub` — claims `type`/`ver` не смотрит. При добавлении генератора deep-link стоит ввести отдельный `type` и проверять его здесь.
 - Логика линковки: если `telegram_id` уже привязан к **другому** `user_id` — отказ; если к тому же — сообщение «уже привязан»; иначе — поиск пользователя по `user_id` из токена и запись `telegram_id`/`telegram_username`.
 - Сессия БД открывается напрямую через `async_session_maker()` (не через `Depends(get_db)`, т.к. это не FastAPI-контекст) — при добавлении новых операций в боте следуй этому же паттерну и не забывай `commit`/`rollback` вручную.
 - Ошибки в `services/auth.py` сейчас логируются через `print(...)`, а не через `logging` (в отличие от `main.py`, где настроен `logging.basicConfig`) — расхождение с остальным бэкендом, при правках в этом файле не обязательно переносить на `logging`, если задача не про это.
@@ -44,4 +45,6 @@
 ### External
 `python-telegram-bot` (`telegram`, `telegram.ext`), `python-jose` (`jose.jwt`, `jose.JWTError`), `sqlalchemy` (async `select`).
 
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+## Manual Notes
+
+Notes under this heading are written by humans and preserved on regeneration.

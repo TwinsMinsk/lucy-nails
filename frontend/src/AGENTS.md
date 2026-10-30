@@ -1,7 +1,7 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-07-06 | Updated: 2026-07-06 -->
-
 # src
+
+**Parent context:** `../AGENTS.md`
+**Generated:** 2026-07-06 · **Updated:** 2026-10-30
 
 ## Purpose
 
@@ -11,13 +11,13 @@
 
 | File | Description |
 |------|-------------|
-| `proxy.ts` | Next.js middleware (`export function proxy`). Матчит `/dashboard/:path*`, `/profile/:path*`, `/courses/:path*`, `/admin/:path*`. Считает "защищёнными" пути под `/admin`, `/dashboard`, `/profile` и `/courses/[id]/lessons/*`; при отсутствии cookie `auth_session=1` редиректит на `/auth/login?next=<path>`. Это UX-guard, а не источник авторизации — реальная проверка прав всегда на backend (FastAPI `Depends`). |
+| `proxy.ts` | Next.js middleware (`export function proxy`, соглашение Next.js 16 вместо `middleware.ts`). Матчит `/dashboard/:path*`, `/profile/:path*`, `/courses/:path*`, `/admin/:path*`. Считает "защищёнными" пути под `/admin`, `/dashboard`, `/profile` и `/courses/[id]/lessons/*` (публичная `/courses/[id]` проходит без редиректа); при отсутствии cookie `auth_session=1` редиректит на `/auth/login?next=<path+query>`. Это UX-guard, а не источник авторизации — реальная проверка прав всегда на backend (FastAPI `Depends`). |
 
 ## Subdirectories
 
 | Directory | Purpose |
 |-----------|---------|
-| `app/` | Маршруты App Router: публичный лендинг, `(public)`/`(protected)` группы, `admin/` |
+| `app/` | Маршруты App Router: публичный лендинг, `(public)`/`(protected)` группы, `admin/`, брендированные страницы ошибок (`error.tsx`, `global-error.tsx`, `not-found.tsx`) |
 | `components/` | React-компоненты: `ui/` (shadcn), `course/`, `landing/`, `layout/` |
 | `lib/` | API-клиент, env-хелперы, схемы валидации, санитайзер HTML, контент лендинга |
 
@@ -35,7 +35,8 @@
 
 ### Common Patterns
 
-- Route groups `(public)` и `(protected)` не влияют на URL — используются только для организации layout'ов/сегментов.
+- Route groups `(public)` и `(protected)` не влияют на URL — используются только для организации сегментов (собственных `layout.tsx` у групп нет; отдельный layout есть только у `app/admin/`).
+- Каталога `hooks/` нет, хотя alias `@/hooks` объявлен в `components.json` — при появлении общих хуков создавать его там.
 - Клиентские компоненты помечаются `"use client"` в первой строке файла; серверные — без директивы (по умолчанию).
 
 ## Dependencies
@@ -48,4 +49,6 @@
 
 - `next/server` (`NextResponse`, `NextRequest`) — для `proxy.ts`.
 
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+## Manual Notes
+
+Notes under this heading are written by humans and preserved on regeneration.

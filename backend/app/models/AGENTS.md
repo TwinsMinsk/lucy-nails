@@ -1,7 +1,7 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-07-06 | Updated: 2026-07-06 -->
-
 # models
+
+**Parent context:** `../AGENTS.md`
+**Generated:** 2026-07-06 · **Updated:** 2026-10-30
 
 ## Purpose
 
@@ -11,7 +11,7 @@ SQLAlchemy 2 async ORM-модели (`Mapped`/`mapped_column`, `DeclarativeBase`
 
 | File | Description |
 |------|-------------|
-| `user.py` | `User` → `users`. `email` (unique, index), `phone` (index, опц.), `password_hash`, `telegram_id`/`telegram_username`, `role` (`SQLEnum("student","admin")`). Связи: `purchases`, `progress`, `certificates` (все `cascade="all, delete-orphan"`) |
+| `user.py` | `User` → `users`. `email` (unique, index), `phone` (index, опц.), `password_hash`, `telegram_id`/`telegram_username`, `role` (`SQLEnum("student","admin")`), `token_version` (int, `default=0`, `server_default="0"`; инкрементируется при смене/сбросе пароля, кладётся в JWT как `ver` — несовпадение инвалидирует токен; миграция `d4e5f6a7b8c9`). Связи: `purchases`, `progress`, `certificates` (все `cascade="all, delete-orphan"`) |
 | `course.py` | `Course` → `courses`. `price_self`/`price_support` (рубли), `is_published`, плюс блок `landing_*` полей (title/subtitle/description/audience/support_note/hero_stats JSON/benefits JSON/instructor_image_url) — override для лендинга, NULL → фронт берёт дефолт из `course-content.ts`. Связи: `modules` (order_by `order_index`), `purchases`, `certificates` |
 | `module.py` | `Module` → `modules`. FK `course_id` (`CASCADE`), `order_index`, `is_published`, плюс `landing_*` override-поля (description/outcome/bullets JSON/mistakes JSON/duration_label). Связи: `course`, `lessons` (order_by `order_index`) |
 | `lesson.py` | `Lesson` → `lessons`. FK `module_id` (`CASCADE`), `kinescope_video_id`, `duration_seconds`, `content` (конспект), `order_index`, `is_preview` (бесплатный доступ), плюс промо-блок для лендинга (`promo_kinescope_video_id`, `promo_poster_url`, `promo_description`, `promo_highlights` JSON). Связи: `module`, `progress` |
@@ -71,4 +71,6 @@ class Module(Base):
 ### External
 - `sqlalchemy` 2.x (`Mapped`, `mapped_column`, async ORM)
 
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+## Manual Notes
+
+Notes under this heading are written by humans and preserved on regeneration.

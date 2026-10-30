@@ -1,7 +1,7 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-07-06 | Updated: 2026-07-06 -->
-
 # app
+
+**Parent context:** `../AGENTS.md`
+**Generated:** 2026-07-06 · **Updated:** 2026-10-30
 
 ## Purpose
 Точка входа FastAPI-приложения (`main.py`) и его слои: роутеры (`api/`), бизнес-логика/интеграции (`services/`), ORM-модели и Pydantic-схемы (`models/`, `schemas/`), инфраструктура (`core/`), а также отдельный Telegram-бот (`bot/`), который не является частью FastAPI-приложения.
@@ -9,7 +9,7 @@
 ## Key Files
 | File | Description |
 |------|-------------|
-| `main.py` | Создаёт `FastAPI(...)`, регистрирует middleware в фиксированном порядке, monтирует `/uploads` (если задан `UPLOAD_STORAGE_DIR`), подключает все роутеры через `include_router`, содержит `lifespan` с dev-сидом тестовых пользователей. |
+| `main.py` | Создаёт `FastAPI(...)`, регистрирует middleware в фиксированном порядке, monтирует `/uploads` (если задан `UPLOAD_STORAGE_DIR`), подключает все роутеры через `include_router`, содержит `lifespan` с dev-сидом тестовых пользователей. Служебные ручки: `GET /` и `GET /health` — readiness-проба с реальным `SELECT 1` в БД (при недоступной БД отвечает 503 `{"status": "db_unreachable"}`). |
 | `__init__.py` | Пустой файл-маркер пакета. |
 
 ## Subdirectories
@@ -25,14 +25,15 @@
 ## For AI Agents
 
 ### Working In This Directory
-- Порядок middleware в `main.py` важен и зафиксирован: `SlowAPIMiddleware` → `TrustedHostMiddleware` (только prod, если задан `TRUSTED_HOSTS`) → `SecurityHeadersMiddleware` → `CsrfProtectionMiddleware` → `CORSMiddleware`. Не переставляй без явной причины — CSRF-проверка полагается на то, что она отработает раньше CORS, но после того, как заголовки/куки уже доступны.
-- `CsrfProtectionMiddleware` — double-submit: проверяет unsafe-методы (не GET/HEAD/OPTIONS/TRACE) только если в куках есть `access_token`/`refresh_token`, и пропускает `EXEMPT_PATHS` (`/api/auth/login|register|refresh|logout`), т.к. эти эндпоинты сами устанавливают/ротируют пару cookie+CSRF.
+- Порядок регистрации middleware в `main.py` важен и зафиксирован: `SlowAPIMiddleware` → `TrustedHostMiddleware` (только prod, если задан `TRUSTED_HOSTS`) → `SecurityHeadersMiddleware` → `CsrfProtectionMiddleware` → `CORSMiddleware`. В Starlette последний добавленный middleware — самый внешний, поэтому запрос проходит их в обратном порядке: сначала `CORSMiddleware` (preflight `OPTIONS` отвечается до CSRF-проверки), затем `CsrfProtectionMiddleware`, `SecurityHeadersMiddleware`, `TrustedHostMiddleware`, `SlowAPIMiddleware`. Не переставляй без явной причины.
+- `CsrfProtectionMiddleware` — double-submit: проверяет unsafe-методы (не GET/HEAD/OPTIONS/TRACE) только если в куках есть `access_token`/`refresh_token`, и пропускает `EXEMPT_PATHS` (`/api/auth/login|register|refresh|logout|forgot-password|reset-password`), т.к. эти эндпоинты сами устанавливают/ротируют пару cookie+CSRF или вызываются до входа. `/api/auth/change-password` намеренно **не** в списке — требует CSRF.
+- `SecurityHeadersMiddleware` всегда ставит `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`, а в production дополнительно `Strict-Transport-Security` и строгий `Content-Security-Policy` (`default-src 'none'; frame-ancestors 'none'; ...`, через `setdefault`). В dev CSP не ставится, чтобы работал Swagger `/docs`.
 - В `lifespan` dev-сид срабатывает **строго** при `settings.ENVIRONMENT.lower() == "development"` (не просто `!= "production"` — staging/иные значения ENVIRONMENT сид не получают). Создаёт/обновляет пароль для `admin@nails-course.ru` и `student@test.ru`; пароли берутся из `SEED_ADMIN_PASSWORD`/`SEED_STUDENT_PASSWORD` или генерируются случайно с warning-логом. Это известный техдолг — не переносить в production-конфигурацию.
 - `docs_url`/`redoc_url`/`openapi_url` отключаются (`None`) в production через `_is_production()`.
 - Новый роутер добавляется в блок `# Подключение роутеров` в конце файла (импорт после `app.add_middleware(...)`, помечен `# noqa: E402` — это намеренно, см. `pyproject.toml`).
 
 ### Testing Requirements
-Изменения в `main.py` (middleware, lifespan, конфиг приложения) проверяются `backend/tests/test_production_hardening.py` — запускай прицельно:
+Изменения в `main.py` (middleware, lifespan, `/health`, конфиг приложения) проверяются `backend/tests/test_production_hardening.py`, CSRF на `change-password` — `backend/tests/test_auth_password.py`; запускай прицельно:
 ```powershell
 $env:PYTHONPATH = "backend"
 python -m pytest backend/tests/test_production_hardening.py -v
@@ -50,6 +51,8 @@ python -m pytest backend/tests/test_production_hardening.py -v
 `core/config.py` (`settings`), `core/database.py` (`async_session_maker`), `core/rate_limit.py` (`limiter`), `core/security.py` (`get_password_hash`), `models/user.py` (`User`), все роутеры из `api/`.
 
 ### External
-`fastapi`, `slowapi`, `starlette` (middleware base classes), `sqlalchemy` (`select`).
+`fastapi`, `slowapi`, `starlette` (middleware base classes), `sqlalchemy` (`select`, `text`).
 
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+## Manual Notes
+
+Notes under this heading are written by humans and preserved on regeneration.

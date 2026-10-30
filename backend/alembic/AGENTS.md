@@ -1,7 +1,7 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-07-06 | Updated: 2026-07-06 -->
-
 # alembic
+
+**Parent context:** `../AGENTS.md`
+**Generated:** 2026-07-06 · **Updated:** 2026-10-30
 
 ## Purpose
 Миграции схемы БД поверх асинхронного SQLAlchemy 2 (`app/core/database.py: Base`). `env.py` конвертирует async-URL в sync-URL для самого Alembic, так что миграции пишутся и применяются синхронно (`psycopg2`), а приложение в рантайме работает через `asyncpg`.
@@ -9,14 +9,14 @@
 ## Key Files
 | File | Description |
 |------|-------------|
-| `env.py` | Берёт `settings.DATABASE_URL`, заменяет `postgresql+asyncpg://` → `postgresql://` (Alembic не умеет в async-драйвер напрямую), импортирует `Base` и все модели (`User, Course, Module, Lesson, Purchase, Progress, Certificate`) для `target_metadata`, реализует online/offline режимы. |
+| `env.py` | Берёт `settings.DATABASE_URL`, заменяет `postgresql+asyncpg://` → `postgresql://` (Alembic не умеет в async-драйвер напрямую), импортирует `Base` и модели (`User, Course, Module, Lesson, Purchase, Progress, Certificate`; `GalleryItem` явно не перечислен, но регистрируется в метаданных через импорт пакета `app/models/__init__.py`) для `target_metadata`, реализует online/offline режимы. |
 | `script.py.mako` | Шаблон новых ревизий (`alembic revision --autogenerate`). |
 | `README` | Стандартная заглушка Alembic (`Generic single-database configuration`). |
 
 ## Subdirectories
 | Directory | Purpose |
 |-----------|---------|
-| `versions/` | 7 ревизий схемы, линейная цепочка (без веток) — см. список ниже |
+| `versions/` | 8 ревизий схемы, линейная цепочка (без веток) — см. список ниже |
 
 ### Цепочка миграций (`versions/`)
 | Revision | Revises | Файл | Назначение |
@@ -27,12 +27,13 @@
 | `c8d41b2a9f01` | `2f3f813eeb34` | `c8d41b2a9f01_production_user_phone_and_purchase_meta.py` | `users.phone` (+индекс), `purchases.paid_at`, `purchases.customer_phone`. |
 | `f6e4f3b2a901` | `c8d41b2a9f01` | `f6e4f3b2a901_set_foil_lesson_kinescope_video.py` | Чисто data-миграция (`op.execute(UPDATE ...)`) — проставляет `kinescope_video_id` для урока «Как отпечатать фольгу». |
 | `e7a2c8f91b04` | `f6e4f3b2a901` | `e7a2c8f91b04_add_lesson_promo_fields.py` | Промо-поля уроков для landing-превью (`promo_kinescope_video_id` и др.). |
-| `b3a91d4f2c87` | `e7a2c8f91b04` | `b3a91d4f2c87_add_landing_fields_and_gallery.py` | Landing-поля `courses`/`modules` (hero copy, `landing_hero_stats` JSONB) + таблица `gallery_items`. **Head.** |
+| `b3a91d4f2c87` | `e7a2c8f91b04` | `b3a91d4f2c87_add_landing_fields_and_gallery.py` | Landing-поля `courses`/`modules` (hero copy, `landing_hero_stats` JSONB) + таблица `gallery_items`. |
+| `d4e5f6a7b8c9` | `b3a91d4f2c87` | `d4e5f6a7b8c9_add_user_token_version.py` | `users.token_version` (Integer, NOT NULL, `server_default="0"`) — счётчик для инвалидации JWT после смены/сброса пароля (claim `ver`). **Head.** |
 
 ## For AI Agents
 
 ### Working In This Directory
-- Любое изменение ORM-моделей в `../app/models/` **обязательно** сопровождается новой ревизией здесь. Ревизии не переписываются задним числом — новая миграция всегда добавляется в конец цепочки (`down_revision` = текущий head, сейчас `b3a91d4f2c87`).
+- Любое изменение ORM-моделей в `../app/models/` **обязательно** сопровождается новой ревизией здесь. Ревизии не переписываются задним числом — новая миграция всегда добавляется в конец цепочки (`down_revision` = текущий head, сейчас `d4e5f6a7b8c9`).
 - Тестовые фикстуры (`backend/tests/conftest.py`) строят схему через `Base.metadata.create_all`, **минуя Alembic** — расхождение между моделями и файлами миграций pytest не поймает. Оно обнаруживается только в CI на шаге `alembic upgrade head` (см. `.github/workflows/ci.yml`), который применяется к «боевой» тестовой БД (не к той, что использует pytest).
 - Не редактировать существующие файлы `versions/*.py` задним числом, если они уже применялись где-либо (production/staging) — только новая ревизия.
 - Data-only миграции (пример: `f6e4f3b2a901`) допустимы через `op.execute(...)`, но должны быть безопасны для повторного запуска и не ломать `upgrade head` на пустой БД.
@@ -49,6 +50,7 @@ alembic upgrade head
 ### Common Patterns
 - Заголовок ревизии — docstring с человекочитаемым описанием, `Revision ID`, `Revises`, `Create Date`.
 - Простые аддитивные изменения — `op.add_column(table, sa.Column(...))`, при необходимости `op.create_index(...)`.
+- NOT NULL-колонка в уже заполненной таблице — с `server_default` (пример: `token_version` в `d4e5f6a7b8c9`), иначе `upgrade` упадёт на существующих строках.
 - JSONB-поля — через `sqlalchemy.dialects.postgresql.JSONB(astext_type=sa.Text())` (см. `b3a91d4f2c87`).
 
 ## Dependencies
@@ -59,4 +61,6 @@ alembic upgrade head
 ### External
 `alembic`, `sqlalchemy`, `psycopg2-binary` (sync-драйвер, используется только на этапе миграций).
 
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+## Manual Notes
+
+Notes under this heading are written by humans and preserved on regeneration.

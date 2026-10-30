@@ -1,7 +1,7 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-07-06 | Updated: 2026-07-06 -->
-
 # api
+
+**Parent context:** `../AGENTS.md`
+**Generated:** 2026-07-06 · **Updated:** 2026-10-30
 
 ## Purpose
 
@@ -11,14 +11,14 @@ Thin FastAPI-контроллеры (роутеры): по одному файл
 
 | File | Description |
 |------|-------------|
-| `admin.py` | CRUD курсов/модулей/уроков, список пользователей, покупки, аналитика, `POST /grant-access` (ручная выдача доступа) — 797 строк, известный кандидат на доменную декомпозицию |
+| `admin.py` | CRUD курсов/модулей/уроков, список пользователей, покупки, аналитика, `POST /grant-access` (ручная выдача доступа), `POST /revoke-access` (отзыв доступа по `purchase_id` при возврате/chargeback: `payment_status="failed"` + `expires_at=now`, доступ пропадает сразу) — ~840 строк, известный кандидат на доменную декомпозицию |
 | `admin_landing.py` | Admin-редактор лендинга: hero курса (`GET/PUT .../landing-hero`), landing-копия модулей (`GET/PUT .../landing-modules`, `.../landing`), CRUD и reorder галереи работ (`/gallery`, `/gallery/reorder`, `/gallery/{id}`) |
-| `auth.py` | `/register`, `/login`, `/refresh`, `/me`, `/logout`; ставит/снимает httpOnly cookies (`access_token`, `refresh_token`, `csrf_token`), rate-limit через `limiter` |
+| `auth.py` | `/register`, `/login`, `/refresh`, `/me`, `/logout`, `/change-password` (нужен текущий пароль; перевыпускает cookies текущей сессии), `/forgot-password` (шлёт ссылку сброса через `EmailService.send_password_reset`, ответ одинаковый независимо от наличия email — защита от enumeration), `/reset-password` (по reset-JWT, одноразовый за счёт `token_version`); ставит/снимает cookies (`access_token`, `refresh_token`, `csrf_token`, домен — `COOKIE_DOMAIN`), rate-limit через `limiter`. `/refresh` отвергает токены с устаревшим `ver` |
 | `courses.py` | Публичный каталог: список/детали опубликованных курсов, модули курса, `/my-progress` (прогресс пользователя по курсу, требует активную покупку или admin) |
 | `landing.py` | `GET /api/landing` — единый payload для SSR главной страницы: hero первого опубликованного курса + landing-копия его модулей + опубликованная галерея |
-| `lessons.py` | Детали урока (видео скрыто без доступа), `POST /{id}/progress`, `GET /{id}/play` (защищённый embed-URL через Kinescope) |
+| `lessons.py` | Детали урока (видео скрыто без доступа), `POST /{id}/progress`, `GET /{id}/play` (защищённый embed-URL через Kinescope; при `KinescopeNotConfiguredError` — 503, в деталях урока — `video_url=None`) |
 | `modules.py` | Публичные детали модуля и список его уроков (только опубликованные модуль+курс) |
-| `payments.py` | Webhook Prodamus (`/webhook`, проверка HMAC-подписи, идемпотентность по `payment_id`, создание пользователя payment-first) + генерация ссылок оплаты (`/link`, `/guest-link`) |
+| `payments.py` | Webhook Prodamus (`/webhook`): проверка HMAC-подписи, отказ (422) без явного success-статуса (`_is_success_payment_payload` — пустой/отсутствующий статус **не** успех), проверка суммы и валюты, идемпотентность по `payment_id`, создание пользователя payment-first. Запись покупки — `_record_purchase_once` в собственной транзакции с одним повтором при `IntegrityError` (гонка двух первых оплат с одним новым email); неразрешённый конфликт пробрасывается, чтобы Prodamus повторил webhook. Письмо с паролем — после commit, ошибка отправки только логируется. Плюс генерация ссылок оплаты (`/link`, `/guest-link`) |
 | `purchases.py` | `POST /create` (ссылка оплаты для авторизованного пользователя), `GET /my` (мои курсы с прогрессом); переиспользует хелперы из `payments.py` |
 | `upload.py` | `POST /upload` — загрузка изображений (jpg/png/webp/gif), только для админов; в production требует `UPLOAD_STORAGE_DIR` + `UPLOAD_PUBLIC_BASE_URL`, иначе 503 |
 
@@ -39,6 +39,7 @@ Thin FastAPI-контроллеры (роутеры): по одному файл
 - `admin.py` — не добавляй туда новые несвязанные домены; при следующей правке рассмотри разбиение по файлам (courses/modules/lessons уже разделены в других роутерах — можно взять за образец).
 - Не дублировать проверку `payment_status == "success" AND expires_at > now` инлайн — использовать `PurchaseService`/`LessonService.check_access`.
 - Webhook Prodamus (`payments.py`) — единственный источник правды об оплате; не считать `urlReturn`/`urlSuccess` редирект подтверждением оплаты.
+- JWT выдавать только через `AuthService.create_tokens(user.id, user.token_version)`, пароль менять только через `AuthService.change_password`/`set_password` (они инкрементируют `token_version` и тем самым гасят старые сессии и reset-ссылки). Новые auth-ручки, вызываемые до входа, нужно добавлять в `CsrfProtectionMiddleware.EXEMPT_PATHS` в `app/main.py`.
 
 ### Testing Requirements
 
@@ -48,7 +49,7 @@ $env:PYTHONPATH = "backend"
 python -m pytest backend/tests -v --tb=short
 ```
 
-Точечно: `backend/tests/test_auth.py`, `test_courses.py`, `test_purchases.py`, `test_kinescope_drm.py`, `test_production_hardening.py` — покрывают auth, courses/purchases, DRM webhook и production-safety гарды соответственно.
+Точечно: `backend/tests/test_auth.py`, `test_auth_password.py`, `test_courses.py`, `test_purchases.py`, `test_kinescope.py`, `test_kinescope_drm.py`, `test_production_hardening.py` — покрывают auth, смену/сброс пароля и инвалидацию токенов, courses, покупки + webhook Prodamus + admin revoke, `/play`, DRM webhook и production-safety гарды соответственно.
 
 ### Common Patterns
 
@@ -79,4 +80,6 @@ async def get_course(
 ### External
 - `fastapi`, `pydantic`, `sqlalchemy` (async), `python-jose` (JWT в `auth.py`/`kinescope.py`), `slowapi` (rate limit)
 
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+## Manual Notes
+
+Notes under this heading are written by humans and preserved on regeneration.

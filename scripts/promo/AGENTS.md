@@ -1,7 +1,7 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-07-06 | Updated: 2026-07-06 -->
-
 # scripts/promo
+
+**Parent context:** `../AGENTS.md`
+**Generated:** 2026-07-06 · **Updated:** 2026-10-30
 
 ## Purpose
 
@@ -11,13 +11,13 @@
 
 | File | Description |
 |------|-------------|
-| [`transcribe.py`](transcribe.py) | `ffmpeg` извлекает mono 16kHz wav, `faster-whisper` (по умолчанию `large-v3`) транскрибирует, результат кешируется в `output/<slug>/transcript.json` |
-| [`select_highlights.py`](select_highlights.py) | Подбор highlight-сегментов и title/description/bullets через LLM (`gpt-5.4-mini`, `gemini-3-flash`) или эвристику без ключей; pydantic-модели `HighlightSegment`/`HighlightsPlan` |
+| [`transcribe.py`](transcribe.py) | `ffmpeg` извлекает mono 16kHz wav (`output/<slug>/audio_16k.wav`, его же переиспользует [`../subtitles/`](../subtitles/)), `faster-whisper` (по умолчанию `large-v3`) транскрибирует, результат кешируется в `output/<slug>/transcript.json` |
+| [`select_highlights.py`](select_highlights.py) | Подбор highlight-сегментов и title/description/bullets через LLM (по наличию ключей: OpenAI `gpt-5.4-mini` → Gemini `gemini-3-flash` → Anthropic; модели переопределяются `OPENAI_HIGHLIGHT_MODEL`/`GEMINI_HIGHLIGHT_MODEL`) или эвристику без ключей; pydantic-модели `HighlightSegment`/`HighlightsPlan` |
 | [`cut_video.py`](cut_video.py) | Склейка `promo.mp4`: нарезки + crossfade + Pillow-карточки intro/outro + `ffmpeg` |
 | [`intro_image.py`](intro_image.py) | AI-фон intro-карточки (Gemini/OpenAI image-модели) с Pillow-фолбэком; единая типографика и цвета бренда Lucy Nails (сверены с `frontend/src/app/globals.css`) |
 | [`catalog.py`](catalog.py) | `VIDEO_CATALOG` — сопоставление подстроки имени файла со slug/title/порядком модуля (порядок как в `frontend/src/app/page.tsx`) |
 | [`paths.py`](paths.py) | Единые пути: `repo_root`, `video_lessons_dir`, `output_dir`, `program_json_path`, `local_promos_collect_dir` (→ `promo-clips/`), `shared_promo_assets_dir` |
-| [`generate_promos.py`](generate_promos.py) | Главный CLI, оркестрирует весь пайплайн. Флаги: `--only`, `--skip-upload`/`--local-only`, `--no-program-json`, `--collect-dir`, `--skip-cut`, `--skip-transcribe`, `--device cuda` |
+| [`generate_promos.py`](generate_promos.py) | Главный CLI, оркестрирует весь пайплайн. Флаги: `--only`, `--skip-upload`/`--local-only`, `--no-program-json`, `--collect-dir`, `--skip-cut`, `--skip-transcribe`, `--model` (по умолчанию `large-v3`), `--device cpu|cuda|auto` (по умолчанию `auto`), `--regen-intro` (перегенерировать кеш `intro_bg.png`) |
 | [`rebuild_from_segments.py`](rebuild_from_segments.py) | Локальный пересбор `promo.mp4` из уже сохранённых сегментов в `program.json`, без повторной транскрипции |
 | [`run_remaining_promos.py`](run_remaining_promos.py) | Пакетный прогон `generate_promos.py` по фиксированному списку модулей (NFC-эскейпнутые подстроки `--only`) |
 | [`export_transcript_plain.py`](export_transcript_plain.py) | Из кешированного `transcript.json` делает `transcript_plain.txt` / `transcript_full_text.txt` (последний — источник истины для аудита копии лендинга) |
@@ -69,4 +69,6 @@
 - `ffmpeg` (в `PATH`), `faster-whisper`, `httpx`, `anthropic`/`openai`/`google-genai` (опционально), `pillow`, `psycopg2-binary`, `tenacity`, `pydantic`, `python-dotenv`
 - Kinescope uploader API (`uploader.kinescope.io`, `api.kinescope.io`)
 
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+## Manual Notes
+
+Notes under this heading are written by humans and preserved on regeneration.

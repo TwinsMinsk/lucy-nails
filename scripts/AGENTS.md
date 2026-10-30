@@ -1,11 +1,11 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-07-06 | Updated: 2026-07-06 -->
-
 # scripts
+
+**Parent context:** `../AGENTS.md`
+**Generated:** 2026-07-06 · **Updated:** 2026-10-30
 
 ## Purpose
 
-PowerShell-скрипты для локальной разработки (запуск backend/frontend/Telegram-бота, первичная настройка окружения, smoke-проверка production) плюс подкаталоги с самостоятельными Python-утилитами: пайплайн промо-роликов, настройка Kinescope DRM, Prodamus REST-действия, Railway-админ/DRM-деплой и обработка фото работ для лендинга.
+PowerShell-скрипты для локальной разработки (запуск backend/frontend/Telegram-бота, первичная настройка окружения, smoke-проверка production) плюс подкаталоги с самостоятельными Python-утилитами: пайплайн промо-роликов, пересборка субтитров уроков, настройка Kinescope DRM, Prodamus REST-действия, Railway-админ/DRM-деплой и обработка фото работ для лендинга.
 
 ## Key Files
 
@@ -24,6 +24,7 @@ PowerShell-скрипты для локальной разработки (зап
 |-----------|---------|
 | [`promo/`](promo/) | Офлайн-пайплайн: `video-lessons/*.mp4` → транскрипт Whisper → подбор хайлайтов → сборка `promo.mp4` → опциональная загрузка в Kinescope → `program.json`. Свой [`AGENTS.md`](promo/AGENTS.md) |
 | [`kinescope/`](kinescope/) | Настройка и отладка Kinescope DRM Authorization Backend (генерация ключей/JWK, регистрация webhook, подпись/проверка токенов). Свой [`AGENTS.md`](kinescope/AGENTS.md) |
+| [`subtitles/`](subtitles/) | Пересборка субтитров и мягкий цветокор: `video-lessons/*.mp4` → распознавание со словными таймкодами → правка терминов → разбивка по правилам вещательных субтитров → вжигание поверх матовой плашки, скрывающей старые вшитые титры → `video-lessons-remastered/<slug>/`. Свой [`AGENTS.md`](subtitles/AGENTS.md) |
 | `prodamus/` | [`actions.py`](prodamus/actions.py) — автономный CLI: подписанные checkout-ссылки, верификация подписи webhook, REST-действия подписок (`setActivity`, `setSubscriptionPaymentDate`, `setSubscriptionDiscount`). Отдельный `AGENTS.md` не создаётся |
 | `railway/` | [`create_admin.py`](railway/create_admin.py) — создание/апгрейд админа напрямую через `asyncpg` + `bcrypt` (без импорта backend-кода); [`push_drm_variables.ps1`](railway/push_drm_variables.ps1) — заливка Kinescope DRM-переменных из `.env` + PEM в Railway (backend-сервис). Отдельный `AGENTS.md` не создаётся |
 | `works_photos/` | [`process.py`](works_photos/process.py) — обрабатывает `photo-work/*` в WebP (1024/640) для `frontend/public/works/<slug>/` и перегенерирует манифест `frontend/src/lib/landing/works-photos.ts`. Отдельный `AGENTS.md` не создаётся |
@@ -34,7 +35,7 @@ PowerShell-скрипты для локальной разработки (зап
 
 - Все `.ps1` рассчитаны на запуск из корня репозитория (проверяют `Test-Path "backend"` / `"frontend"`) и на Windows PowerShell — не bash-синтаксис.
 - Backend-скрипты активируют `backend\venv\Scripts\Activate.ps1` — venv должен существовать (создаётся `setup-local.ps1` или вручную).
-- Python-утилиты в подкаталогах (`promo/`, `kinescope/`, `prodamus/`, `railway/`, `works_photos/`) самостоятельны: у каждой свои зависимости/venv, они не обязаны работать внутри backend-окружения.
+- Python-утилиты в подкаталогах (`promo/`, `subtitles/`, `kinescope/`, `prodamus/`, `railway/`, `works_photos/`) самостоятельны: у каждой свои зависимости/venv, они не обязаны работать внутри backend-окружения (у `subtitles/` — собственный `.venv` на Python 3.12).
 - Секреты (`.env`, `*.pem`, `scripts/*/.last-setup-output.txt`) никогда не коммитить и не цитировать в чате — правила в корневом [`.gitignore`](../.gitignore).
 
 ### Testing Requirements
@@ -54,6 +55,7 @@ PowerShell-скрипты для локальной разработки (зап
 - [`backend/app/main.py`](../backend/app/main.py), [`backend/app/bot/main.py`](../backend/app/bot/main.py), `backend/venv`
 - `frontend/` (`npm run dev` / `npm run build`)
 - [`scripts/promo/program.json`](promo/program.json) ↔ БД через `promo/sync_program_to_db.py`
+- [`scripts/promo/catalog.py`](promo/catalog.py) — общая карта уроков для `promo/` и `subtitles/`
 - [`backend/app/services/kinescope_jwt_service.py`](../backend/app/services/kinescope_jwt_service.py) ↔ `scripts/kinescope/*`
 - [`backend/app/services/prodamus_service.py`](../backend/app/services/prodamus_service.py) ↔ `scripts/prodamus/actions.py` (та же логика подписи)
 
@@ -61,6 +63,9 @@ PowerShell-скрипты для локальной разработки (зап
 
 - PowerShell 5.1+, Node.js 18+, Python 3.11+, PostgreSQL 15
 - `curl.exe` (для `smoke-production.ps1`)
+- `ffmpeg` в `PATH` (для `promo/` и `subtitles/`); `uv` + Python 3.12 (для `subtitles/.venv`)
 - Railway CLI (`railway run` — для `railway/create_admin.py` в production и `railway/push_drm_variables.ps1`)
 
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+## Manual Notes
+
+Notes under this heading are written by humans and preserved on regeneration.
