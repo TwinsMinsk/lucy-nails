@@ -1,0 +1,49 @@
+{
+  "reel": "r08",
+  "title": "Однотонку умеют все",
+  "headline": [
+    {"text": "Однотонку умеют все", "at": "start"},
+    {"text": "За дизайн доплачивают", "at": "line:0:доплачивают", "accent": true, "sfx": "thump"}
+  ],
+  "speaker": "Люся Смирнова",
+  "min_shot": 0.45,
+  "grid": ["folga/folga-14", "akvarium/akvarium-01", "vtirka/vtirka-13", "slaidery/slaidery-12", "french/french-04",
+           "pigmenty/pigmenty-07", "stemping/stemping-04", "strazy/strazy-05", "tekstury/tekstury-09",
+           "gradient/gradient-03", "aerografiya/aerografiya-09"],
+  "beats": [
+    {"line": 0, "clips": [
+      {"clip": "s01-plain", "tone": "mono"},
+      {"photo": "strazy/strazy-07", "from": "дизайн", "sfx": "shimmer"}
+    ]},
+    {"line": 1, "clips": [
+      {"photo": "gradient/gradient-12", "sfx": "swish"},
+      {"photo": "slaidery/slaidery-05", "from": "собрала"},
+      {"photo": "stemping/stemping-09", "from": "одиннадцать"},
+      {"photo": "french/french-12", "from": "техник"},
+      {"photo": "folga/folga-18", "from": "фольги"},
+      {"photo": "vtirka/vtirka-07", "from": "втирки"},
+      {"photo": "aerografiya/aerografiya-10", "from": "аэрографии"}
+    ]},
+    {"line": 2, "clips": [
+      {"clip": "s02-spray", "label": "Пошагово", "label_at": "пошагово", "sfx": "swish"},
+      {"clip": "s05-pigment", "from": "материалами", "label": "Материалы"},
+      {"clip": "s03-blend", "from": "разбором", "label": "Разбор ошибок"},
+      {"clip": "s04-stamp", "from": "Всё"}
+    ]},
+    {"line": 3, "clips": [
+      {"photo": "pigmenty/pigmenty-10", "sfx": "swish", "stats": [
+        {"big": "~5 ч", "small": "практики", "at": "пять"},
+        {"big": "30", "small": "дней доступа", "at": "тридцать"}
+      ]}
+    ]},
+    {"line": 4, "clips": [{"grid": true, "intro": true, "sfx": "swish"}]}
+  ],
+  "end": {
+    "clip": "s06-end",
+    "from": "line:4:Курс",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "11 техник, за которые доплачивают",
+    "cta": "Ссылка в профиле"
+  }
+}

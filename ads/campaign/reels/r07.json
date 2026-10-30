@@ -1,0 +1,34 @@
+{
+  "reel": "r07",
+  "title": "Стразы перестают блестеть",
+  "headline": [
+    {"text": "Почему стразы", "at": "start"},
+    {"text": "перестают блестеть", "at": "start", "accent": true}
+  ],
+  "speaker": "Люся Смирнова",
+  "beats": [
+    {"line": 0, "clips": [
+      {"clip": "s01-hook"},
+      {"clip": "s02-gel", "from": "Материал", "label": "Гель на гранях", "label_at": "замазал", "sfx": "thump"}
+    ]},
+    {"line": 1, "clips": [
+      {"clip": "s03-edges", "label": "По торцам", "label_at": "торцам", "sfx": "swish"},
+      {"clip": "s04-gaps", "from": "промежутках", "label": "В промежутках"}
+    ]},
+    {"line": 2, "clips": [
+      {"clip": "s06-big", "label": "Крупные — не на кончик", "sfx": "swish"},
+      {"clip": "s07-tip", "from": "это", "label": "Кончик уязвим"}
+    ]},
+    {"line": 3, "clips": [
+      {"clip": "s08-reveal", "label": "Царь-ноготь", "label_at": "царь-ноготь", "sfx": "shimmer"}
+    ]}
+  ],
+  "end": {
+    "clip": "s09-end",
+    "from": "line:3:уроке",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "11 техник, за которые доплачивают",
+    "cta": "Ссылка в профиле"
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "reel": "r07",
+  "size": 600,
+  "shots": [
+    {
+      "id": "s01-hook",
+      "slug": "strazy",
+      "start": 449.5,
+      "end": 452.5,
+      "cx": 650,
+      "cy": 360,
+      "size": 720,
+      "note": "hook / cover: finished tsar-nail (царь-ноготь) close-up, AB crystals flash blue and orange as the hand turns; no subtitles on screen"
+    },
+    {
+      "id": "s02-gel",
+      "slug": "strazy",
+      "start": 758.9,
+      "end": 761.4,
+      "cx": 380,
+      "cy": 339,
+      "size": 540,
+      "note": "line 0 (покрыли топом, материал замазал грани): brush loaded with wet base worked in among the big crystals on the black nail"
+    },
+    {
+      "id": "s03-edges",
+      "slug": "strazy",
+      "start": 393.5,
+      "end": 397.5,
+      "cx": 490,
+      "cy": 279,
+      "size": 540,
+      "note": "line 1 (только по торцам): thin brush runs base along the side edge of the tsar-nail, not over the stones"
+    },
+    {
+      "id": "s04-gaps",
+      "slug": "strazy",
+      "start": 882.5,
+      "end": 885.6,
+      "cx": 810,
+      "cy": 339,
+      "size": 540,
+      "note": "line 1 (и в промежутках): brush goes into the gaps between the stones of the black applique, not on top of them"
+    },
+    {
+      "id": "s05-place",
+      "slug": "strazy",
+      "start": 186.6,
+      "end": 189.6,
+      "cx": 490,
+      "cy": 339,
+      "size": 480,
+      "note": "placing: wax pencil sets crystals into the base at the cuticle end of the silver nail (end of line 1 / start of line 2)"
+    },
+    {
+      "id": "s06-big",
+      "slug": "strazy",
+      "start": 746.0,
+      "end": 749.5,
+      "cx": 310,
+      "cy": 339,
+      "size": 540,
+      "note": "line 2 (крупные стразы не на кончик): wax pencil sets a large AB stone mid-nail on the black nail, well away from the tip"
+    },
+    {
+      "id": "s07-tip",
+      "slug": "strazy",
+      "start": 292.4,
+      "end": 296.4,
+      "cx": 620,
+      "cy": 400,
+      "note": "line 2 (кончик - самое уязвимое место): big stones sit at the base, wax pencil brings only a small stone to the silver tip; no subtitles, so the crop goes lower to keep the tip above the caption"
+    },
+    {
+      "id": "s08-reveal",
+      "slug": "strazy",
+      "start": 2782.7,
+      "end": 2785.2,
+      "cx": 380,
+      "cy": 360,
+      "size": 720,
+      "note": "line 3 (царь-ноготь, который держится и блестит): finished tsar-nail beside the black applique, hand tilts, crystals sparkle; no subtitles on screen"
+    },
+    {
+      "id": "s09-end",
+      "slug": "strazy",
+      "start": 2756.3,
+      "end": 2762.5,
+      "cx": 710,
+      "cy": 360,
+      "size": 720,
+      "note": "END (under the CTA): finished crystal set on the hand (blue line, tsar-nail, black applique, french), calm slight turn; nails in the upper 70%; no subtitles on screen; earlier moment than r01 e1-set"
+    }
+  ]
+}
