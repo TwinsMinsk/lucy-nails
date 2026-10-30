@@ -31,7 +31,7 @@ class KinescopeService:
     def __init__(self):
         """Инициализация сервиса."""
         self.api_key = (settings.KINESCOPE_API_KEY or "").strip()
-        self._production = settings.ENVIRONMENT == "production"
+        self._production = settings.ENVIRONMENT.lower() == "production"
         # В development/test без ключа разрешён mock; в production — нет
         self.is_mock_mode = not self.api_key
 

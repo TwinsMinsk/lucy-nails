@@ -105,7 +105,7 @@ class ProdamusService:
 
         # demo_mode=1 for test payments: always outside production, and on demand
         # in production via PRODAMUS_DEMO_MODE (for test payments on a live deploy).
-        if settings.PRODAMUS_DEMO_MODE or settings.ENVIRONMENT != "production":
+        if settings.PRODAMUS_DEMO_MODE or settings.ENVIRONMENT.lower() != "production":
             params["demo_mode"] = "1"
 
         # The signature MUST be computed over the NESTED structure that Prodamus

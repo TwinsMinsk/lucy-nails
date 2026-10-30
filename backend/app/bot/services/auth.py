@@ -1,4 +1,5 @@
 
+import logging
 from uuid import UUID
 from telegram import User as TelegramUser
 from sqlalchemy import select
@@ -7,6 +8,8 @@ from jose import jwt, JWTError
 from app.core.database import async_session_maker
 from app.core.config import settings
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 
 class BotAuthService:
     """Сервис для аутентификации через Telegram."""
@@ -30,6 +33,10 @@ class BotAuthService:
                 settings.JWT_SECRET_KEY, 
                 algorithms=[settings.JWT_ALGORITHM]
             )
+            # Only a current access token may link an account: refresh/reset
+            # tokens share the signature and sub but must not authenticate.
+            if payload.get("type") != "access":
+                return "Ссылка устарела или некорректна. Попробуйте сгенерировать новую в личном кабинете."
             user_id_str: str = payload.get("sub")
             if not user_id_str:
                 return "Некорректный токен. Попробуйте снова."
@@ -63,6 +70,10 @@ class BotAuthService:
                 
                 if not user:
                     return "Пользователь не найден."
+
+                # Tokens minted before a password change/reset are revoked.
+                if payload.get("ver") != user.token_version:
+                    return "Ссылка устарела или некорректна. Попробуйте сгенерировать новую в личном кабинете."
                 
                 # Привязываем
                 user.telegram_id = telegram_user.id
@@ -71,8 +82,7 @@ class BotAuthService:
                 await session.commit()
                 return "✅ Аккаунт успешно привязан! Теперь вы сможете получать уведомления и доступ к чату."
                 
-            except Exception as e:
+            except Exception:
                 await session.rollback()
-                # Логируем ошибку реально
-                print(f"Error linking account: {e}")
+                logger.exception("Error linking Telegram account")
                 return "Произошла ошибка при привязке. Попробуйте позже."
