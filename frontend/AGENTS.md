@@ -75,7 +75,7 @@ npm run build
 
 ### External
 
-- `next@^16.4.0` (в lock 16.4.0), `react@19.2.3` — App Router, Server Components.
+- `next@^16.4.3` (в lock 16.4.3), `react@19.2.3` — App Router, Server Components.
 - `@radix-ui/*`, `class-variance-authority`, `tailwind-merge`, `lucide-react` — shadcn-паттерн UI.
 - `@tiptap/*` — rich-text редактор конспектов уроков в админке.
 - `embla-carousel-react` + `embla-carousel-auto-scroll` — карусели (галерея, марки работ).

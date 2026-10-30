@@ -11,7 +11,7 @@
 ## Key Files
 | File | Description |
 |------|-------------|
-| `main.py` | Точка входа: проверяет `settings.TELEGRAM_BOT_TOKEN` (иначе логирует ошибку и выходит без исключения), строит `ApplicationBuilder().token(...).build()`, регистрирует `CommandHandler("start", start)`, запускает `application.run_polling()`. Вручную добавляет `backend/` в `sys.path` (`sys.path.append(...)`), чтобы работал и запуск как скрипта. |
+| `main.py` | Точка входа: проверяет `settings.TELEGRAM_BOT_TOKEN` (иначе логирует ошибку и выходит без исключения), строит `ApplicationBuilder().token(...).build()`, регистрирует `CommandHandler("start", start)`, запускает `application.run_polling()`. Вручную добавляет `backend/` в `sys.path` (`sys.path.append(...)`), чтобы работал и запуск как скрипта. При `InvalidToken` пишет сообщение без токена и выходит с кодом 1; логгер `httpx` держится на WARNING, потому что на INFO он пишет URL с токеном. |
 | `handlers/start.py` | Хендлер команды `/start`. Без аргументов — приветствие. С аргументом (`context.args[0]`) — трактует его как одноразовый токен deep link, шлёт промежуточное сообщение «⏳ Проверяю данные...», вызывает `BotAuthService.link_account`, затем редактирует то же сообщение результатом (`edit_message_text`). |
 | `handlers/__init__.py` | Пустой файл-маркер пакета. |
 | `services/auth.py` | `BotAuthService.link_account(token, telegram_user)` — вся логика привязки аккаунта. |

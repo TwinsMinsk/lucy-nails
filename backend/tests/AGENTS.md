@@ -46,6 +46,8 @@
 | **Уведомления и аналитика** | |
 | `test_outbox.py` | Повторы и доставка outbox, Telegram-группа и устаревшие команды, claim пакета, воркер `app/workers/outbox.py`, `format_rub`. |
 | `test_telegram_notifications.py` | Привязка Telegram одноразовой ссылкой, `LifecycleService.schedule`, сводка владельцу по `dead_letter`. |
+| `test_telegram_token_redaction.py` | Токен бота не попадает в исключения, `DeliveryAttempt.error`, `last_error` и логи; запуск бота с неверным токеном; скрипт `scripts/ops/redact_telegram_tokens.py`. Запросы подменяются через `httpx.MockTransport`. |
+| `test_environment_casing.py` | `ENVIRONMENT` с другим регистром и пробелами работает как обычное значение: `Settings`, `demo_mode` в ссылке Prodamus, режим production в Kinescope. |
 | `test_email_service.py` | SMTP-транспорт и STARTTLS. |
 | `test_email_attachments.py` | MIME и вложения, Resend-payload, экранирование HTML сертификата. |
 | `test_analytics_events.py` | Публичный сборщик: дедупликация, запрет PII и финансовых событий, атрибуция в заказе. |
