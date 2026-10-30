@@ -90,20 +90,20 @@ export function Header() {
                 {/* Logo */}
                 <div className="flex items-center gap-6">
                     <Link href="/" className="flex items-center gap-2">
-                        <span className="text-xl font-bold text-[#db3f6e] tracking-tight font-serif">
-                            Lucy Smirnova
+                        <span className="text-xl font-bold text-primary tracking-tight font-serif">
+                            Lucy Nails Academy
                         </span>
                     </Link>
                 </div>
 
-                {/* Desktop Navigation (Centered) */}
-                <nav className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
+                {/* Desktop Navigation (Centered). From lg only: on tablets the centred links ran into the logo and the buttons */}
+                <nav className="hidden lg:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
                     {navLinks.map((link) => (
                         <Link
                             key={link.href}
                             href={link.href}
                             onClick={(e) => isLanding ? handleScroll(e, link.href) : undefined}
-                            className="text-sm font-medium text-text-secondary hover:text-primary transition-colors"
+                            className="text-sm font-medium text-text-secondary hover:text-foreground transition-colors"
                         >
                             {link.label}
                         </Link>
@@ -112,7 +112,7 @@ export function Header() {
 
                 {/* Right Side: Auth/User */}
                 <div className="flex items-center gap-4">
-                    <div className="hidden md:flex">
+                    <div className="hidden lg:flex">
                         {user ? (
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
@@ -168,7 +168,7 @@ export function Header() {
                                         Войти
                                     </Link>
                                 </Button>
-                                <Button asChild size="sm" className="rounded-full px-6 bg-[#db3f6e] hover:bg-[#db3f6e]/90 text-white border-none shadow-md transition-all hover:scale-105 active:scale-95">
+                                <Button asChild size="sm" className="rounded-full px-6 shadow-md">
                                     <Link href="/#pricing">
                                         Купить курс
                                     </Link>
@@ -181,14 +181,14 @@ export function Header() {
                     {mounted && (
                         <Sheet>
                             <SheetTrigger asChild>
-                                <Button variant="ghost" size="icon" className="md:hidden">
+                                <Button variant="ghost" size="icon" className="lg:hidden">
                                     <Menu className="h-5 w-5" />
                                     <span className="sr-only">Меню</span>
                                 </Button>
                             </SheetTrigger>
                             <SheetContent side="right">
                                 <SheetHeader>
-                                    <SheetTitle className="text-left font-serif text-xl text-[#db3f6e]">Lucy Smirnova</SheetTitle>
+                                    <SheetTitle className="text-left font-serif text-xl text-primary">Lucy Nails Academy</SheetTitle>
                                 </SheetHeader>
                                 <div className="flex flex-col gap-6 mt-8">
                                     <nav className="flex flex-col gap-4">
@@ -249,10 +249,10 @@ export function Header() {
                                             </div>
                                         ) : (
                                             <div className="flex flex-col gap-3">
-                                                <Button asChild className="w-full" size="lg">
+                                                <Button asChild variant="outline" className="w-full" size="lg">
                                                     <Link href="/auth/login">Войти</Link>
                                                 </Button>
-                                                <Button asChild className="w-full bg-[#db3f6e] hover:bg-[#db3f6e]/90 text-white border-none" size="lg">
+                                                <Button asChild className="w-full" size="lg">
                                                     <Link href="/#pricing">Купить курс</Link>
                                                 </Button>
                                             </div>

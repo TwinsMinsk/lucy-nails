@@ -32,7 +32,7 @@ export function CertificateActions({ certificateNumber, className }: Certificate
     <div className={cn("flex flex-wrap gap-2 justify-center", className)}>
       <Button
         asChild
-        className="bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white rounded-full"
+        className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-full"
       >
         <a href={certificateFileUrl(certificateNumber, "pdf")}>
           <FileDown />

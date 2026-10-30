@@ -16,7 +16,7 @@ export default function CertificateNotFound() {
             <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                 <Button
                     asChild
-                    className="rounded-full bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white"
+                    className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
                 >
                     <Link href="/">На главную</Link>
                 </Button>

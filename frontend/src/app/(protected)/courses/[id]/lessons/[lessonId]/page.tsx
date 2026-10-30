@@ -207,6 +207,8 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
             })),
         [modules]
     );
+    // Same numbering as the outline: position, not raw order_index
+    const lessonModuleIndex = lesson ? outlineModules.findIndex((m) => m.id === lesson.module_id) : -1;
 
     if (isLoading) {
         return (
@@ -335,8 +337,15 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
                     <div className="max-w-4xl mx-auto">
                         <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
                             <div className="space-y-2">
+                                {/* Module as a quiet label: "Модуль 2: Аквариум: глубина…" read as two titles glued together */}
+                                {lessonModuleIndex >= 0 && (
+                                    <p className="text-sm font-medium text-text-secondary">
+                                        Модуль {lessonModuleIndex + 1}
+                                        {outlineModules[lessonModuleIndex].title !== lesson.title ? ` · ${outlineModules[lessonModuleIndex].title}` : ""}
+                                    </p>
+                                )}
                                 <h1 className="text-2xl md:text-3xl font-serif font-bold text-text-primary">
-                                    Модуль {modules.find(m => m.id === lesson.module_id)?.order_index}: {lesson.title}
+                                    {lesson.title}
                                 </h1>
                                 <p className="text-text-secondary text-base leading-relaxed max-w-2xl">
                                     {lesson.description}
@@ -378,7 +387,7 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
                                     <Button
                                         size="lg"
                                         onClick={handleToggleComplete}
-                                        className="rounded-full px-8 bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white shadow-md transition-all hover:scale-105"
+                                        className="rounded-full px-8 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all hover:scale-105"
                                     >
                                         <CheckCircle className="w-5 h-5 mr-2" />
                                         Отметить просмотренным

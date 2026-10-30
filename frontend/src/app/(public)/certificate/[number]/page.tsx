@@ -67,8 +67,8 @@ export default async function CertificatePage({
     return (
         <div className="min-h-screen bg-background pb-20">
             {/* Hero band */}
-            <div className="bg-[#fff1f4] border-b border-[#db3f6e]/10 py-12 md:py-16 text-center">
-                <p className="text-xs tracking-[0.3em] uppercase text-[#b02a52]">
+            <div className="bg-[#fff1f4] border-b border-primary/10 py-12 md:py-16 text-center">
+                <p className="text-xs tracking-[0.3em] uppercase text-primary">
                     LUCY NAILS ACADEMY
                 </p>
                 <h1 className="mt-3 font-serif text-3xl md:text-4xl text-text-primary">
@@ -153,7 +153,7 @@ export default async function CertificatePage({
                     </p>
                     <Button
                         asChild
-                        className="rounded-full bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white"
+                        className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
                     >
                         <Link href={`/courses/${cert.course_id}`}>Пройти этот курс →</Link>
                     </Button>

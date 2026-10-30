@@ -175,7 +175,7 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                                         </ul>
                                     </CardContent>
                                     <CardFooter className="flex-col gap-3">
-                                        <CoursePaymentCTA courseId={id} tariff="self" className="w-full h-12 rounded-lg text-sm uppercase tracking-wide font-bold bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white">
+                                        <CoursePaymentCTA courseId={id} tariff="self" className="w-full h-12 rounded-lg text-sm uppercase tracking-wide font-bold bg-primary text-primary-foreground hover:bg-primary/90">
                                             Купить курс
                                         </CoursePaymentCTA>
                                         <p className="text-xs text-text-secondary text-center">

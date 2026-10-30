@@ -1,7 +1,7 @@
 # components
 
 **Parent context:** `../AGENTS.md`
-**Generated:** 2026-07-06 · **Updated:** 2026-10-30
+**Generated:** 2026-07-06 · **Updated:** 2026-10-31
 
 ## Purpose
 
@@ -34,7 +34,7 @@ React-компоненты приложения, сгруппированные 
 |------|-------------|
 | `AnalyticsBootstrap.tsx` | `"use client"`, рендерит `null`. После согласия (`readConsent().analytics`) на `/` и `/courses/[id]` фиксирует UTM (`captureCheckoutAttribution`), шлёт `landing_view` (`trackPublicEvent`) и запускает Яндекс Метрику, если задан `NEXT_PUBLIC_YANDEX_METRIKA_ID`: `tag.js?id=<счётчик>`, Вебвизор, карта кликов, внешние ссылки, e-commerce через `window.dataLayer`. Один экземпляр счётчика живёт, пока посетитель на публичных страницах; SPA-переходы между ними уходят ручным `hit` (сама Метрика `pushState` не считает), уход в кабинет или админку уничтожает счётчик. `isSafeMetrikaLocation` не пускает счётчик на URL с email, телефоном или токеном. Слушает `lucy-consent-updated` и `lucy-metrika-goal`: цели `pricing_view`, `checkout_open`, `checkout` — только на публичных страницах, `purchase` — только на `/payment-success` без query, с суммой (`order_price`) и e-commerce `purchase`, с дедупликацией в `sessionStorage`. При отзыве согласия останавливает счётчик и чистит его cookies. Схема целей: `Docs/06_Tracking/YANDEX_METRIKA.md` |
 | `GoalOnView.tsx` | `"use client"`, рендерит `null`. Один раз за просмотр шлёт цель Метрики, когда секция `targetId` видна на 40% (`IntersectionObserver`); на лендинге — `pricing_view` для `#pricing` |
-| `ConsentBanner.tsx` | `"use client"`. Баннер на `/`, `/courses/[id]`, `/privacy`, `/terms`: "Только необходимые" / "Разрешить аналитику" → `saveConsent`; после выбора остаётся кнопка настроек |
+| `ConsentBanner.tsx` | `"use client"`. Баннер на `/`, `/courses/[id]`, `/privacy`, `/terms`: "Только необходимые" / "Разрешить аналитику" → `saveConsent`; после выбора остаётся кнопка настроек. Названия кнопок цитирует `/privacy` — менять вместе. На телефоне кнопки в ряд, высота ограничена `60svh` |
 
 ### `certificate/`
 
@@ -56,19 +56,20 @@ React-компоненты приложения, сгруппированные 
 
 | File | Description |
 |------|-------------|
-| `PaymentButton.tsx` | `"use client"`. Основная кнопка оплаты; `courseId: null` (нет опубликованного курса) её отключает. Шлёт `cta_click` (`location`: `pricing` или `dashboard_renewal`) и цель Метрики `checkout_open`. Если есть cookie `auth_session=1` — берёт email через `getMe()` и запрашивает `getPaymentLink()`; если сессии нет или `getMe()`/`getPaymentLink()` вернули auth-ошибку (`isAuthError`) — открывает `GuestCheckoutDialog`. В запрос уходит `captureCheckoutAttribution()`, перед редиректом — цель Метрики `checkout` |
+| `PaymentButton.tsx` | `"use client"`. Основная кнопка оплаты; `courseId: null` (нет опубликованного курса) её отключает. Шлёт `cta_click` (`location`: `pricing` или `dashboard_renewal`) и цель Метрики `checkout_open`. Если есть cookie `auth_session=1` — берёт email через `getMe()` и запрашивает `getPaymentLink()`; если сессии нет или `getMe()`/`getPaymentLink()` вернули auth-ошибку (`isAuthError`) — открывает `GuestCheckoutDialog` без тоста (тост повторял заголовок диалога и закрывал его кнопку на телефоне). В запрос уходит `captureCheckoutAttribution()`, перед редиректом — цель Метрики `checkout` |
 | `GuestCheckoutDialog.tsx` | `"use client"`. Модалка гостевой оплаты: форма email (обязателен) + телефон (опционален) + обязательное согласие (`legal/PersonalDataConsent`, `CONSENT_VERSION`) → `getGuestPaymentLink()`; после оплаты новому покупателю приходит ссылка `/auth/activate` для создания пароля. Ссылка на вход с `next` для тех, у кого уже есть аккаунт. Поля email и телефона помечены `ym-disable-keys`: Вебвизор их не записывает |
-| `ProgramSection.tsx` | Грид карточек модулей курса. Приоритет у `modules` (результат `getLandingContent()`, без них — статический `programModules`); серверные `ModuleResponse` и `lessons[0]` (промо-поля: `promo_description`, `promo_bullets`, `duration_seconds`) сопоставляются по совпадению `title` и заполняют только пустые поля. Фото — `worksPhotos[copy.slug]` |
-| `ProgramModuleCard.tsx` | Карточка одного модуля: заголовок, описание, результат, буллеты, типичные ошибки; медиа-зона — `WorksMarquee`, если есть фото (без фото карточка показывает только текст) |
-| `WorksMarquee.tsx` | `"use client"`. Бесконечная лента фото работ модуля на `embla-carousel-react` + `embla-carousel-auto-scroll` (автопрокрутка, пауза при наведении, `reverse` — обратное направление для чередования модулей), ручные стрелки, клик по фото открывает лайтбокс (`Dialog`) с prev/next-навигацией. Использует `IntersectionObserver`, чтобы догружать всю ленту только при приближении к вьюпорту (нативный lazy loading не работает для тайлов, сдвигаемых трансформом карусели). Если фото меньше `MIN_TILES` (6) — список зацикливается повтором, чтобы заполнить вьюпорт |
-| `NailsGallery.tsx` | `"use client"`. Карусель общей галереи работ на главной (`embla-carousel-react`, без автоскролла), с ручными стрелками и анимацией через `framer-motion` |
+| `ProgramSection.tsx` | Грид карточек модулей курса. Приоритет у `modules` (результат `getLandingContent()`, без них — статический `programModules`); серверные `ModuleResponse` и `lessons[0]` (промо-поля: `promo_description`, `promo_bullets`, `duration_seconds`) сопоставляются по совпадению `title` и заполняют только пустые поля. Фото — `worksPhotos[copy.slug]`. Грид обёрнут в `ProgramModulesExpander`: на экранах уже `md` видны первые `VISIBLE_ON_MOBILE` (3) карточки, остальные скрыты классом `max-md:group-data-[collapsed=true]/program:hidden`, но остаются в разметке. Константа живёт здесь, а не в клиентском модуле: импорт из `"use client"` в серверном компоненте даёт клиентскую ссылку, а не число |
+| `ProgramModulesExpander.tsx` | `"use client"`. Кнопка «Показать все N модулей» (только `md:hidden`) снимает `data-collapsed` с обёртки и переводит фокус на первую открытую карточку |
+| `ProgramModuleCard.tsx` | Карточка одного модуля: заголовок, описание, результат, буллеты, типичные ошибки; медиа-зона — `WorksMarquee`, если есть фото (без фото карточка показывает только текст). Ошибки — обычный список, не «пилюли»: они не кликабельны. `className` нужен `ProgramSection` для скрытия на телефоне |
+| `WorksMarquee.tsx` | `"use client"`. Бесконечная лента фото работ модуля на `embla-carousel-react` + `embla-carousel-auto-scroll` (автопрокрутка, пауза при наведении, `reverse` — обратное направление для чередования модулей), ручные стрелки, клик по фото открывает лайтбокс (`Dialog`) с prev/next-навигацией. Использует `IntersectionObserver`, чтобы догружать всю ленту только при приближении к вьюпорту (нативный lazy loading не работает для тайлов, сдвигаемых трансформом карусели). Если фото меньше `MIN_TILES` (6) — список зацикливается повтором, чтобы заполнить вьюпорт. При `prefers-reduced-motion` (`useReducedMotion`) автопрокрутка не подключается |
+| `NailsGallery.tsx` | `"use client"`. Карусель общей галереи работ на главной (`embla-carousel-react`, без автоскролла), с ручными стрелками и анимацией через `framer-motion` (при `prefers-reduced-motion` без пружины). У стрелок и точек русские `aria-label`, точки — кнопки высотой 24 px с `aria-current` |
 
 ### `layout/`
 
 | File | Description |
 |------|-------------|
-| `Header.tsx` | `"use client"`. Разное меню для лендинга (`#about`, `#program`, `#gallery`, `#pricing`, smooth-scroll по якорям) и для кабинета (`/dashboard`); проверяет сессию через `getMe()` в `useEffect` при каждой смене `pathname`; десктоп — `DropdownMenu` с аватаром, моб. — `Sheet`. Ссылка "Админ панель" (`/admin/courses`) показывается только при `user.role === "admin"`. Email в меню помечен `ym-hide-content` для Вебвизора |
-| `Footer.tsx` | `"use client"`. Скрывается на страницах уроков (`pathname.includes("/lessons/")`, чтобы не мешать просмотру видео); содержит реквизиты ИП (ИНН, ОГРНИП, email, телефон) и ссылки на `/privacy`, `/terms` |
+| `Header.tsx` | `"use client"`. Разное меню для лендинга (`#about`, `#program`, `#gallery`, `#pricing`, smooth-scroll по якорям) и для кабинета (`/dashboard`); проверяет сессию через `getMe()` в `useEffect` при каждой смене `pathname`; десктоп — `DropdownMenu` с аватаром, моб. — `Sheet`. Ссылка "Админ панель" (`/admin/courses`) показывается только при `user.role === "admin"`. Email в меню помечен `ym-hide-content` для Вебвизора. Логотип — «Lucy Nails Academy» (единое имя бренда, как в письмах и сертификатах). Ссылки меню и кнопки входа — с `lg`, ниже — `Sheet`: на планшете центрированное меню наезжало на логотип |
+| `Footer.tsx` | `"use client"`. Скрывается на страницах уроков (`pathname.includes("/lessons/")`, чтобы не мешать просмотру видео); содержит реквизиты ИП (ИНН, ОГРНИП, email и телефон — ссылками `mailto:`/`tel:`) и ссылки на `/privacy`, `/terms` |
 
 ## For AI Agents
 

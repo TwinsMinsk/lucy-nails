@@ -91,7 +91,7 @@ export default function ProfilePage() {
     if (!user) return null;
 
     return (
-        <div className="container max-w-lg py-12 space-y-6">
+        <div className="container max-w-lg px-4 py-12 space-y-6">
             <Card className="w-full shadow-lg border-primary/10">
                 <CardHeader className="text-center pb-2">
                     <div className="mx-auto bg-primary/10 p-4 rounded-full w-fit mb-4">
@@ -134,7 +134,7 @@ export default function ProfilePage() {
                     </div>
                 </CardContent>
                 <CardFooter className="pt-2 flex flex-col gap-3">
-                    <Button asChild className="w-full gap-2 h-12 text-base rounded-full bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white">
+                    <Button asChild className="w-full gap-2 h-12 text-base rounded-full bg-primary text-primary-foreground hover:bg-primary/90">
                         <Link href="/dashboard">
                             <BookOpen className="w-5 h-5" />
                             Перейти к моим курсам

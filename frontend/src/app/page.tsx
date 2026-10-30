@@ -101,9 +101,9 @@ export default async function Home() {
             {/* Left Content */}
             <div className="p-6 md:p-10 lg:p-0 relative w-full lg:col-span-7 h-full flex flex-col justify-center">
               <div className="space-y-6 relative">
-                <div className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full bg-gradient-to-r from-[#D4AF37] via-[#FFF3AD] to-[#BFA15F] border border-[#D4AF37]/30 shadow-[0_4px_15px_rgba(191,161,95,0.3)] mb-4 group/badge transition-transform hover:scale-105 duration-300">
-                  <Sparkles className="w-4 h-4 text-[#5A4B4B] animate-pulse" />
-                  <span className="text-[#5A4B4B] text-[11px] font-bold tracking-[0.2em] uppercase">
+                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-[#D4AF37] via-[#FFF3AD] to-[#BFA15F] border border-[#D4AF37]/30 shadow-[0_4px_15px_rgba(191,161,95,0.3)] mb-4">
+                  <Sparkles className="w-4 h-4 text-[#5A4B4B]" aria-hidden="true" />
+                  <span className="text-[#5A4B4B] text-xs font-semibold tracking-[0.08em] uppercase">
                     Онлайн-курс для мастеров
                   </span>
                 </div>
@@ -118,22 +118,19 @@ export default async function Home() {
                   {hero.heroStats.map((stat) => (
                     <div key={stat.label} className="rounded-2xl bg-white/70 border border-white px-4 py-3 shadow-sm">
                       <div className="font-serif text-2xl text-text-primary">{stat.value}</div>
-                      <div className="text-[10px] uppercase tracking-[0.18em] text-text-secondary">{stat.label}</div>
+                      <div className="text-xs text-text-secondary">{stat.label}</div>
                     </div>
                   ))}
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3 mt-8">
-                  <Button asChild className="relative overflow-hidden group rounded-full text-sm uppercase tracking-[0.2em] font-bold px-10 py-6 h-auto bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white hover:to-[#db3f6e] transition-all duration-500 shadow-[0_10px_25px_rgba(219,63,110,0.35)] hover:shadow-[0_20px_40px_rgba(219,63,110,0.5)] hover:-translate-y-1 border-none ring-1 ring-white/20">
+                  <Button asChild className="rounded-full text-base font-semibold px-10 h-14 shadow-[0_10px_25px_rgba(189,48,97,0.3)] hover:shadow-[0_14px_32px_rgba(189,48,97,0.4)]">
                     <Link href="#pricing">
-                      <span className="relative z-10 drop-shadow-md flex items-center gap-2">
-                        Купить курс
-                        <ArrowRight className="w-4 h-4" />
-                      </span>
-                      <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/30 to-transparent z-0" />
+                      Купить курс
+                      <ArrowRight className="w-4 h-4" aria-hidden="true" />
                     </Link>
                   </Button>
-                  <Button asChild variant="outline" className="rounded-full text-sm uppercase tracking-[0.16em] font-bold px-8 py-6 h-auto border-2 border-[#D4AF37]/40 bg-white/70 hover:bg-white">
+                  <Button asChild variant="outline" className="rounded-full text-base font-semibold px-8 h-14 border-2 border-[#D4AF37]/40 bg-white/70 hover:bg-white">
                     <Link href="#program">
                       Смотреть программу
                     </Link>
@@ -153,12 +150,13 @@ export default async function Home() {
 
             {/* Right Image & Stats */}
             <div className="relative lg:col-span-5 group/image flex flex-col justify-center">
-              <div className="relative aspect-[4/5] md:aspect-square lg:aspect-[4/5] w-full max-w-md mx-auto lg:ml-auto rounded-[2.5rem] overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.25),0_30px_60px_rgba(0,0,0,0.6)] border-b-[12px] border-black/10 transition-transform duration-500 hover:-translate-y-3 hover:shadow-[0_0_50px_rgba(0,0,0,0.3),0_40px_80px_rgba(0,0,0,0.7)]">
+              <div className="relative aspect-[4/5] md:aspect-square lg:aspect-[4/5] w-full max-w-md mx-auto lg:ml-auto rounded-[2.5rem] overflow-hidden shadow-[0_24px_60px_rgba(90,40,50,0.25)]">
                 <div className="w-full h-full bg-[#EBC8C8] relative">
                   <Image
                     src={instructorImageSrc}
                     alt="Мастер маникюра в студии Lucy Nails Academy"
                     fill
+                    sizes="(max-width: 1024px) min(100vw, 448px), 448px"
                     className="object-cover"
                     priority
                   />
@@ -176,19 +174,18 @@ export default async function Home() {
       <section id="program" className="py-24 bg-white">
         <div className="container px-4 md:px-6">
           <div className="text-center mb-16">
-            <div className="inline-flex items-center gap-2 rounded-full bg-[#fff1f4] px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-text-secondary mb-4">
-              <Video className="w-4 h-4 text-[#D4AF37]" />
+            <div className="inline-flex items-center gap-2 rounded-full bg-[#fff1f4] px-4 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-text-secondary mb-4">
+              <Video className="w-4 h-4 text-[#D4AF37]" aria-hidden="true" />
               {publishedCourse ? `${publishedCourse.lessons_count} уроков из реальной практики мастера` : "Программа обучения"}
             </div>
             <h2 className="font-serif text-4xl md:text-5xl text-text-primary mb-4">
               Программа курса
             </h2>
-            <p className="text-text-secondary max-w-3xl mx-auto leading-relaxed">
+            <p className="text-text-secondary max-w-2xl mx-auto leading-relaxed">
               Каждый модуль построен вокруг конкретной техники: что взять из материалов,
               как подготовить поверхность, где чаще всего ошибаются мастера и как закрепить дизайн,
               чтобы он красиво носился.
             </p>
-            <div className="w-16 h-1 bg-primary mx-auto rounded-full opacity-50" />
           </div>
 
           <div className="max-w-6xl mx-auto">
@@ -200,7 +197,7 @@ export default async function Home() {
       {/* Gallery Section */}
       <section id="gallery" className="py-24 bg-[#fff1f4] overflow-hidden">
         <div className="container px-4 md:px-6 mb-12">
-          <div className="text-center text-xs font-bold uppercase tracking-[0.18em] text-text-secondary mb-3">
+          <div className="text-center text-xs font-semibold uppercase tracking-[0.08em] text-text-secondary mb-3">
             Вдохновение для портфолио
           </div>
           <h2 className="font-serif text-4xl md:text-5xl text-text-primary text-center">
@@ -225,7 +222,7 @@ export default async function Home() {
           </div>
 
           <div className="max-w-md mx-auto">
-            <Card className="border-2 border-[#D4AF37] shadow-[0_30px_90px_rgba(212,175,55,0.18)] hover:shadow-[0_40px_110px_rgba(212,175,55,0.28)] hover:-translate-y-2 transition-all duration-500 rounded-[2.5rem] p-4 bg-white">
+            <Card className="border-2 border-[#D4AF37] shadow-[0_30px_90px_rgba(212,175,55,0.18)] rounded-[2.5rem] p-4 bg-white">
               <CardHeader className="text-center pt-8 pb-4">
                 <CardTitle className="font-serif text-2xl text-text-primary">{landingCourse.tariffs.self.title}</CardTitle>
                 <div className="flex items-baseline justify-center gap-1 font-serif text-5xl text-text-primary mt-4">

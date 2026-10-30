@@ -19,25 +19,25 @@ export function Footer() {
                             © {new Date().getFullYear()} Lucy Nails Academy. Все права защищены.
                         </p>
                     </div>
-                    <div className="flex gap-4">
-                        <Link href="/privacy" className="text-xs text-text-secondary hover:text-primary transition-colors">
+                    <div className="flex flex-wrap justify-center gap-x-4">
+                        <Link href="/privacy" className="py-2 text-sm text-text-secondary hover:text-foreground hover:underline underline-offset-4 transition-colors">
                             Политика конфиденциальности
                         </Link>
-                        <Link href="/terms" className="text-xs text-text-secondary hover:text-primary transition-colors">
+                        <Link href="/terms" className="py-2 text-sm text-text-secondary hover:text-foreground hover:underline underline-offset-4 transition-colors">
                             Публичная оферта
                         </Link>
                     </div>
                 </div>
 
-                <div className="flex flex-col items-center md:items-start gap-1 text-[10px] text-text-secondary/60 border-t pt-4">
+                <div className="flex flex-col items-center md:items-start gap-1 text-xs text-text-secondary border-t pt-4">
                     <p>ИП Смирнова Людмила Анатольевна</p>
                     <div className="flex flex-wrap justify-center md:justify-start gap-x-4 gap-y-1">
                         <p>ИНН: 784217026925</p>
                         <p>ОГРНИП: 326784700145379</p>
                     </div>
                     <div className="flex flex-wrap justify-center md:justify-start gap-x-4 gap-y-1">
-                        <p>Email: Luci4ek@gmail.com</p>
-                        <p>Тел: +7 (931) 212-20-91</p>
+                        <p>Email: <a href="mailto:Luci4ek@gmail.com" className="hover:text-foreground hover:underline underline-offset-4">Luci4ek@gmail.com</a></p>
+                        <p>Тел.: <a href="tel:+79312122091" className="whitespace-nowrap hover:text-foreground hover:underline underline-offset-4">+7 (931) 212-20-91</a></p>
                     </div>
                 </div>
             </div>
