@@ -1,11 +1,11 @@
-<!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-07-06 | Updated: 2026-07-06 -->
-
 # components
+
+**Parent context:** `../AGENTS.md`
+**Generated:** 2026-07-06 · **Updated:** 2026-10-30
 
 ## Purpose
 
-React-компоненты приложения, сгруппированные по назначению: `ui/` — низкоуровневые shadcn-примитивы, `course/` — просмотр курса и видео (Kinescope), `landing/` — секции публичного лендинга и оплата, `layout/` — общий Header/Footer. Отдельные `AGENTS.md` для вложенных подпапок не создаются — вся специфика описана здесь.
+React-компоненты приложения, сгруппированные по назначению: `ui/` — низкоуровневые shadcn-примитивы, `analytics/` — согласие на аналитику и счётчики, `certificate/` — получение и выгрузка сертификата, `course/` — просмотр курса и видео (Kinescope), `landing/` — секции публичного лендинга и оплата, `layout/` — общий Header/Footer, `legal/` — согласия при оплате и регистрации. Отдельные `AGENTS.md` для вложенных подпапок не создаются — вся специфика описана здесь.
 
 ## Key Files
 
@@ -16,40 +16,57 @@ React-компоненты приложения, сгруппированные 
 | Directory | Purpose |
 |-----------|---------|
 | `ui/` | shadcn-примитивы (style `new-york`, см. `components.json`) |
+| `analytics/` | Баннер согласия и запуск аналитики — используются в корневом `app/layout.tsx` |
+| `certificate/` | Диалог получения сертификата, кнопки выгрузки, конфетти |
 | `course/` | Компоненты просмотра курса: список модулей/уроков, видеоплеер, CTA оплаты |
 | `landing/` | Секции лендинга: программа курса, галерея, карусель фото работ, оплата (в т.ч. гостевая) |
 | `layout/` | `Header`, `Footer` — используются в корневом `app/layout.tsx` |
-| `legal/` | `PersonalDataConsent` — два отдельных обязательных чекбокса: принятие оферты и согласие на обработку ПДн (гостевая оплата, регистрация); сервер сохраняет время и `consent_version` |
+| `legal/` | `PersonalDataConsent` — два отдельных обязательных чекбокса: принятие оферты и согласие на обработку ПДн (гостевая оплата, регистрация); сервер сохраняет время и `consent_version`. Рядом хелперы `NO_CONSENT`, `hasFullConsent`, `focusFirstMissingConsent` |
 
 ### `ui/` — shadcn-примитивы
 
 `accordion`, `alert-dialog`, `avatar`, `badge`, `button`, `card`, `dialog`, `dropdown-menu`, `editor` (обёртка над Tiptap для rich-text полей админки), `form`, `input`, `label`, `progress`, `scroll-area`, `select`, `separator`, `sheet` (мобильное меню), `sonner` (`Toaster`), `switch`, `table`, `textarea`.
 
+### `analytics/`
+
+| File | Description |
+|------|-------------|
+| `AnalyticsBootstrap.tsx` | `"use client"`, рендерит `null`. После согласия (`readConsent().analytics`) на `/` и `/courses/[id]` фиксирует UTM (`captureCheckoutAttribution`), шлёт `landing_view` (`trackPublicEvent`) и запускает Яндекс Метрику, если задан `NEXT_PUBLIC_YANDEX_METRIKA_ID` (без webvisor и clickmap). `isSafeMetrikaLocation` не пускает счётчик на URL с email, телефоном или токеном. Слушает `lucy-consent-updated` и `lucy-metrika-goal`: цель `checkout` — только на публичных страницах, `purchase` — только на `/payment-success` без query, с дедупликацией в `sessionStorage`. При отзыве согласия останавливает счётчик и чистит его cookies |
+| `ConsentBanner.tsx` | `"use client"`. Баннер на `/`, `/courses/[id]`, `/privacy`, `/terms`: "Только необходимые" / "Разрешить аналитику" → `saveConsent`; после выбора остаётся кнопка настроек |
+
+### `certificate/`
+
+| File | Description |
+|------|-------------|
+| `CertificateClaimDialog.tsx` | `"use client"`. Ввод фамилии и имени (`validateFullName` зеркалит `_FULL_NAME_PATTERN` из `backend/app/schemas/certificate.py`) → `claimCertificate()`, конфетти, экран успеха; отдельный экран для `status === "revoked"` |
+| `CertificateActions.tsx` | `"use client"`. Скачивание PDF/PNG по `certificateFileUrl()`, "Ссылка для проверки" через `navigator.share` или буфер обмена |
+| `confetti.ts` | `fireConfetti()` — динамический импорт `canvas-confetti`. `useWorker: false` обязателен: в CSP `script-src` нет `blob:` |
+
 ### `course/`
 
 | File | Description |
 |------|-------------|
-| `VideoPlayer.tsx` | `"use client"`. Грузит play-URL урока через `getLessonPlayUrl(lessonId)` (`src/lib/api.ts`) и рендерит его как `<iframe>` (Kinescope-плеер отдаёт готовый embed-URL, отдельного Kinescope SDK на фронте нет). Состояния: `idle/loading/success/error`; при 403 (`error.includes("403")` или `"access required"`) показывает отдельный UI "Доступ ограничен" вместо общей ошибки |
-| `ModuleList.tsx` | Аккордеон модулей/уроков курса (публичная витрина программы, не для кабинета ученика — там своя разметка на странице курса) |
+| `VideoPlayer.tsx` | `"use client"`. Грузит play-URL урока через `getLessonPlayUrl(lessonId)` (`src/lib/api.ts`) и рендерит его как `<iframe>` (Kinescope-плеер отдаёт готовый embed-URL, отдельного Kinescope SDK на фронте нет). Подписанный URL живёт `expires_in_seconds` (по умолчанию 300 с): за 15 с до конца считается истёкшим и запрашивается заново при `focus`, `pageshow`, `visibilitychange`, наведении или касании плеера. Состояния: `idle/loading/success/error`; при `ApiError` 401/403 (либо `403`/`access required` в тексте ошибки) показывает отдельный UI "Доступ ограничен" и убирает iframe, при прочих ошибках — кнопку "Повторить" |
+| `ModuleList.tsx` | Аккордеон модулей/уроков курса (публичная витрина программы на `(public)/courses/[id]`, не для кабинета ученика — там своя разметка на странице урока) |
 | `CoursePaymentCTA.tsx` | Тонкая обёртка над `landing/PaymentButton` для использования на странице курса вне лендинга |
 
 ### `landing/`
 
 | File | Description |
 |------|-------------|
-| `PaymentButton.tsx` | `"use client"`. Основная кнопка оплаты: если есть cookie `auth_session=1` — берёт email через `getMe()` и запрашивает `getPaymentLink()`; если сессии нет или `getMe()`/`getPaymentLink()` вернули auth-ошибку (`isAuthError`) — открывает `GuestCheckoutDialog` |
-| `GuestCheckoutDialog.tsx` | `"use client"`. Модалка гостевой оплаты: форма email (обязателен) + телефон (опционален) + обязательное согласие (`legal/PersonalDataConsent`) → `getGuestPaymentLink()`; после оплаты новому покупателю приходит ссылка `/auth/activate` для создания пароля |
-| `ProgramSection.tsx` | Грид карточек модулей курса; мерджит серверные `ModuleResponse.lessons[0]` (промо-поля: `promo_description`, `promo_bullets`, `duration_seconds`) поверх статического контента из `src/lib/landing/course-content.ts` по совпадению `title` |
-| `ProgramModuleCard.tsx` | Карточка одного модуля: заголовок, описание, буллеты, типичные ошибки; медиа-зона — `WorksMarquee`, если есть фото (без фото карточка показывает только текст) |
-| `WorksMarquee.tsx` | `"use client"`. Бесконечная лента фото работ модуля на `embla-carousel-react` + `embla-carousel-auto-scroll` (автопрокрутка, останов при наведении/взаимодействии, `reverse` — обратное направление для чередования модулей), ручные стрелки, клик по фото открывает лайтбокс (`Dialog`) с prev/next-навигацией. Использует `IntersectionObserver`, чтобы догружать всю ленту только при приближении к вьюпорту (нативный lazy loading не работает для тайлов, сдвигаемых трансформом карусели). Если фото меньше `MIN_TILES` (6) — список зацикливается повтором, чтобы заполнить вьюпорт |
+| `PaymentButton.tsx` | `"use client"`. Основная кнопка оплаты; `courseId: null` (нет опубликованного курса) её отключает. Шлёт `cta_click` (`location`: `pricing` или `dashboard_renewal`). Если есть cookie `auth_session=1` — берёт email через `getMe()` и запрашивает `getPaymentLink()`; если сессии нет или `getMe()`/`getPaymentLink()` вернули auth-ошибку (`isAuthError`) — открывает `GuestCheckoutDialog`. В запрос уходит `captureCheckoutAttribution()`, перед редиректом — цель Метрики `checkout` |
+| `GuestCheckoutDialog.tsx` | `"use client"`. Модалка гостевой оплаты: форма email (обязателен) + телефон (опционален) + обязательное согласие (`legal/PersonalDataConsent`, `CONSENT_VERSION`) → `getGuestPaymentLink()`; после оплаты новому покупателю приходит ссылка `/auth/activate` для создания пароля. Ссылка на вход с `next` для тех, у кого уже есть аккаунт |
+| `ProgramSection.tsx` | Грид карточек модулей курса. Приоритет у `modules` (результат `getLandingContent()`, без них — статический `programModules`); серверные `ModuleResponse` и `lessons[0]` (промо-поля: `promo_description`, `promo_bullets`, `duration_seconds`) сопоставляются по совпадению `title` и заполняют только пустые поля. Фото — `worksPhotos[copy.slug]` |
+| `ProgramModuleCard.tsx` | Карточка одного модуля: заголовок, описание, результат, буллеты, типичные ошибки; медиа-зона — `WorksMarquee`, если есть фото (без фото карточка показывает только текст) |
+| `WorksMarquee.tsx` | `"use client"`. Бесконечная лента фото работ модуля на `embla-carousel-react` + `embla-carousel-auto-scroll` (автопрокрутка, пауза при наведении, `reverse` — обратное направление для чередования модулей), ручные стрелки, клик по фото открывает лайтбокс (`Dialog`) с prev/next-навигацией. Использует `IntersectionObserver`, чтобы догружать всю ленту только при приближении к вьюпорту (нативный lazy loading не работает для тайлов, сдвигаемых трансформом карусели). Если фото меньше `MIN_TILES` (6) — список зацикливается повтором, чтобы заполнить вьюпорт |
 | `NailsGallery.tsx` | `"use client"`. Карусель общей галереи работ на главной (`embla-carousel-react`, без автоскролла), с ручными стрелками и анимацией через `framer-motion` |
 
 ### `layout/`
 
 | File | Description |
 |------|-------------|
-| `Header.tsx` | `"use client"`. Разное меню для лендинга (`#about`, `#program`, `#gallery`, `#pricing`, smooth-scroll по якорям) и для кабинета (`/dashboard`); проверяет сессию через `getMe()` в `useEffect`; десктоп — `DropdownMenu` с аватаром, моб. — `Sheet` |
-| `Footer.tsx` | `"use client"`. Скрывается на страницах уроков (`pathname.includes("/lessons/")`, чтобы не мешать просмотру видео); содержит юридические реквизиты (ИНН, НПД) и ссылки на `/privacy`, `/terms` |
+| `Header.tsx` | `"use client"`. Разное меню для лендинга (`#about`, `#program`, `#gallery`, `#pricing`, smooth-scroll по якорям) и для кабинета (`/dashboard`); проверяет сессию через `getMe()` в `useEffect` при каждой смене `pathname`; десктоп — `DropdownMenu` с аватаром, моб. — `Sheet`. Ссылка "Админ панель" (`/admin/courses`) показывается только при `user.role === "admin"` |
+| `Footer.tsx` | `"use client"`. Скрывается на страницах уроков (`pathname.includes("/lessons/")`, чтобы не мешать просмотру видео); содержит реквизиты ИП (ИНН, ОГРНИП, email, телефон) и ссылки на `/privacy`, `/terms` |
 
 ## For AI Agents
 
@@ -59,10 +76,11 @@ React-компоненты приложения, сгруппированные 
 - `course/` и `landing/` — доменные компоненты, не примитивы; не выносить в них общую логику, которая должна жить в `ui/` или `lib/`.
 - Компоненты с состоянием/эффектами/браузерными API помечать `"use client"` первой строкой файла (см. существующие файлы выше) — остальные оставлять серверными.
 - Оплата — только через `PaymentButton`/`GuestCheckoutDialog`/`CoursePaymentCTA`; не дублировать вызовы `getPaymentLink`/`getGuestPaymentLink` в новых местах напрямую.
+- Аналитика — только через `lib/analytics-client.ts` и `lib/attribution.ts`: без согласия ничего не хранить и не отправлять, email и телефон в события и цели не передавать. Новый внешний скрипт или iframe требует правки CSP в `next.config.ts`.
 
 ### Testing Requirements
 
-Отдельных unit-тестов для компонентов нет. Проверки — `npm run lint` + `npm run build` (см. `frontend/AGENTS.md`); визуальные регрессии — ручная проверка в dev (`.\scripts\dev-frontend.ps1`).
+Unit-тесты рядом с кодом: `analytics/AnalyticsBootstrap.test.tsx`, `certificate/CertificateClaimDialog.test.tsx`, `course/VideoPlayer.test.tsx`, `landing/PaymentButton.test.tsx`. Запуск из `frontend/`: `npx vitest run src/components/course/VideoPlayer.test.tsx`. Также `npm run lint` + `npm run build` (см. `frontend/AGENTS.md`); оплату и плеер проверяют `e2e/checkout.spec.ts` и `e2e/learning-reliability.spec.ts`; визуальные регрессии — ручная проверка в dev (`.\scripts\dev-frontend.ps1`).
 
 ### Common Patterns
 
@@ -74,12 +92,15 @@ React-компоненты приложения, сгруппированные 
 
 ### Internal
 
-- `../lib/api.ts` — все сетевые вызовы (`getMe`, `getLessonPlayUrl`, `getPaymentLink`, `getGuestPaymentLink`, `logout` и т.д.).
+- `../lib/api.ts` — все сетевые вызовы (`getMe`, `getLessonPlayUrl`, `getPaymentLink`, `getGuestPaymentLink`, `claimCertificate`, `logout` и т.д.).
 - `../lib/utils.ts` (`cn`) — объединение классов Tailwind.
 - `../lib/landing/*` — контент и типы для `landing/`-компонентов.
+- `../lib/attribution.ts`, `../lib/analytics-client.ts`, `../lib/legal.ts`, `../lib/format.ts` — согласие, события, версия оферты, даты.
 
 ### External
 
-- `@radix-ui/*` (через `ui/`), `embla-carousel-react` + `embla-carousel-auto-scroll`, `framer-motion`, `lucide-react`, `sonner`, `@tiptap/*` (в `ui/editor.tsx`).
+- `@radix-ui/*` (через `ui/`), `embla-carousel-react` + `embla-carousel-auto-scroll`, `framer-motion`, `lucide-react`, `sonner`, `@tiptap/*` (в `ui/editor.tsx`), `canvas-confetti` (в `certificate/confetti.ts`).
 
-<!-- MANUAL: Any manually added notes below this line are preserved on regeneration -->
+## Manual Notes
+
+Notes under this heading are written by humans and preserved on regeneration.
