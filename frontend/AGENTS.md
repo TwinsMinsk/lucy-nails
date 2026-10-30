@@ -19,7 +19,6 @@ Next.js 16 (App Router) + React 19 приложение онлайн-школы 
 | `components.json` | shadcn-конфиг: style `new-york`, `rsc: true`, base color `slate`, иконки `lucide`, alias `@/components`, `@/components/ui`, `@/lib`, `@/lib/utils` (alias `@/hooks` объявлен, каталога нет) |
 | `vitest.config.ts` | jsdom, `src/test/setup.ts`, тесты `src/**/*.test.{ts,tsx}`, `restoreMocks: true`, алиас `@` |
 | `playwright.config.ts` | Сервера, проекты и `PLAYWRIGHT_BASE_URL` — см. `e2e/AGENTS.md` |
-| `railway.toml` | Конфиг Railway-сервиса: builder `RAILPACK`, `npm ci && npm run build`, `npm start`, healthcheck `/` |
 | `.env.example` | Шаблон `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SITE_URL`, опционального `NEXT_PUBLIC_YANDEX_METRIKA_ID` |
 | `src/proxy.ts` | Next.js proxy (преемник middleware) — см. `src/AGENTS.md` |
 

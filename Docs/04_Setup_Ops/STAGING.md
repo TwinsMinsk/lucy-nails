@@ -10,7 +10,7 @@ Staging — отдельное окружение без production-данных
 В отдельном Railway environment создаются семь сервисов:
 
 1. `frontend-staging` — Next.js.
-2. `api-staging` — FastAPI, команда из `railway.toml`.
+2. `api-staging` — FastAPI, команда старта из таблицы в [`LAUNCH_OPERATIONS.md`](LAUNCH_OPERATIONS.md).
 3. `worker-staging` — `python -m app.workers.outbox`.
 4. `bot-staging` — `python -m app.bot.main`.
 5. PostgreSQL 15 — только staging.

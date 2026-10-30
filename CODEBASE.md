@@ -9,7 +9,6 @@
 | [`README.md`](README.md) | Быстрый старт |
 | [`AGENTS.md`](AGENTS.md) | Главный вход для Cursor Agent |
 | [`pyproject.toml`](pyproject.toml) | Настройки Ruff (Python) |
-| [`railway.toml`](railway.toml) | Railway monorepo сервисы |
 | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | CI (ruff, pytest, ESLint, Next build) |
 | [`.env.example`](.env.example) | Шаблон env для backend и общих ключей |
 | [`compose.dev.yml`](compose.dev.yml) | Локальные PostgreSQL 15 + Redis 7 |

@@ -25,7 +25,7 @@
 | `workers/` | Фоновые процессы, без собственного AGENTS.md — см. ниже |
 
 ### `workers/`
-`outbox.py` — отдельный процесс доставки уведомлений: `python -m app.workers.outbox` (`worker` в `../Procfile`, `../../ops/railway/worker.toml`). Цикл `run_forever` → `run_iteration`: раз в `LIFECYCLE_SCAN_SECONDS` вызывает `LifecycleService.schedule`, затем `process_outbox_batch`, в отдельных транзакциях, чтобы сбой одного шага не блокировал другой; после итерации — `record_worker_heartbeat` (Redis, читается в `/health/operations`). Если ничего не обработано, спит `OUTBOX_POLL_SECONDS`. Логгер `httpx` держится на WARNING: на INFO он пишет полный URL запроса, а в нём токен бота.
+`outbox.py` — отдельный процесс доставки уведомлений: `python -m app.workers.outbox` (`worker` в `../Procfile`). Цикл `run_forever` → `run_iteration`: раз в `LIFECYCLE_SCAN_SECONDS` вызывает `LifecycleService.schedule`, затем `process_outbox_batch`, в отдельных транзакциях, чтобы сбой одного шага не блокировал другой; после итерации — `record_worker_heartbeat` (Redis, читается в `/health/operations`). Если ничего не обработано, спит `OUTBOX_POLL_SECONDS`. Логгер `httpx` держится на WARNING: на INFO он пишет полный URL запроса, а в нём токен бота.
 
 ### `assets/`
 `certificates/template.png` — статичный фон диплома (перегенерируется `backend/scripts/generate_certificate_template.py`), `certificates/fonts/` — шрифты с лицензиями OFL. Читаются из `services/certificate_layout.py` и `services/certificate_renderer.py`.
