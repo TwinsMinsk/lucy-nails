@@ -1,14 +1,14 @@
-<!-- Generated: manual | Updated: 2026-07-06 (deepinit: добавлена иерархия AGENTS.md) -->
-
 # AGENTS.md — ориентир для AI в Cursor
+
+**Generated:** manual · **Updated:** 2026-10-30 (deepinit: иерархия сверена с кодом)
 
 Этот файл — **главная точка входа** для агента в Cursor. Детальные правила: [`.cursor/rules/`](.cursor/rules). Карта кода: [`CODEBASE.md`](CODEBASE.md).
 
 ## Иерархия AGENTS.md
 
-В ключевых каталогах лежат локальные `AGENTS.md` с деталями по этой части кода; тег `<!-- Parent: ../AGENTS.md -->` в каждом из них ведёт к родителю. Перед работой в каталоге читай его `AGENTS.md`:
+В ключевых каталогах лежат локальные `AGENTS.md` с деталями по этой части кода; строка `**Parent context:**` в начале каждого ведёт к родителю, а раздел `## Manual Notes` в конце пишут люди — при перегенерации он сохраняется. Перед работой в каталоге читай его `AGENTS.md` (если инструмент не подгружает вложенные `AGENTS.md` сам — открывай их явно):
 
-- [`backend/AGENTS.md`](backend/AGENTS.md) — backend в целом (Procfile, requirements, служебные скрипты)
+- [`backend/AGENTS.md`](backend/AGENTS.md) — backend в целом (Procfile, зависимости, служебные скрипты)
   - [`backend/app/AGENTS.md`](backend/app/AGENTS.md) — FastAPI-приложение: `main.py`, lifespan, middleware
     - [`api/`](backend/app/api/AGENTS.md) · [`bot/`](backend/app/bot/AGENTS.md) · [`core/`](backend/app/core/AGENTS.md) · [`models/`](backend/app/models/AGENTS.md) · [`schemas/`](backend/app/schemas/AGENTS.md) · [`services/`](backend/app/services/AGENTS.md)
   - [`backend/alembic/AGENTS.md`](backend/alembic/AGENTS.md) — миграции БД
@@ -16,15 +16,17 @@
 - [`frontend/AGENTS.md`](frontend/AGENTS.md) — Next.js-приложение, env, проверки
   - [`frontend/src/AGENTS.md`](frontend/src/AGENTS.md) → [`app/`](frontend/src/app/AGENTS.md) · [`components/`](frontend/src/components/AGENTS.md) · [`lib/`](frontend/src/lib/AGENTS.md)
   - [`frontend/public/AGENTS.md`](frontend/public/AGENTS.md) — статика и фото работ
+  - [`frontend/e2e/AGENTS.md`](frontend/e2e/AGENTS.md) — Playwright-сценарии
 - [`scripts/AGENTS.md`](scripts/AGENTS.md) — dev-скрипты; детали: [`promo/`](scripts/promo/AGENTS.md), [`kinescope/`](scripts/kinescope/AGENTS.md)
+- [`ops/AGENTS.md`](ops/AGENTS.md) — конфиги бэкапа, Postgres-init и сервисов Railway
 - [`Docs/AGENTS.md`](Docs/AGENTS.md) — карта документации
 
 ## Стек
 
 - **Frontend:** Next.js **16** (App Router), React **19**, TypeScript, Tailwind CSS, Radix/shadcn-паттерн — [`frontend/`](frontend/), [`frontend/components.json`](frontend/components.json).
 - **Backend:** Python **3.11+**, FastAPI, SQLAlchemy 2 **async**, Alembic, Pydantic v2 — [`backend/app/`](backend/app/).
-- **БД:** PostgreSQL 15 (asyncpg); Redis обязателен в production для общего rate-limit.
-- **Интеграции:** Kinescope, Prodamus, Telegram — см. сервисы в [`backend/app/services/`](backend/app/services/).
+- **БД:** PostgreSQL 17 (asyncpg); Redis обязателен в production для общего rate-limit.
+- **Интеграции:** Kinescope, Prodamus, Telegram, Resend (SMTP как запасной вариант) — см. сервисы в [`backend/app/services/`](backend/app/services/).
 
 ## Обязательно прочитать перед существенными изменениями
 
@@ -54,7 +56,7 @@
 **Backend:**
 
 ```powershell
-pip install -r backend/requirements.txt
+pip install -r backend/requirements-dev.lock -r backend/requirements-tooling.lock
 ruff check backend/app backend/tests
 $env:PYTHONPATH = "backend"
 python -m pytest backend/tests -v --tb=short
@@ -83,7 +85,7 @@ npm run test:e2e
 
 ## Локальные артефакты и медиа
 
-- `promo-clips/`, `video-lessons/` и `scripts/promo/output/` — локальные тяжёлые файлы, не коммитить.
+- `promo-clips/`, `video-lessons/`, `photo-work/` и `scripts/promo/output/` — локальные тяжёлые файлы, не коммитить.
 - Промо-пайплайн: [`scripts/promo/README.md`](scripts/promo/README.md), метаданные программы: [`scripts/promo/program.json`](scripts/promo/program.json).
 - Если видео нужно сохранить надолго, хранить его вне Git (Kinescope/облако/LFS по отдельному решению), а в репозитории держать только код, метаданные и документацию.
 
@@ -94,7 +96,7 @@ npm run test:e2e
 - **Транзакции:** не менять политику `commit`/`rollback` точечно; сначала сверить [`backend/app/core/database.py`](backend/app/core/database.py) и места явных `commit`.
 - **Next.js:** Server Components по умолчанию; `'use client'` только где нужна интерактивность.
 - **Изменение схемы БД:** всегда с миграцией Alembic в [`backend/alembic/versions/`](backend/alembic/versions/).
-- **Деплой:** Railway — [`railway.toml`](railway.toml), гайды в [`Docs/04_Setup_Ops/`](Docs/04_Setup_Ops/).
+- **Деплой:** Railway — [`railway.toml`](railway.toml), [`ops/railway/`](ops/railway/), гайды в [`Docs/04_Setup_Ops/`](Docs/04_Setup_Ops/).
 
 ## Язык
 
