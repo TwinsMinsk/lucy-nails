@@ -293,7 +293,11 @@ def main() -> int:
         )
         return 0
     except Exception as exc:
-        partial_path.unlink(missing_ok=True)
+        # Cleanup must not stop the alert: an unusable output path raises here too.
+        try:
+            partial_path.unlink(missing_ok=True)
+        except OSError:
+            pass
         # Only this script's RuntimeErrors are safe to quote: a CalledProcessError
         # message contains the pg_dump command line with the database password.
         reason = str(exc) if type(exc) is RuntimeError else type(exc).__name__
