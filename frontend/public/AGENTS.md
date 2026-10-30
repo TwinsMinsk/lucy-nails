@@ -20,8 +20,9 @@
 
 | Directory | Purpose |
 |-----------|---------|
-| `landing/` | Медиа лендинга: `instructor-master.webp` — фото инструктора и OG-картинка в `src/app/page.tsx`, если `landing_instructor_image_url` не задан |
+| `landing/` | Медиа лендинга: `instructor-master.webp` — запасное фото инструктора для лендинга и JSON-LD, если `landing_instructor_image_url` не задан |
 | `legal/` | Юридические файлы: `offer-example.pdf`, `privacy-policy.docx`, `favicon-ls.ico`. Код на них не ссылается |
+| `og/` | `nail-design-pro.jpg` — карточка для превью ссылок 1200×630 (~60 КБ): фото инструктора из CMS и название курса. Подключена как `SOCIAL_IMAGE` в `src/lib/seo.ts`. Фото в CMS сменили — карточку пересобрать вручную |
 | `nails-gallery/` | 7 фото (`galleryItems`) и 4 SVG-заглушки (`fallbackGalleryImages`), списки — в `src/lib/landing/course-content.ts`. Фото показываются на лендинге только при отказе API и импортируются в БД кнопкой в `/admin/landing`; SVG код не импортирует |
 | `uploads/` | Локальное хранилище загрузок админки (обложки курсов и т.п.): backend пишет сюда, только если `UPLOAD_STORAGE_DIR` пуст (`backend/app/core/uploads.py`). При заданной переменной (Railway Volume) файлы хранит и раздаёт backend по `/uploads`. Содержимое игнорируется Git (`uploads/.gitignore` держит только сам каталог) |
 | `works/` | 11 категорий фото работ для карусели модулей программы: `aerografiya`, `akvarium`, `folga`, `french`, `gradient`, `pigmenty`, `slaidery`, `stemping`, `strazy`, `tekstury`, `vtirka`. Каждая пара `*-thumb.webp` / `*.webp` — путь регистрируется в `src/lib/landing/works-photos.ts` (auto-generated) |

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { baseOpenGraph } from "@/lib/seo";
 
 const title = "Политика конфиденциальности";
@@ -18,7 +18,7 @@ export default function PrivacyPage() {
         <div className="container py-12 md:py-24 max-w-4xl mx-auto">
             <Card className="border-none shadow-none">
                 <CardHeader className="text-center px-0">
-                    <CardTitle className="text-3xl font-bold mb-4">Политика в отношении обработки персональных данных</CardTitle>
+                    <h1 className="text-3xl font-bold leading-tight mb-4">Политика в отношении обработки персональных данных</h1>
                     <div className="text-sm text-center text-muted-foreground">
                         Редакция от {new Date().getFullYear()} года
                     </div>

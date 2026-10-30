@@ -3,6 +3,7 @@ import type { MetadataRoute } from "next";
 import { getPublishedCourses } from "@/lib/api";
 import { getPublicSiteUrl } from "@/lib/env";
 import { getLandingContent } from "@/lib/landing/loader";
+import { LEGAL_UPDATED_AT } from "@/lib/seo";
 
 const siteUrl = getPublicSiteUrl();
 
@@ -16,20 +17,20 @@ function optionalDate(value?: string): Date | undefined {
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticRoutes: MetadataRoute.Sitemap = [
     {
+      // No lastmod: the landing is assembled from CMS records that carry no modification time.
       url: siteUrl,
-      lastModified: new Date(),
       changeFrequency: "weekly",
       priority: 1,
     },
     {
       url: `${siteUrl}/privacy`,
-      lastModified: new Date(),
+      lastModified: LEGAL_UPDATED_AT.privacy,
       changeFrequency: "yearly",
       priority: 0.3,
     },
     {
       url: `${siteUrl}/terms`,
-      lastModified: new Date(),
+      lastModified: LEGAL_UPDATED_AT.terms,
       changeFrequency: "yearly",
       priority: 0.3,
     },
