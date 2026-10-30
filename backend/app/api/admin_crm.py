@@ -938,8 +938,12 @@ async def list_orders(
 ):
     can_read_pii = await user_has_permission(db, admin, "pii.read")
     conditions = []
-    if search:
+    if search and can_read_pii:
         conditions.append(Order.customer_email.ilike(f"%{search.strip()}%"))
+    elif search:
+        # Masked readers may only look up an address they already know; partial
+        # matches would let them recover hidden emails character by character.
+        conditions.append(func.lower(Order.customer_email) == search.strip().lower())
     if status_filter:
         conditions.append(Order.status == status_filter)
     total = await db.scalar(select(func.count(Order.id)).where(*conditions))
