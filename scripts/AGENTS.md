@@ -44,7 +44,7 @@ PowerShell-скрипты для локальной разработки (зап
 
 ### Testing Requirements
 
-- `ops/` покрыт [`backend/tests/test_backup_bundle.py`](../backend/tests/test_backup_bundle.py) (бандл, маркер uploads, guards restore) и [`backend/tests/test_telegram_token_redaction.py`](../backend/tests/test_telegram_token_redaction.py) (скрипт очистки). Запускать из корня через `python -m pytest`, как в CI, чтобы импортировался `scripts.ops`. CI линтует только `backend/app backend/tests`, поэтому `ruff check scripts/ops` — вручную.
+- `ops/` покрыт [`backend/tests/test_backup_bundle.py`](../backend/tests/test_backup_bundle.py) (бандл, маркер uploads, guards restore), [`backend/tests/test_backup_job.py`](../backend/tests/test_backup_job.py) (alert, экспорт uploads, heartbeat) и [`backend/tests/test_telegram_token_redaction.py`](../backend/tests/test_telegram_token_redaction.py) (скрипт очистки). Запускать из корня через `python -m pytest`, как в CI, чтобы импортировался `scripts.ops`. CI линтует только `backend/app backend/tests`, поэтому `ruff check scripts/ops` — вручную.
 - Для остальных скриптов автотестов нет; проверка — фактический запуск (для dev-скриптов — по логам старта Uvicorn/Next.js, для `smoke-production.ps1` — по коду возврата `curl`).
 - `load/` — только на изолированном окружении, сначала `LOAD_PROFILE=smoke`. Gate: `http_req_failed <1%`, p95 `<500 ms`, `checks >99%`.
 - Перед PR с изменением `.ps1` прогнать сценарий вручную на Windows PowerShell.

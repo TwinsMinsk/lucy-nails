@@ -276,7 +276,7 @@ if settings.UPLOAD_STORAGE_DIR:
 
 
 # Подключение роутеров
-from app.api import auth, courses, modules, lessons, purchases, admin, admin_certificates, admin_content, admin_crm, admin_refunds, admin_reports, admin_system, analytics, upload, payments, landing, admin_landing, certificates, telegram  # noqa: E402
+from app.api import auth, courses, modules, lessons, purchases, admin, admin_certificates, admin_content, admin_crm, admin_refunds, admin_reports, admin_system, analytics, backup_export, upload, payments, landing, admin_landing, certificates, telegram  # noqa: E402
 from app.api.integrations import kinescope as kinescope_integration  # noqa: E402
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
@@ -298,6 +298,7 @@ app.include_router(upload.router, prefix="/api/admin", tags=["Upload"])
 app.include_router(landing.router, prefix="/api/landing", tags=["Landing"])
 app.include_router(admin_landing.router, prefix="/api/admin", tags=["Admin: Landing"])
 app.include_router(certificates.router, prefix="/api", tags=["Certificates"])
+app.include_router(backup_export.router, prefix="/api/internal")
 app.include_router(
     kinescope_integration.router,
     prefix="/api/integrations/kinescope",
