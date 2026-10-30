@@ -21,7 +21,7 @@ bcrypt==4.0.1
     # via
     #   -r backend/requirements.txt
     #   passlib
-certifi==2026.7.22
+certifi==2026.10.23
     # via
     #   httpcore
     #   httpx
@@ -38,7 +38,7 @@ cryptography==50.0.1
     # via pyjwt
 deprecated==1.3.1
     # via limits
-dnspython==2.8.0
+dnspython==2.9.1
     # via email-validator
 email-validator==2.1.0.post1
     # via -r backend/requirements.txt
@@ -85,7 +85,7 @@ passlib==1.7.4
     # via -r backend/requirements.txt
 pikepdf==10.12.0
     # via img2pdf
-pillow==12.3.0
+pillow==13.0.0
     # via
     #   -r backend/requirements.txt
     #   img2pdf
