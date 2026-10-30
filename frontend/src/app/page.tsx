@@ -17,6 +17,7 @@ import {
 import Image from "next/image";
 import { NailsGallery } from "@/components/landing/NailsGallery";
 import { PaymentButton } from "@/components/landing/PaymentButton";
+import { GoalOnView } from "@/components/analytics/GoalOnView";
 import { ProgramSection } from "@/components/landing/ProgramSection";
 import { getPublicCourseModules, type ModuleResponse } from "@/lib/api";
 import { landingCourse } from "@/lib/landing/course-content";
@@ -242,6 +243,7 @@ export default async function Home() {
             </Card>
           </div>
         </div>
+        <GoalOnView targetId="pricing" goal="pricing_view" />
       </section>
 
       {/* Footer is handled by layout */}

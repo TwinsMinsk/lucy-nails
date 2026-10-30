@@ -12,7 +12,7 @@ Next.js 16 (App Router) + React 19 приложение онлайн-школы 
 | File | Description |
 |------|-------------|
 | `package.json` | Скрипты `dev`, `build`, `start` (`next start -p $PORT`, рассчитан на Railway), `lint`, Vitest `test` и `test:unit` (оба `vitest run`), Playwright `test:e2e`; `engines.node` `>=20.9.0` |
-| `next.config.ts` | Заголовки для всех путей: CSP (origin API из `NEXT_PUBLIC_API_URL`, Kinescope, YouTube только во `frame-src`, Cloudflare Insights, Яндекс Метрика), `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, HSTS только в production. `images.remotePatterns`: Kinescope, `*.up.railway.app`, `lucysmirnova.ru`, `www.lucysmirnova.ru`, `api.lucysmirnova.ru/uploads/**` |
+| `next.config.ts` | Заголовки для всех путей: CSP (origin API из `NEXT_PUBLIC_API_URL`, Kinescope, YouTube только во `frame-src`, Cloudflare Insights, Яндекс Метрика: `mc.yandex.*`, `mc.webvisor.*`, `wss://`, `yastatic.net`), `frame-ancestors` только для доменов Метрики (просмотр Вебвизора и карт), `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, HSTS только в production. `images.remotePatterns`: Kinescope, `*.up.railway.app`, `lucysmirnova.ru`, `www.lucysmirnova.ru`, `api.lucysmirnova.ru/uploads/**` |
 | `tsconfig.json` | `strict: true`, алиас `@/*` → `./src/*` |
 | `eslint.config.mjs` | `eslint-config-next` (core-web-vitals + typescript); намеренно ослаблены `react-hooks/set-state-in-effect` (off), `@typescript-eslint/no-explicit-any` (warn), `react/no-unescaped-entities` (off), `prefer-const` (warn) — техдолг, см. комментарий в файле |
 | `postcss.config.mjs` | Подключает `@tailwindcss/postcss` |

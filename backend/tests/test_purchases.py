@@ -1018,7 +1018,15 @@ async def test_checkout_order_keeps_original_price_when_course_price_changes(
         params={"token": status_token},
     )
     assert paid.status_code == 200
-    assert paid.json()["status"] == "paid"
+    # The snapshot amount feeds Metrika revenue on the success page.
+    assert paid.json() == {
+        "status": "paid",
+        "amount": 5000,
+        "currency": "RUB",
+        "course_id": str(course.id),
+        "course_title": course.title,
+        "tariff": "self",
+    }
 
     purchase_result = await db.execute(
         select(Purchase).where(Purchase.user.has(email="snapshot-buyer@example.com"))

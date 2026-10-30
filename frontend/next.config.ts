@@ -13,6 +13,34 @@ const apiOrigin = (() => {
   }
 })();
 
+// Yandex Metrika hosts (counter, Webvisor, its websocket transport) for the
+// audience regions; full list: yandex.ru/support/metrica/code/install-counter-csp
+const metrikaOrigins = [
+  "https://mc.yandex.ru",
+  "https://mc.yandex.by",
+  "https://mc.yandex.kz",
+  "https://mc.yandex.com",
+  "https://mc.webvisor.com",
+  "https://mc.webvisor.org",
+];
+const metrikaSockets = metrikaOrigins.map((origin) => origin.replace("https://", "wss://"));
+// Metrika opens the site in a frame to replay Webvisor sessions and click maps.
+const metrikaFrameAncestors = [
+  "https://metrika.yandex.ru",
+  "https://metrika.yandex.by",
+  "https://metrika.yandex.kz",
+  "https://metrika.yandex.com",
+  "https://metrica.yandex.ru",
+  "https://metrica.yandex.by",
+  "https://metrica.yandex.com",
+  "https://metrika.ya.ru",
+  "https://metrica.ya.ru",
+  "https://metr.yandex.ru",
+  "https://analytics.yandex.ru",
+  "https://analytics.yandex.by",
+  "https://analytics.yandex.com",
+];
+
 const nextConfig: NextConfig = {
   async headers() {
     return [
@@ -25,15 +53,15 @@ const nextConfig: NextConfig = {
               [
                 "default-src 'self'",
                 "base-uri 'self'",
-                `connect-src 'self' ${apiOrigin} https://kinescope.io https://*.kinescope.io https://cloudflareinsights.com https://static.cloudflareinsights.com https://mc.yandex.ru https://mc.yandex.com`,
+                `connect-src 'self' ${apiOrigin} https://kinescope.io https://*.kinescope.io https://cloudflareinsights.com https://static.cloudflareinsights.com ${metrikaOrigins.join(" ")} ${metrikaSockets.join(" ")}`,
                 "font-src 'self' data:",
                 "form-action 'self'",
-                "frame-ancestors 'none'",
-                "frame-src 'self' https://kinescope.io https://*.kinescope.io https://www.youtube.com https://*.youtube.com",
+                `frame-ancestors ${metrikaFrameAncestors.join(" ")}`,
+                `frame-src 'self' https://kinescope.io https://*.kinescope.io https://www.youtube.com https://*.youtube.com ${metrikaOrigins.join(" ")}`,
                 `img-src 'self' data: blob: https: ${apiOrigin}`,
                 "media-src 'self' blob: https://kinescope.io https://*.kinescope.io",
                 "object-src 'none'",
-                "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com https://mc.yandex.ru https://mc.yandex.com",
+                `script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com ${metrikaOrigins.join(" ")} https://yastatic.net`,
                 "style-src 'self' 'unsafe-inline'",
               ].join("; "),
           },

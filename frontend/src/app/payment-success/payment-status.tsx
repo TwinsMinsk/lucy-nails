@@ -57,11 +57,27 @@ export function PaymentStatus() {
           setState("help");
           return;
         }
-        const result = (await response.json()) as { status: string };
+        const result = (await response.json()) as {
+          status: string;
+          amount?: number;
+          currency?: string;
+          course_id?: string;
+          course_title?: string;
+          tariff?: string;
+        };
         if (result.status === "paid") {
           setState("paid");
           window.history.replaceState({}, "", "/payment-success");
-          sendYandexGoal("purchase", orderId);
+          const purchase = typeof result.amount === "number" && result.currency && result.course_id
+            ? {
+                amount: result.amount,
+                currency: result.currency,
+                courseId: result.course_id,
+                courseTitle: result.course_title ?? "",
+                tariff: result.tariff ?? "",
+              }
+            : undefined;
+          sendYandexGoal("purchase", orderId, purchase);
           return;
         }
         setState("pending");

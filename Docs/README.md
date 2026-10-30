@@ -29,6 +29,7 @@
 ## Трекинг и история
 
 - [`06_Tracking/TASKS.md`](06_Tracking/TASKS.md) — текущий трекер задач.
+- [`06_Tracking/YANDEX_METRIKA.md`](06_Tracking/YANDEX_METRIKA.md) — Яндекс Метрика: счётчик, цели, настройки, проверка.
 - [`06_Tracking/POST_MVP_HARDENING.md`](06_Tracking/POST_MVP_HARDENING.md) — исторический hardening backlog; актуальные статусы находятся в `TASKS.md`.
 - [`06_Tracking/REFACTORING_ROADMAP.md`](06_Tracking/REFACTORING_ROADMAP.md) — программа наведения порядка по docs, backend, frontend и CI.
 - [`06_Tracking/CONTENT.md`](06_Tracking/CONTENT.md) — контент курса.

@@ -29,7 +29,7 @@ On 8 October the API rejected assigning railwayConfigFile to new staging service
 
 Remote staging uses `ENVIRONMENT=staging`, `DEBUG=false`, `PRODAMUS_DEMO_MODE=true` with a separate form. It enforces the production security checks and requires an isolated cookie/domain namespace, e.g. frontend `staging.lucysmirnova.ru`, API `api.staging.lucysmirnova.ru`, `COOKIE_DOMAIN=staging.lucysmirnova.ru`. Production continues to reject demo payments. Keep checkout disabled until isolation and synthetic fixtures are reviewed.
 
-Frontend build variables: API URL, site URL, operator-provided Metrika counter ID (see frontend env template). Verify configured checkout/purchase goals with consented UTM journeys. Missing counter remains an advertising gate.
+Frontend build variables: API URL, site URL, Metrika counter ID `NEXT_PUBLIC_YANDEX_METRIKA_ID=113921203` (build-time: after changing it, redeploy Frontend). Counter settings, goals and the verification checklist: [`../06_Tracking/YANDEX_METRIKA.md`](../06_Tracking/YANDEX_METRIKA.md).
 
 
 ### Current remote staging preparation

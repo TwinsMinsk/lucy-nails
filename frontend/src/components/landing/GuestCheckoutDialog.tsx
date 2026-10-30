@@ -127,6 +127,7 @@ export function GuestCheckoutDialog({
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
+              className="ym-disable-keys"
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -140,6 +141,7 @@ export function GuestCheckoutDialog({
               id="guest-checkout-phone"
               type="tel"
               autoComplete="tel"
+              className="ym-disable-keys"
               placeholder="+7 ..."
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
