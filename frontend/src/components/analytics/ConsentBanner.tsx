@@ -47,20 +47,21 @@ export function ConsentBanner() {
     }
 
     return (
-        <section className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-3xl rounded-2xl border bg-background/98 p-5 shadow-2xl backdrop-blur" aria-label="Согласие на cookies">
+        <section className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-3xl max-h-[60svh] overflow-y-auto rounded-2xl border bg-background/98 p-4 shadow-2xl backdrop-blur sm:p-5" aria-label="Согласие на cookies">
             <div className="flex items-start gap-3">
-                <Cookie className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                <Cookie className="mt-0.5 hidden h-5 w-5 shrink-0 text-primary sm:block" aria-hidden="true" />
                 <div className="min-w-0 flex-1 space-y-3">
                     <div>
                         <h2 className="font-semibold">Настройки аналитики</h2>
-                        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                            Необходимые cookies обеспечивают вход и оплату. Аналитика (Яндекс Метрика с Вебвизором) помогает понять путь до покупки: она записывает переходы, клики и прокрутку на открытых страницах сайта. Включается только с вашего согласия, не работает в личном кабинете и не получает email, телефон или платёжные данные.
+                        <p className="mt-1 text-sm leading-snug text-muted-foreground sm:leading-relaxed">
+                            Необходимые cookies нужны для входа и оплаты. С вашего согласия включим Яндекс Метрику с Вебвизором, чтобы понять путь до покупки: она записывает переходы, клики и прокрутку на открытых страницах — не в кабинете и без email, телефона и платёжных данных.
                         </p>
-                        <Link href="/privacy" className="text-xs text-primary hover:underline">Политика конфиденциальности</Link>
+                        <Link href="/privacy" className="inline-block py-1 text-sm text-primary underline underline-offset-4 hover:no-underline">Политика конфиденциальности</Link>
                     </div>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-                        <Button variant="outline" onClick={() => choose(false)}>Только необходимые</Button>
-                        <Button onClick={() => choose(true)}>Разрешить аналитику</Button>
+                    {/* Side by side even on phones: the banner covered half of the first screen */}
+                    <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+                        <Button variant="outline" className="h-11 whitespace-normal leading-tight sm:h-9" onClick={() => choose(false)}>Только необходимые</Button>
+                        <Button className="h-11 whitespace-normal leading-tight sm:h-9" onClick={() => choose(true)}>Разрешить аналитику</Button>
                     </div>
                 </div>
             </div>

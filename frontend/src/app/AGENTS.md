@@ -1,7 +1,7 @@
 # app
 
 **Parent context:** `../AGENTS.md`
-**Generated:** 2026-07-06 · **Updated:** 2026-10-30
+**Generated:** 2026-07-06 · **Updated:** 2026-10-31
 
 ## Purpose
 
@@ -13,7 +13,7 @@
 |------|-------------|
 | `layout.tsx` | Root layout: шрифты через `next/font/google`, `Header`/`Footer` вокруг `children`, глобальные `<Metadata>` (title template `%s — Lucy Nails Academy`, OpenGraph/Twitter card, иконка `/icon.svg`), `AnalyticsBootstrap`, `ConsentBanner`, `<Toaster />` (sonner) |
 | `page.tsx` | Лендинг (`/`): hero, программа (`ProgramSection`), галерея (`NailsGallery`), тариф (`PaymentButton`). Контент, цена, срок доступа и `courseId` — из `getLandingContent()` (поле `course` в `LandingPayload`), модули — `getPublicCourseModules()` (ошибка → `null`). Без опубликованного курса цена не показывается ("Продажи пока недоступны"), оплата отключена. `generateMetadata`: title и description для поиска — `HOME_TITLE`/`HOME_DESCRIPTION` из `lib/seo.ts`, OpenGraph и Twitter — из hero, картинка — `SOCIAL_IMAGE`. JSON-LD (`Organization`, `Person`, `Course` с ценой из `course`) рендерит `components/seo/JsonLd.tsx` |
-| `globals.css` | Tailwind v4 (`@import "tailwindcss"`), typography-плагин, кастомные CSS-переменные темы (`--primary`, `--surface`, `--text-primary` и т.д. в oklch), кастомный `@utility container` (Tailwind v4 убрал авто-центрирование — возвращено вручную) |
+| `globals.css` | Tailwind v4 (`@import "tailwindcss"`), typography-плагин, кастомные CSS-переменные темы (`--primary`, `--surface`, `--text-primary` и т.д. в oklch), кастомный `@utility container` (Tailwind v4 убрал авто-центрирование — возвращено вручную; боковых отступов не даёт, `px-4 md:px-6` ставить на месте). `--primary` — брендовый розовый oklch(0.54 0.18 5) с белым `--primary-foreground` (5,6:1), он же `--ring`; хардкод `#db3f6e` (4,2:1 с белым) не использовать. `--input` = oklch(0.64 0.02 20), 3,4:1 для рамок полей. Видимый `:focus-visible` (2 px `--ring`) вне слоёв, чтобы перебить `outline-none` примитивов; глобальный `prefers-reduced-motion` |
 | `error.tsx`, `global-error.tsx`, `not-found.tsx` | Граница ошибок, граница ошибок корневого layout (рендерит свои `<html>`/`<body>`), страница 404 |
 | `robots.txt/route.ts` | Статичный route handler вместо `robots.ts`: `MetadataRoute.Robots` не умеет `Clean-param` Яндекса. Disallow `/admin`, `/dashboard`, `/profile`, `/courses/*/lessons/*`; `Clean-param` для UTM и click id; ссылка на `sitemap.xml` |
 | `sitemap.ts` | `MetadataRoute.Sitemap`: статичные `/`, `/privacy`, `/terms` + динамические `/courses/:id` из `getPublishedCourses()`, кроме курса лендинга (у него canonical `/`) (fallback на статичные при ошибке API). `lastmod`: у `/` нет (у данных CMS нет даты изменения), у юридических страниц — `LEGAL_UPDATED_AT`, у курсов — `created_at` |
@@ -25,7 +25,7 @@
 | `(public)/` | Route group без auth: `auth/login` (пароль, MFA-код, настройка MFA с QR и резервными кодами, шаг подтверждения email, `?next=` через `safeNextPath`), `auth/register` (согласия `PersonalDataConsent`), `auth/activate` (первый пароль по ссылке из письма), `auth/forgot-password`, `auth/reset-password` (общий `auth/layout.tsx` задаёт title и `noindex`: сами страницы клиентские и `metadata` экспортировать не могут), `courses/[id]` (публичная страница курса; у курса лендинга canonical `/`), `certificate/[number]` (публичная проверка сертификата, свой `not-found.tsx`) |
 | `(protected)/` | Route group за гвардом `src/proxy.ts`: `dashboard` (мои курсы, продление истёкшего доступа, сертификаты, чат куратора для тарифа `support`), `profile` (смена пароля, выход), `courses/[id]/lessons/[lessonId]` (просмотр урока: `VideoPlayer`, конспект через `sanitizeHtml`, прогресс, сертификат) |
 | `admin/` | Панель администратора, см. раздел ниже |
-| `payment-success/` | Страница возврата после оплаты Prodamus: `payment-status.tsx` опрашивает `/payments/orders/{order_id}/status?token=` (каждые 3 с, до 20 попыток), при `paid` убирает токен из URL и отправляет цель Метрики `purchase` с суммой, валютой и курсом из ответа статуса (снимок заказа) |
+| `payment-success/` | Страница возврата после оплаты Prodamus: `payment-status.tsx` опрашивает `/payments/orders/{order_id}/status?token=` (каждые 3 с, до 20 попыток), при `paid` убирает токен из URL и отправляет цель Метрики `purchase` с суммой, валютой и курсом из ответа статуса (снимок заказа). Цвет значка по состоянию: успех — `bg-success`, «нужна проверка» — янтарный, ожидание — `bg-primary`; в состоянии `help` нет текста про автообновление |
 | `privacy/`, `terms/` | Статические юридические страницы |
 
 ### `admin/`

@@ -161,7 +161,7 @@ export function GuestCheckoutDialog({
               type="submit"
               disabled={submitting}
               aria-disabled={!consentGiven}
-              className="w-full rounded-full bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
+              className="w-full rounded-full bg-primary text-primary-foreground hover:bg-primary/90 aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
             >
               {submitting ? (
                 <span className="flex items-center justify-center gap-2">
@@ -174,7 +174,7 @@ export function GuestCheckoutDialog({
             </Button>
             <p className="text-center text-sm text-muted-foreground">
               Уже есть аккаунт?{" "}
-              <Link href={`/auth/login?next=${next}`} className="font-medium text-[#db3f6e] hover:underline">
+              <Link href={`/auth/login?next=${next}`} className="font-medium text-primary hover:underline">
                 Войти
               </Link>
             </p>

@@ -146,7 +146,7 @@ export function CertificateClaimDialog({
             </p>
             <Link
               href={`/certificate/${certificate.certificate_number}`}
-              className="text-center text-sm font-medium text-[#db3f6e] hover:underline"
+              className="text-center text-sm font-medium text-primary hover:underline"
             >
               Открыть страницу сертификата →
             </Link>
@@ -177,11 +177,11 @@ export function CertificateClaimDialog({
                 />
               </div>
               <div className="rounded-xl bg-[#fff1f4] border border-[#D4AF37]/40 p-4 text-center">
-                <p className="text-[10px] tracking-[0.25em] text-[#b02a52]">LUCY NAILS ACADEMY</p>
+                <p className="text-[10px] tracking-[0.25em] text-primary">LUCY NAILS ACADEMY</p>
                 <p
                   className={cn(
                     "mt-2 font-serif italic text-2xl",
-                    name.trim() ? "text-[#b02a52]" : "text-muted-foreground"
+                    name.trim() ? "text-primary" : "text-muted-foreground"
                   )}
                 >
                   {name.trim() || "Ваше имя"}
@@ -194,7 +194,7 @@ export function CertificateClaimDialog({
               <Button
                 type="submit"
                 disabled={phase === "loading"}
-                className="w-full rounded-full bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white"
+                className="w-full rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 {phase === "loading" ? (
                   <span className="flex items-center justify-center gap-2">

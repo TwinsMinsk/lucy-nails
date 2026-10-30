@@ -1,6 +1,7 @@
 import { CheckCircle } from "lucide-react";
 
 import { WorksMarquee } from "@/components/landing/WorksMarquee";
+import { cn } from "@/lib/utils";
 import type { WorkPhoto } from "@/lib/landing/works-photos";
 
 export interface ProgramModuleCardProps {
@@ -13,6 +14,7 @@ export interface ProgramModuleCardProps {
   photos: WorkPhoto[];
   reverseMarquee?: boolean;
   durationLabel?: string;
+  className?: string;
 }
 
 export function ProgramModuleCard({
@@ -25,12 +27,13 @@ export function ProgramModuleCard({
   photos,
   reverseMarquee = false,
   durationLabel,
+  className,
 }: ProgramModuleCardProps) {
   // Modules without photos render text only instead of a placeholder for buyers.
   const hasPhotos = photos.length > 0;
 
   return (
-    <article className="flex flex-col bg-[#FFF1F4] rounded-[2rem] border border-primary/20 border-b-[6px] border-b-primary/15 shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+    <article className={cn("flex flex-col bg-[#FFF1F4] rounded-[2rem] border border-primary/15 shadow-lg overflow-hidden outline-none", className)}>
       {hasPhotos ? (
         <div className="p-5 pb-4">
           <WorksMarquee photos={photos} title={title} reverse={reverseMarquee} />
@@ -50,7 +53,7 @@ export function ProgramModuleCard({
         <p className="text-text-secondary leading-relaxed text-sm md:text-base">{description}</p>
         {outcome ? (
           <div className="rounded-2xl bg-white/70 border border-white px-4 py-3 text-sm text-text-primary">
-            <span className="block text-[10px] uppercase tracking-[0.18em] text-text-secondary mb-1">
+            <span className="block text-xs font-medium text-text-secondary mb-1">
               Что заберёте в работу
             </span>
             {outcome}
@@ -64,21 +67,20 @@ export function ProgramModuleCard({
             </li>
           ))}
         </ul>
+        {/* Plain list, not pills: chips read as buttons, and this is not interactive */}
         {mistakes.length > 0 ? (
-          <div className="mt-auto rounded-2xl border border-primary/15 bg-white/45 px-4 py-3">
-            <span className="block text-[10px] uppercase tracking-[0.18em] text-text-secondary mb-2">
+          <div className="mt-auto border-t border-primary/15 pt-3">
+            <span className="block text-xs font-medium text-text-secondary mb-2">
               Разберём ошибки
             </span>
-            <div className="flex flex-wrap gap-2">
+            <ul className="space-y-1.5">
               {mistakes.slice(0, 3).map((mistake) => (
-                <span
-                  key={mistake}
-                  className="rounded-full bg-white/80 px-3 py-1 text-xs text-text-secondary border border-white"
-                >
-                  {mistake}
-                </span>
+                <li key={mistake} className="flex items-start gap-2 text-sm text-text-secondary">
+                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-primary/50" aria-hidden="true" />
+                  <span>{mistake}</span>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         ) : null}
       </div>

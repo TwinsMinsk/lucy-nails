@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { AlertCircle, ArrowRight, CheckCircle, Clock3, Loader2, Sparkles } from "lucide-react";
+import { AlertCircle, ArrowRight, CheckCircle, Clock3, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { getPublicApiUrl } from "@/lib/env";
@@ -102,28 +102,31 @@ export function PaymentStatus() {
 
   const copy = stateCopy[state];
   const Icon = state === "paid" ? CheckCircle : state === "help" ? AlertCircle : Clock3;
+  // Success, attention and waiting must not share one brand colour
+  const iconTone =
+    state === "paid"
+      ? "bg-success text-white"
+      : state === "help"
+        ? "bg-[#FCEFD9] text-[#8A5A12]"
+        : "bg-primary text-primary-foreground";
 
   return (
     <div className="min-h-screen bg-[#FDFBF9] flex items-center justify-center px-4">
       <div className="max-w-lg w-full text-center space-y-8">
         <div className="relative mx-auto w-24 h-24">
-          <div className="absolute inset-0 bg-[#D4AF37]/20 rounded-full animate-ping opacity-30" />
-          <div className="relative w-24 h-24 bg-gradient-to-br from-[#db3f6e] to-[#b02a52] rounded-full flex items-center justify-center shadow-lg">
+          {state === "checking" || state === "pending" ? (
+            <div className="absolute inset-0 bg-[#D4AF37]/20 rounded-full animate-ping opacity-30" />
+          ) : null}
+          <div className={`relative w-24 h-24 rounded-full flex items-center justify-center shadow-lg ${iconTone}`}>
             {state === "checking" ? (
-              <Loader2 className="w-12 h-12 text-white animate-spin" />
+              <Loader2 className="w-12 h-12 animate-spin" aria-hidden="true" />
             ) : (
-              <Icon className="w-12 h-12 text-white" />
+              <Icon className="w-12 h-12" aria-hidden="true" />
             )}
           </div>
         </div>
 
         <div className="space-y-3" aria-live="polite">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/30">
-            <Sparkles className="w-3.5 h-3.5 text-[#5A4B4B]" />
-            <span className="text-[#5A4B4B] text-[10px] font-bold tracking-[0.2em] uppercase">
-              Статус заказа
-            </span>
-          </div>
           <h1 className="font-serif text-3xl md:text-4xl text-text-primary">{copy.title}</h1>
           <p className="text-text-secondary text-lg leading-relaxed">{copy.description}</p>
         </div>
@@ -141,12 +144,16 @@ export function PaymentStatus() {
               </p>
               <p>
                 Не задавали пароль или забыли? — воспользуйтесь{" "}
-                <Link href="/auth/forgot-password" className="font-medium text-[#db3f6e] hover:underline">
+                <Link href="/auth/forgot-password" className="font-medium text-primary underline underline-offset-4 hover:no-underline">
                   «Забыли пароль?»
                 </Link>
               </p>
               <p>Письмо может прийти в течение нескольких минут — если его нет, проверьте папку «Спам».</p>
             </div>
+          ) : state === "help" ? (
+            <p className="text-sm text-text-secondary">
+              Напишите нам в Telegram и укажите email, на который оформляли оплату, — проверим платёж вручную.
+            </p>
           ) : (
             <p className="text-sm text-text-secondary">
               Страница обновляет статус автоматически. Не закрывайте её и не создавайте повторный платёж.
@@ -156,7 +163,7 @@ export function PaymentStatus() {
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           {state === "paid" && (
-            <Button asChild className="rounded-full px-8 h-12 bg-gradient-to-r from-[#db3f6e] to-[#b02a52]">
+            <Button asChild className="rounded-full px-8 h-12">
               <Link href="/auth/login">
                 Войти в кабинет <ArrowRight className="ml-2 w-4 h-4" />
               </Link>
@@ -167,9 +174,9 @@ export function PaymentStatus() {
           </Button>
         </div>
 
-        <p className="text-xs text-text-secondary/70">
+        <p className="text-sm text-text-secondary">
           Проблема с доступом? Напишите в{" "}
-          <a href="https://t.me/lucysmirnova_nails" className="text-[#db3f6e] hover:underline" target="_blank" rel="noopener noreferrer">
+          <a href="https://t.me/lucysmirnova_nails" className="text-primary underline underline-offset-4 hover:no-underline" target="_blank" rel="noopener noreferrer">
             Telegram
           </a>
           .

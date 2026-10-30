@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 
 export default function PrivacyPage() {
     return (
-        <div className="container py-12 md:py-24 max-w-4xl mx-auto">
+        <div className="container px-4 md:px-6 py-12 md:py-24 max-w-4xl mx-auto">
             <Card className="border-none shadow-none">
                 <CardHeader className="text-center px-0">
                     <h1 className="text-3xl font-bold leading-tight mb-4">Политика в отношении обработки персональных данных</h1>

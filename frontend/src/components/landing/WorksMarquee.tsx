@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import useEmblaCarousel from "embla-carousel-react";
 import AutoScroll from "embla-carousel-auto-scroll";
+import { useReducedMotion } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import {
@@ -29,19 +30,23 @@ export function WorksMarquee({ photos, title, reverse = false }: WorksMarqueePro
   // Native lazy loading never fires for tiles moved by the carousel transform,
   // so load the whole strip once the marquee itself approaches the viewport.
   const [inView, setInView] = useState(false);
+  // Endless auto-scroll is motion the visitor did not start: off when the OS asks for less motion.
+  const reduceMotion = useReducedMotion();
 
   const [emblaRef, emblaApi] = useEmblaCarousel(
     { loop: true, align: "start", skipSnaps: true },
-    [
-      AutoScroll({
-        speed: 0.6,
-        direction: reverse ? "backward" : "forward",
-        stopOnInteraction: false,
-        stopOnMouseEnter: true,
-        startDelay: 1200,
-        rootNode: (root) => root.parentElement,
-      }),
-    ]
+    reduceMotion
+      ? []
+      : [
+          AutoScroll({
+            speed: 0.6,
+            direction: reverse ? "backward" : "forward",
+            stopOnInteraction: false,
+            stopOnMouseEnter: true,
+            startDelay: 1200,
+            rootNode: (root) => root.parentElement,
+          }),
+        ]
   );
 
   const handleArrow = useCallback(

@@ -116,8 +116,9 @@ export default function DashboardPage() {
                         Здесь собраны ваши уроки, прогресс и быстрый переход к следующей отработке.
                     </p>
                 </div>
-                <Button asChild className="rounded-full bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white">
-                    <Link href="/">Посмотреть программу</Link>
+                {/* Secondary on purpose: the main action here is "continue" on the course card */}
+                <Button asChild variant="outline" className="rounded-full bg-white/70">
+                    <Link href="/#program">Программа курса</Link>
                 </Button>
             </div>
 
@@ -143,6 +144,7 @@ export default function DashboardPage() {
                                                 src={course.cover_image_url}
                                                 alt={course.title}
                                                 fill
+                                                sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
                                                 className="object-cover transition-transform duration-500 group-hover:scale-110"
                                             />
                                         ) : (
@@ -216,7 +218,7 @@ export default function DashboardPage() {
                                             </div>
                                         )}
 
-                                        {!course.last_lesson_title && course.total_lessons > 0 && (
+                                        {!course.last_lesson_title && course.progress === 0 && course.total_lessons > 0 && (
                                             <div className="p-3 bg-secondary/50 rounded-lg text-sm text-text-secondary border border-border/50">
                                                 <span className="font-medium block text-text-primary mb-1 text-xs uppercase tracking-wider opacity-70">
                                                     Рекомендуемый старт:
@@ -268,7 +270,7 @@ export default function DashboardPage() {
                         <p className="text-text-secondary max-w-sm mb-6">
                             Выберите курс на главной странице — после оплаты он появится здесь.
                         </p>
-                        <Button asChild className="rounded-full bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white">
+                        <Button asChild className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90">
                             <Link href="/">Перейти в каталог</Link>
                         </Button>
                     </div>
@@ -289,6 +291,7 @@ export default function DashboardPage() {
                                                 src={course.cover_image_url}
                                                 alt={course.course_title}
                                                 fill
+                                                sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
                                                 className="object-cover opacity-70"
                                             />
                                         ) : (
@@ -321,7 +324,7 @@ export default function DashboardPage() {
                                             courseId={course.course_id}
                                             tariff="self"
                                             location="dashboard_renewal"
-                                            className="relative overflow-hidden group w-full h-11 rounded-full bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white border-none"
+                                            className="relative overflow-hidden group w-full h-11 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 border-none"
                                         >
                                             Продлить доступ — {course.price_self.toLocaleString("ru-RU")} ₽
                                         </PaymentButton>

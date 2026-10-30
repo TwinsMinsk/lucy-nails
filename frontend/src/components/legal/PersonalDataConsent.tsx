@@ -24,7 +24,7 @@ interface PersonalDataConsentProps {
     disabled?: boolean
 }
 
-const linkClassName = "font-medium text-[#db3f6e] underline-offset-2 hover:underline"
+const linkClassName = "font-medium text-primary underline-offset-2 hover:underline"
 
 interface ConsentCheckboxProps {
     id: string
@@ -50,7 +50,7 @@ function ConsentCheckbox({ id, checked, onCheckedChange, error, disabled, childr
                     aria-required="true"
                     aria-invalid={error ? true : undefined}
                     aria-describedby={error ? errorId : undefined}
-                    className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-input accent-[#db3f6e] disabled:cursor-not-allowed"
+                    className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-input accent-primary disabled:cursor-not-allowed"
                 />
                 <label htmlFor={id} className="cursor-pointer text-sm leading-snug text-text-secondary">
                     {children}

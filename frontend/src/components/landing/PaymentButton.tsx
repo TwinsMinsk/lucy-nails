@@ -30,10 +30,9 @@ export function PaymentButton({ courseId, tariff, children, className, location 
     sendYandexGoal("checkout_open");
     const hasSession = typeof document !== "undefined" && document.cookie.includes("auth_session=1");
 
+    // The guest dialog explains itself; a toast here repeated its title and
+    // covered the dialog's submit button on phones.
     if (!hasSession) {
-      toast.info("Можно оплатить без регистрации", {
-        description: "Укажите email — после оплаты пришлём ссылку для входа в кабинет.",
-      });
       setGuestOpen(true);
       return;
     }
@@ -60,9 +59,6 @@ export function PaymentButton({ courseId, tariff, children, className, location 
     } catch (e) {
       console.error("Payment link error:", e);
       if (isAuthError(e)) {
-        toast.info("Можно оплатить без регистрации", {
-          description: "Укажите email — после оплаты пришлём ссылку для входа в кабинет.",
-        });
         setGuestOpen(true);
         return;
       }
@@ -87,19 +83,16 @@ export function PaymentButton({ courseId, tariff, children, className, location 
         disabled={loading || !effectiveCourseId}
         className={
           className ??
-          "relative overflow-hidden group w-full h-14 rounded-full text-sm uppercase tracking-[0.2em] font-bold bg-gradient-to-r from-[#db3f6e] to-[#b02a52] text-white hover:to-[#db3f6e] transition-all duration-500 shadow-[0_10px_25px_rgba(219,63,110,0.3)] hover:shadow-[0_15px_35px_rgba(219,63,110,0.45)] hover:-translate-y-1 border-none ring-1 ring-white/10"
+          "w-full h-14 rounded-full text-base font-semibold shadow-[0_10px_25px_rgba(189,48,97,0.3)] hover:shadow-[0_14px_32px_rgba(189,48,97,0.4)]"
         }
       >
         {loading ? (
-          <span className="flex items-center gap-2 relative z-10 drop-shadow-md">
-            <Loader2 className="w-5 h-5 animate-spin" />
-            <span>Переход к оплате...</span>
+          <span className="flex items-center gap-2">
+            <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
+            <span>Переход к оплате…</span>
           </span>
         ) : (
-          <>
-            <span className="relative z-10 drop-shadow-md">{children || "Начать обучение"}</span>
-            <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/30 to-transparent z-0" />
-          </>
+          children || "Начать обучение"
         )}
       </Button>
     </>
