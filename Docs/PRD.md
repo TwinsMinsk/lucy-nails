@@ -101,7 +101,7 @@ First-party события: landing view, CTA, checkout start, redirect, paid, a
 
 ## 8. Нефункциональные требования
 
-- Python 3.11, PostgreSQL 15, Redis для общего rate limit, Node.js 20+, Next.js 16.
+- Python 3.11, PostgreSQL 17, Redis для общего rate limit, Node.js 20+, Next.js 16.
 - Cookie auth между `lucysmirnova.ru` и `api.lucysmirnova.ru`, CSRF для изменяющих запросов, строгие CORS/trusted hosts/CSP.
 - Секреты только в environment variables; в логах нет query string, email, платёжных payload или токенов.
 - Структурированные request logs с correlation ID.

@@ -5,7 +5,7 @@
 **Cursor / AI:** см. [`AGENTS.md`](./AGENTS.md), карта репозитория [`CODEBASE.md`](./CODEBASE.md). Правила агента: [`.cursor/rules/`](./.cursor/rules/).
 - **Frontend:** Next.js 16 (см. `frontend/package.json`), TypeScript, Tailwind CSS
 - **Backend:** Python 3.11+, FastAPI, SQLAlchemy 2.0
-- **Database:** PostgreSQL 15, Redis 7 (обязателен в production)
+- **Database:** PostgreSQL 17, Redis 7 (обязателен в production)
 - **Интеграции:** Kinescope, Prodamus, Telegram Bot
 
 **Профессиональный процесс разработки (окружения, PR, Railway, проверки):** [Docs/04_Setup_Ops/DEVELOPMENT_WORKFLOW.md](./Docs/04_Setup_Ops/DEVELOPMENT_WORKFLOW.md)

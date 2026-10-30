@@ -2,15 +2,15 @@
 
 > **Версия:** 2.0
 > **Дата:** 26.08.2026
-> **Статус:** соответствует ветке `feat/production-readiness`
-> **Alembic head:** `1b8c9d0e1f2a`
+> **Статус:** основной текст от 26.08.2026; версия PostgreSQL, Alembic head и API-контуры сверены с `master` 30.10.2026
+> **Alembic head:** `8c9d0e1f2a3b`
 
 ## 1. Контекст системы
 
 ```mermaid
 flowchart LR
     Browser[Public / Student / Admin Next.js] -->|HTTPS cookie + CSRF| API[FastAPI API]
-    API --> PG[(PostgreSQL 15)]
+    API --> PG[(PostgreSQL 17)]
     API --> Redis[(Redis rate limit)]
     API --> Prodamus[Prodamus]
     Prodamus -->|signed webhook| API
@@ -34,7 +34,7 @@ flowchart LR
 | `backend web` | FastAPI, auth, content, commerce, admin API | `alembic upgrade head && uvicorn ...` |
 | `worker` | durable email/Telegram outbox и scheduled delivery | `python -m app.workers.outbox` |
 | `bot` | Telegram account linking и команды | `python -m app.bot.main` |
-| `PostgreSQL 15` | источник истины | managed service |
+| `PostgreSQL 17` | источник истины | managed service |
 | `Redis 7` | общий distributed rate-limit | managed service |
 | `backup` | pg_dump, SHA-256, encrypted S3, alert | `ops/backup/Dockerfile` |
 
@@ -102,6 +102,7 @@ Frontend и API могут масштабироваться горизонтал
 |---|---|
 | `/api/auth` | register/login/refresh/logout, activation, password, MFA, sessions |
 | `/api/courses`, `/modules`, `/lessons` | каталог, уроки, видео и прогресс |
+| `/api/landing` | публичные данные лендинга |
 | `/api/payments`, `/purchases` | checkout, status, webhook, legacy compatibility |
 | `/api/analytics` | публичные consented события без PII |
 | `/api/telegram` | link token и profile integration |
@@ -128,10 +129,10 @@ PostgreSQL — источник financial truth. Gross revenue — подтве�
 
 ## 9. Среды и зависимости
 
-- `development`: `compose.dev.yml` поднимает PostgreSQL 15 и Redis 7; mock Kinescope допустим.
+- `development`: `compose.dev.yml` поднимает PostgreSQL 17 и Redis 7; mock Kinescope допустим.
 - `test`: pytest использует отдельную PostgreSQL DB; никакие production endpoints не вызываются.
 - `staging`: отдельные DB/Redis/Prodamus demo/email domain/Telegram/Kinescope, mock Kinescope запрещён.
-- `production`: конфигурация fail-closed, Telegram owner alert и Redis обязательны.
+- `production`: конфигурация fail-closed, Telegram owner alert и Redis обязательны. Автодеплоя из `master` нет, деплой запускается вручную: [`04_Setup_Ops/DEPLOY_GUIDE.md`](04_Setup_Ops/DEPLOY_GUIDE.md).
 
 Python runtime зафиксирован на 3.11, runtime/dev/tooling dependencies разделены lock-файлами. CI выполняет Ruff, pip-audit, Alembic single-head + downgrade/upgrade, полный pytest, ESLint, Vitest, npm audit, Next build и Playwright Chromium/WebKit.
 

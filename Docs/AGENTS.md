@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Документация проекта: продуктовые требования, техническая архитектура, ops-гайды по разработке и деплою, документы по фичам и истории фаз, трекеры задач/техдолга, справочники интеграций и point-in-time аудиты. [`README.md`](README.md) в этом каталоге — короткий индекс разделов; `LAUNCH_OPERATIONS.md`, `SECRET_SCAN_TRIAGE.md` и `LAUNCH_READINESS_IMPLEMENTATION.md` в нём не перечислены, полный список — ниже.
+Документация проекта: продуктовые требования, техническая архитектура, ops-гайды по разработке и деплою, документы по фичам и истории фаз, трекеры задач/техдолга, справочники интеграций и point-in-time аудиты. [`README.md`](README.md) в этом каталоге — короткий индекс разделов, полный список — ниже.
 
 ## Key Files
 
@@ -13,7 +13,7 @@
 |------|-------------|
 | [`README.md`](README.md) | Индекс/навигация по `Docs/` |
 | [`PRD.md`](PRD.md) | Текущий production scope, v2.0, и go-live критерии |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Текущая v2.0 архитектура commerce/access/RBAC/outbox/analytics/operations. Датирована 26.08.2026: Alembic head и версию PostgreSQL сверять с `backend/alembic/versions/` и `compose.dev.yml` |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Текущая v2.0 архитектура commerce/access/RBAC/outbox/analytics/operations. Основной текст датирован 26.08.2026; при добавлении миграции обновлять Alembic head в шапке |
 | [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) | Архив: первоначальный план реализации от 22.01.2026 (на основе PRD/ARCHITECTURE v1.2), не текущий backlog |
 
 ## Subdirectories
@@ -37,7 +37,7 @@
 - [`05_Phases_History/`](05_Phases_History/) — архив завершённых фаз; не редактировать задним числом, не путать с текущими правилами.
 - [`audit/`](audit/) — снимки на дату аудита (read-only отчёты); прошлые аудиты не переписывать, для нового — новый файл/папка с датой.
 - Вложенные `AGENTS.md` в подкаталогах `Docs/` намеренно не создаются — вся навигация здесь и в [`README.md`](README.md).
-- Документы `04_Setup_Ops/` расходятся по дате. `LAUNCH_OPERATIONS.md` (08.10.2026) новее `BACKUP_RESTORE.md` и `STAGING.md` (26.08.2026). `BACKUP_RESTORE.md` описывает образ на PostgreSQL 15 и бэкап только `.dump`, `STAGING.md` — PostgreSQL 15, а `ops/backup/Dockerfile`, `compose.dev.yml` и CI используют PostgreSQL 17. При расхождении верить файлам репозитория.
+- Документы `04_Setup_Ops/` расходятся по дате. `LAUNCH_OPERATIONS.md` (08.10.2026) новее `BACKUP_RESTORE.md` и `STAGING.md` (26.08.2026). При расхождении верить файлам репозитория: `ops/backup/Dockerfile`, `compose.dev.yml`, CI.
 - В `04_Setup_Ops/` команды писать в формате PowerShell, при смене env синхронизировать `.env.example` и `frontend/.env.example` (правило [`.cursor/rules/ops-setup-docs.mdc`](../.cursor/rules/ops-setup-docs.mdc)).
 - В примерах API — только placeholder, без реальных ключей. `.gitleaks.toml` разрешает curl-примеры из `integrations/KINESCOPE_API.md` по точному тексту и пути, а `.gitleaksignore` — исторические находки по пути и строке; правка таких примеров может вызвать новую находку (см. [`SECRET_SCAN_TRIAGE.md`](04_Setup_Ops/SECRET_SCAN_TRIAGE.md)).
 

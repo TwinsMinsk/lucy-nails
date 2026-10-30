@@ -18,13 +18,13 @@
 - [x] `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities.
 - [x] Git diff не содержит секретов, `.env`, backup dump, test result или тяжёлых media.
 - [x] Независимое четырёхпроходное code review: после `91b796b` нет открытых Critical/Important.
-- [ ] После launch-fixes 25.09.2026: Alembic head `5f6a7b8c9d0e` (email lower-case index), полный pytest/ESLint/build/Playwright зелёные. Evidence: ______
+- [ ] После launch-fixes 25.09.2026: в цепочке Alembic есть `5f6a7b8c9d0e` (email lower-case index), единственная head `8c9d0e1f2a3b`, полный pytest/ESLint/build/Playwright зелёные. Evidence: ______
 - [ ] CI релизного PR зелёный. Evidence: ______
 - [ ] Code review релизного PR завершён. Evidence: ______
 
 ## 2. Staging
 
-- [ ] Созданы отдельные frontend, API, worker, bot, PostgreSQL 15, Redis и backup cron.
+- [ ] Созданы отдельные frontend, API, worker, bot, PostgreSQL 17, Redis и backup cron.
 - [ ] Staging не использует production DB/Redis/email recipients/Telegram chats/Prodamus form.
 - [ ] Перед миграцией на копии прод-БД нет дублей email без учёта регистра: `SELECT lower(email), count(*) FROM users GROUP BY 1 HAVING count(*) > 1;` пусто (иначе миграция `5f6a7b8c9d0e` остановится — слить аккаунты вручную).
 - [ ] `alembic upgrade head` выполнен; count/backfill сверены.
@@ -111,6 +111,7 @@
 
 ## 9. Final production smoke
 
+- [ ] Автодеплоя из `master` нет: релизный commit вручную задеплоен на Backend, затем на worker и Frontend ([`DEPLOY_GUIDE.md`](DEPLOY_GUIDE.md), шаг 6); SHA на всех трёх сервисах совпадает с релизным. Evidence: ______
 - [ ] Автоматический production smoke: дата/исполнитель/evidence ______
 - [ ] Один согласованный реальный платёж: order/payment/purchase/entitlement IDs ______
 - [ ] Доступ открыт не более чем за 60 секунд; уведомление не более чем за 2 минуты.

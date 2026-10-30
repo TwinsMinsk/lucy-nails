@@ -13,7 +13,7 @@ Staging — отдельное окружение без production-данных
 2. `api-staging` — FastAPI, команда старта из таблицы в [`LAUNCH_OPERATIONS.md`](LAUNCH_OPERATIONS.md).
 3. `worker-staging` — `python -m app.workers.outbox`.
 4. `bot-staging` — `python -m app.bot.main`.
-5. PostgreSQL 15 — только staging.
+5. PostgreSQL 17 — только staging.
 6. Redis — только staging, общий для всех экземпляров API.
 7. `backup-staging` — Dockerfile `ops/backup/Dockerfile`, ежедневный cron.
 
