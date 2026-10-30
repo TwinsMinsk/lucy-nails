@@ -12,11 +12,11 @@
 | File | Description |
 |------|-------------|
 | `layout.tsx` | Root layout: шрифты через `next/font/google`, `Header`/`Footer` вокруг `children`, глобальные `<Metadata>` (title template `%s — Lucy Nails Academy`, OpenGraph/Twitter card, иконка `/icon.svg`), `AnalyticsBootstrap`, `ConsentBanner`, `<Toaster />` (sonner) |
-| `page.tsx` | Лендинг (`/`): hero, программа (`ProgramSection`), галерея (`NailsGallery`), тариф (`PaymentButton`). Контент, цена, срок доступа и `courseId` — из `getLandingContent()` (поле `course` в `LandingPayload`), модули — `getPublicCourseModules()` (ошибка → `null`). Без опубликованного курса цена не показывается ("Продажи пока недоступны"), оплата отключена. `generateMetadata`: title и description для поиска — `HOME_TITLE`/`HOME_DESCRIPTION` из `lib/seo.ts`, OpenGraph и Twitter — из hero. JSON-LD (`Organization`, `Person`, `Course` с ценой из `course`) рендерит `components/seo/JsonLd.tsx` |
+| `page.tsx` | Лендинг (`/`): hero, программа (`ProgramSection`), галерея (`NailsGallery`), тариф (`PaymentButton`). Контент, цена, срок доступа и `courseId` — из `getLandingContent()` (поле `course` в `LandingPayload`), модули — `getPublicCourseModules()` (ошибка → `null`). Без опубликованного курса цена не показывается ("Продажи пока недоступны"), оплата отключена. `generateMetadata`: title и description для поиска — `HOME_TITLE`/`HOME_DESCRIPTION` из `lib/seo.ts`, OpenGraph и Twitter — из hero, картинка — `SOCIAL_IMAGE`. JSON-LD (`Organization`, `Person`, `Course` с ценой из `course`) рендерит `components/seo/JsonLd.tsx` |
 | `globals.css` | Tailwind v4 (`@import "tailwindcss"`), typography-плагин, кастомные CSS-переменные темы (`--primary`, `--surface`, `--text-primary` и т.д. в oklch), кастомный `@utility container` (Tailwind v4 убрал авто-центрирование — возвращено вручную) |
 | `error.tsx`, `global-error.tsx`, `not-found.tsx` | Граница ошибок, граница ошибок корневого layout (рендерит свои `<html>`/`<body>`), страница 404 |
-| `robots.ts` | `MetadataRoute.Robots`: disallow `/admin`, `/dashboard`, `/profile`, `/courses/*/lessons/*`; ссылка на `sitemap.xml` |
-| `sitemap.ts` | `MetadataRoute.Sitemap`: статичные `/`, `/privacy`, `/terms` + динамические `/courses/:id` из `getPublishedCourses()`, кроме курса лендинга (у него canonical `/`) (fallback на статичные при ошибке API) |
+| `robots.txt/route.ts` | Статичный route handler вместо `robots.ts`: `MetadataRoute.Robots` не умеет `Clean-param` Яндекса. Disallow `/admin`, `/dashboard`, `/profile`, `/courses/*/lessons/*`; `Clean-param` для UTM и click id; ссылка на `sitemap.xml` |
+| `sitemap.ts` | `MetadataRoute.Sitemap`: статичные `/`, `/privacy`, `/terms` + динамические `/courses/:id` из `getPublishedCourses()`, кроме курса лендинга (у него canonical `/`) (fallback на статичные при ошибке API). `lastmod`: у `/` нет (у данных CMS нет даты изменения), у юридических страниц — `LEGAL_UPDATED_AT`, у курсов — `created_at` |
 
 ## Subdirectories
 
@@ -55,7 +55,7 @@
 - Отдельные `AGENTS.md` для вложенных маршрутов **не создавать** — вся специфика документируется здесь.
 - Новый маршрут админки — добавить в `adminNavItems` или `adminRouteRules` в `admin/layout.tsx`: для маршрута без правила layout не проверяет права. Проверка на backend при этом обязательна.
 - Лендинг переживает отказ API: `getLandingContent()` возвращает статический контент с `course: null`, то есть маркетинг без цены и оплаты. Цену и `courseId` из статики не подставлять. `sitemap.ts` при ошибке отдаёт статичные URL. `(public)/courses/[id]` при любой ошибке API отдаёт `notFound()`, а ошибка `verifyCertificate` на странице сертификата уходит в `error.tsx`.
-- Новые публичные маршруты — добавлять в `sitemap.ts` при необходимости индексации; закрытые — в `disallow` в `robots.ts`.
+- Новые публичные маршруты — добавлять в `sitemap.ts` при необходимости индексации; закрытые — в `Disallow` в `robots.txt/route.ts`. Правишь текст `/privacy` или `/terms` — обнови дату в `LEGAL_UPDATED_AT` (`lib/seo.ts`).
 
 ### Testing Requirements
 

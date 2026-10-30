@@ -8,13 +8,28 @@ export const HOME_TITLE = "Онлайн-курс дизайна ногтей д�
 export const HOME_DESCRIPTION =
     "Авторский онлайн-курс Люси Смирновой: 11 техник nail art — фольга, втирка, стемпинг, слайдеры, аэрография. Видеоуроки для практикующих мастеров маникюра.";
 
+// 1200x630 link preview under 300 KB. The CMS portrait is a 1.6 MB PNG in the wrong aspect ratio.
+export const SOCIAL_IMAGE = {
+    url: "/og/nail-design-pro.jpg",
+    width: 1200,
+    height: 630,
+    alt: "Nail Design PRO — онлайн-курс дизайна ногтей Люси Смирновой",
+};
+
 // Next.js replaces a parent's openGraph object instead of merging it, so every page that sets
-// openGraph has to spread these fields to keep og:type, og:locale and og:site_name.
+// openGraph has to spread these fields to keep og:type, og:locale, og:site_name and og:image.
 export const baseOpenGraph = {
-    type: "website",
+    type: "website" as const,
     locale: "ru_RU",
     siteName: SITE_NAME,
-} as const;
+    images: [SOCIAL_IMAGE],
+};
+
+// Last change of each legal text, used as its sitemap lastmod. Update together with the page text.
+export const LEGAL_UPDATED_AT = {
+    privacy: "2026-10-30",
+    terms: "2026-10-08",
+};
 
 type HomeJsonLdInput = {
     siteUrl: string;
@@ -33,6 +48,8 @@ export function buildHomeJsonLd({ siteUrl, course, title, description, imageUrl 
             "@id": organizationId,
             name: SITE_NAME,
             url: siteUrl,
+            // Google reads an Organization with a phone as a local business and asks for an image.
+            image: new URL(SOCIAL_IMAGE.url, siteUrl).toString(),
             email: "Luci4ek@gmail.com",
             telephone: "+7 931 212-20-91",
             founder: { "@id": authorId },

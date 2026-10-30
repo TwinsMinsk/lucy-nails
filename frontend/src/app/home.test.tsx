@@ -4,7 +4,7 @@ import Home, { generateMetadata } from "@/app/page"
 import { getLandingContent } from "@/lib/landing/loader"
 import { landingCourse } from "@/lib/landing/course-content"
 import { getPublishedCourses, getPublicCourseModules } from "@/lib/api"
-import { HOME_DESCRIPTION, HOME_TITLE } from "@/lib/seo"
+import { HOME_DESCRIPTION, HOME_TITLE, SOCIAL_IMAGE } from "@/lib/seo"
 
 vi.mock("@/lib/landing/loader", () => ({ getLandingContent: vi.fn() }))
 vi.mock("@/lib/api", () => ({ getPublishedCourses: vi.fn(), getPublicCourseModules: vi.fn() }))
@@ -18,8 +18,8 @@ it("uses the search snippet for the page and the CMS identity for social cards",
     const metadata = await generateMetadata()
     expect(metadata.title).toBe(HOME_TITLE)
     expect(metadata.description).toBe(HOME_DESCRIPTION)
-    expect(metadata.openGraph).toMatchObject({ title: "Renamed CMS course", description: "Published CMS description", siteName: "Lucy Nails Academy", locale: "ru_RU" })
-    expect(metadata.twitter).toMatchObject({ title: "Renamed CMS course", description: "Published CMS description" })
+    expect(metadata.openGraph).toMatchObject({ title: "Renamed CMS course", description: "Published CMS description", siteName: "Lucy Nails Academy", locale: "ru_RU", images: [SOCIAL_IMAGE] })
+    expect(metadata.twitter).toMatchObject({ title: "Renamed CMS course", description: "Published CMS description", images: [SOCIAL_IMAGE] })
 })
 
 it("describes the published course in JSON-LD with its CMS price", async () => {
@@ -37,6 +37,7 @@ it("omits the course from JSON-LD with no publication", async () => {
     const { container } = render(await Home())
     const graph = JSON.parse(container.querySelector('script[type="application/ld+json"]')?.textContent ?? "{}")["@graph"]
     expect(graph.map((item: { "@type": string }) => item["@type"])).toEqual(["Organization", "Person"])
+    expect(graph[0].image).toMatch(new RegExp(`${SOCIAL_IMAGE.url}$`))
 })
 
 it("binds the canonical CMS course to displayed price access and checkout", async () => {

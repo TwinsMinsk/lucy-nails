@@ -29,7 +29,6 @@ import { JsonLd } from "@/components/seo/JsonLd";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { hero } = await getLandingContent();
-  const image = hero.instructorImageUrl ?? "/landing/instructor-master.webp";
   return {
     title: HOME_TITLE,
     description: HOME_DESCRIPTION,
@@ -39,13 +38,12 @@ export async function generateMetadata(): Promise<Metadata> {
       title: hero.title,
       description: hero.description,
       url: "/",
-      images: [image],
     },
     twitter: {
       card: "summary_large_image",
       title: hero.title,
       description: hero.description,
-      images: [image],
+      images: baseOpenGraph.images,
     },
   };
 }
