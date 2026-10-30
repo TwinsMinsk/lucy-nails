@@ -142,6 +142,13 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
 
+    @field_validator("ENVIRONMENT", mode="before")
+    @classmethod
+    def normalize_environment(cls, v: str | None) -> str:
+        # "Production" must behave exactly like "production" everywhere
+        # (demo payment links, mock Kinescope embeds, dev seed).
+        return (v or "development").strip().lower()
+
     # === Dev seed (development only) ===
     # Passwords for the startup seed (admin@/student@). Empty -> generated and
     # logged once at WARNING; set via env to pin stable dev credentials.

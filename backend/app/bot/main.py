@@ -6,6 +6,7 @@ import os
 # Добавляем корневую директорию проекта в sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from telegram.error import InvalidToken
 from telegram.ext import ApplicationBuilder, CommandHandler
 from app.core.config import settings
 from app.bot.handlers.start import start
@@ -15,6 +16,8 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+# httpx logs full request URLs at INFO, and Telegram URLs contain the bot token.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +35,12 @@ def main():
     application.add_handler(CommandHandler("start", start))
     
     # Запуск polling
-    application.run_polling()
+    try:
+        application.run_polling()
+    except InvalidToken:
+        # python-telegram-bot puts the rejected token into the exception text.
+        logger.error("Telegram rejected TELEGRAM_BOT_TOKEN")
+        raise SystemExit(1) from None
 
 if __name__ == '__main__':
     main()
