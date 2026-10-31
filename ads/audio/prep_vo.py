@@ -4,7 +4,7 @@
     python ads/audio/prep_vo.py r03 ads/vo/r03-placeholder.wav --draft
 
 Real takes: auto-editor cuts pauses and fumbles, then high-pass, light denoise and
-loudness to -16 LUFS. Draft (TTS) takes skip the cutting.
+loudness to -16 LUFS. Draft and synthesized (--tts, from tts.py) takes skip the cutting and the denoise.
 
 Words come from faster-whisper (large-v3, word timestamps) but the text on screen is
 always the script's: recognised words are matched to script words in order and only
@@ -135,10 +135,11 @@ def main() -> None:
     ap.add_argument("reel")
     ap.add_argument("take", type=Path)
     ap.add_argument("--draft", action="store_true", help="placeholder TTS take: no pause cutting")
+    ap.add_argument("--tts", action="store_true", help="final synthesized take (ads/audio/tts.py): no pause cutting")
     args = ap.parse_args()
 
     lines = vo_lines(args.reel)
-    audio = clean(args.reel, args.take, args.draft)
+    audio = clean(args.reel, args.take, args.draft or args.tts)
     total = duration(audio)
     # Only the course name as a prompt: with the whole script as the prompt Whisper skipped most of the R2 draft.
     heard = transcribe(audio, "Nail Design PRO.")

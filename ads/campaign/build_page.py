@@ -57,9 +57,10 @@ def reel_data(reel: str, scripts: str, captions: str) -> dict:
     spec = json.loads((CAMPAIGN / "reels" / f"{reel}.json").read_text(encoding="utf-8"))
     hooks = [{"id": "a", "lines": [h["text"] for h in spec["headline"]]}]
     hooks += [{"id": k, "lines": [h["text"] for h in v["headline"]]} for k, v in spec.get("hooks", {}).items()]
+    final = ADS / "out" / reel / f"{reel}.mp4"
     return {"reel": reel, "code": code, "title": title, "hook": hook, "vo": vo_lines(reel),
             "caption": body, "utm": utm.group(1) if utm else "", "hooks": hooks,
-            "seconds": round(duration(ADS / "out" / reel / f"{reel}-draft.mp4"))}
+            "seconds": round(duration(final if final.exists() else final.with_name(f"{reel}-draft.mp4")))}
 
 
 def calendar_rows(text: str) -> list[dict]:

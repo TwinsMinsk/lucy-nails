@@ -54,6 +54,12 @@ cd ads/video; npx hyperframes@0.8.221 check .; npx hyperframes@0.8.221 render . 
 размечает его. После записи достаточно повторить `prep_vo.py`, `build_reel.py`, рендер и `finish.py`:
 склейки, подписи и субтитры привязаны к словам и пересчитаются сами.
 
+Голос нейросетью: `audio/tts.py` через OpenRouter (ключ в переменной пользователя `OPENROUTER_API_KEY`).
+`tts.py r08 --samples --check` озвучивает ролик всеми голосами из `SAMPLES` в `ads/vo/samples/r08/` и сверяет
+прочитанное со сценарием через Whisper; `tts.py r03 --check` пишет `ads/vo/r03-tts.wav` голосом кампании
+(Gemini 3.8 Flash TTS «Sulafat», выбран 31.10.2026), дальше `prep_vo.py r03 ads/vo/r03-tts.wav --tts` (без вырезки
+пауз) и сборка как обычно.
+
 Музыки в мастере нет: трек добавляется при публикации в Instagram (у бизнес-аккаунта библиотека ограничена).
 
 ## Варианты хуков
