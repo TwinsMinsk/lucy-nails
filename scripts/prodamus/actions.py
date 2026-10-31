@@ -76,6 +76,20 @@ DEFAULT_PAID_CONTENT = (
     "после оплаты. Если вы оплачивали без регистрации, ссылка для входа придёт на email, "
     "указанный при оплате."
 )
+# Mirrors the backend's receipt fields: «без НДС», «полный расчёт», «услуга».
+RECEIPT_FIELDS = {"tax": {"tax_type": "0"}, "paymentMethod": "4", "paymentObject": "4"}
+
+
+def _bracket_fields(prefix: str, value: dict[str, Any]) -> dict[str, Any]:
+    """Flatten a nested dict into products[0][tax][tax_type]-style query keys."""
+    fields: dict[str, Any] = {}
+    for key, item in value.items():
+        name = f"{prefix}[{key}]"
+        if isinstance(item, dict):
+            fields.update(_bracket_fields(name, item))
+        else:
+            fields[name] = item
+    return fields
 
 
 # === env / .env loader =======================================================
@@ -126,15 +140,16 @@ def cmd_link(args: argparse.Namespace) -> int:
     base = _require("PRODAMUS_URL", args.url).rstrip("/") + "/"
     secret = _require("PRODAMUS_SECRET_KEY", args.secret)
 
-    product = {
+    product: dict[str, Any] = {
         "name": args.course,
         "price": str(args.price),
         "quantity": "1",
         "type": "course",
+        **RECEIPT_FIELDS,
     }
     params: dict[str, Any] = {
         "do": "pay",
-        **{f"products[0][{key}]": value for key, value in product.items()},
+        **_bracket_fields("products[0]", product),
         "callbackType": "json",
     }
     if args.paid_content:

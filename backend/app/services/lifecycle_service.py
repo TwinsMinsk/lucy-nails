@@ -56,10 +56,25 @@ class LifecycleService:
             )
         ).all()
         scheduled = 0
+        # After an early renewal or a manual grant a student holds several active
+        # entitlements to one course. Only the one that ends last notifies the
+        # student; the others lapse silently instead of announcing that access ended.
+        latest: dict[tuple, Entitlement] = {}
+        for entitlement, _user, _course in rows:
+            pair = (entitlement.user_id, entitlement.course_id)
+            current = latest.get(pair)
+            if current is None or (entitlement.expires_at, str(entitlement.id)) > (
+                current.expires_at,
+                str(current.id),
+            ):
+                latest[pair] = entitlement
 
         for entitlement, user, course in rows:
+            superseded = latest[(entitlement.user_id, entitlement.course_id)] is not entitlement
             if entitlement.expires_at <= now:
                 entitlement.status = "expired"
+                if superseded:
+                    continue
                 scheduled += await cls._enqueue_once(
                     db,
                     kind="access_expired",
@@ -100,7 +115,7 @@ class LifecycleService:
             days_left = math.ceil(
                 (entitlement.expires_at - now).total_seconds() / 86400
             )
-            if days_left not in cls.REMINDER_DAYS:
+            if superseded or days_left not in cls.REMINDER_DAYS:
                 continue
             payload = {
                 "course_title": course.title,

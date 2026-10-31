@@ -26,6 +26,7 @@
 | `(protected)/` | Route group за гвардом `src/proxy.ts`: `dashboard` (мои курсы, продление истёкшего доступа, сертификаты, чат куратора для тарифа `support`), `profile` (смена пароля, выход), `courses/[id]/lessons/[lessonId]` (просмотр урока: `VideoPlayer`, конспект через `sanitizeHtml`, прогресс, сертификат) |
 | `admin/` | Панель администратора, см. раздел ниже |
 | `payment-success/` | Страница возврата после оплаты Prodamus: `payment-status.tsx` опрашивает `/payments/orders/{order_id}/status?token=` (каждые 3 с, до 20 попыток), при `paid` убирает токен из URL и отправляет цель Метрики `purchase` с суммой, валютой и курсом из ответа статуса (снимок заказа). Цвет значка по состоянию: успех — `bg-success`, «нужна проверка» — янтарный, ожидание — `bg-primary`; в состоянии `help` нет текста про автообновление |
+| `payment-failed/` | Серверная страница «Оплата не прошла» (`noindex`): причины отказа, «Попробовать ещё раз» → `/#pricing`, Telegram. Указана как «Fail URL» в кабинете Prodamus — у платёжной ссылки нет своего параметра для ошибки |
 | `privacy/`, `terms/` | Статические юридические страницы |
 
 ### `admin/`
@@ -51,7 +52,7 @@
 
 ### Working In This Directory
 
-- Server Components по умолчанию; `'use client'` — только там, где нужны хуки состояния/эффекты/браузерные API (формы, карусели, дропдауны). Сейчас серверные страницы — `page.tsx`, `(public)/courses/[id]`, `(public)/certificate/[number]`, `payment-success/page.tsx`, `privacy`, `terms`; кабинет, auth и вся админка клиентские.
+- Server Components по умолчанию; `'use client'` — только там, где нужны хуки состояния/эффекты/браузерные API (формы, карусели, дропдауны). Сейчас серверные страницы — `page.tsx`, `(public)/courses/[id]`, `(public)/certificate/[number]`, `payment-success/page.tsx`, `payment-failed`, `privacy`, `terms`; кабинет, auth и вся админка клиентские.
 - `(public)` и `(protected)` — route groups, не влияют на URL. Реальная защита `(protected)` и `admin/` — на уровне `src/proxy.ts` (UX-редирект по cookie) **и** backend-эндпоинтов (источник правды по правам).
 - Отдельные `AGENTS.md` для вложенных маршрутов **не создавать** — вся специфика документируется здесь.
 - Новый маршрут админки — добавить в `adminNavItems` или `adminRouteRules` в `admin/layout.tsx`: для маршрута без правила layout не проверяет права. Проверка на backend при этом обязательна.

@@ -11,6 +11,7 @@ import base64
 import hashlib
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -26,6 +27,26 @@ logger = logging.getLogger(__name__)
 
 def _recipient_label(email: str) -> str:
     return hashlib.sha256(email.strip().lower().encode("utf-8")).hexdigest()[:12]
+
+
+# Moscow has kept UTC+3 all year since 2014; a fixed offset needs no tzdata.
+MOSCOW_TZ = timezone(timedelta(hours=3), "MSK")
+SUPPORT_TELEGRAM_URL = "https://t.me/lucysmirnova_nails"
+
+
+def format_msk_datetime(value: datetime | str) -> str:
+    """A naive UTC datetime (or its ISO string) in Moscow time: 30.11.2026 15:04 (МСК)."""
+    moment = datetime.fromisoformat(value) if isinstance(value, str) else value
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M (МСК)")
+
+
+def _access_until_html(expires_at: datetime | str | None) -> str:
+    if not expires_at:
+        return ""
+    return f"<p>Доступ к курсу открыт до {format_msk_datetime(expires_at)}.</p>"
+
 
 # Ни одна отправка письма не должна висеть дольше этого времени внутри запроса.
 EMAIL_TIMEOUT_SECONDS = 10.0
@@ -224,14 +245,22 @@ class EmailService:
         await EmailService._send(email, "🎉 Ваш доступ к курсу — Lucy Smirnova", html)
 
     @staticmethod
-    async def send_account_activation(email: str, activation_url: str, course_title: str) -> None:
+    async def send_account_activation(
+        email: str, activation_url: str, course_title: str, expires_at: str | None = None
+    ) -> None:
         safe_url = escape(activation_url, quote=True)
         safe_title = escape(course_title)
+        forgot_url = escape(
+            f"{settings.FRONTEND_URL.rstrip('/')}/auth/forgot-password", quote=True
+        )
         html = (
             f"<h1>Оплата подтверждена</h1><p>Курс: {safe_title}</p>"
+            f"{_access_until_html(expires_at)}"
             f'<p><a href="{safe_url}">Подтвердить email и установить пароль</a></p>'
             "<p>Просмотр курса станет доступен после подтверждения email. Прежние сеансы будут завершены.</p>"
-            "<p>Ссылка действует 24 часа и может быть использована один раз.</p>"
+            f"<p>Ссылка действует {settings.ACCOUNT_ACTIVATION_TOKEN_EXPIRE_HOURS} ч. "
+            "и может быть использована один раз. Если она устарела, нажмите "
+            f'«<a href="{forgot_url}">Забыли пароль?</a>» и укажите этот email — придёт новая ссылка.</p>'
         )
         await EmailService._send(email, "Установите пароль — Lucy Smirnova", html)
 
@@ -248,7 +277,9 @@ class EmailService:
         await EmailService._send(email, "Подтвердите email — Lucy Smirnova", html)
 
     @staticmethod
-    async def send_access_granted(email: str, login_url: str, course_title: str) -> None:
+    async def send_access_granted(
+        email: str, login_url: str, course_title: str, expires_at: str | None = None
+    ) -> None:
         safe_url = escape(login_url, quote=True)
         safe_title = escape(course_title)
         # A returning guest buyer may never have set a password.
@@ -257,6 +288,7 @@ class EmailService:
         )
         html = (
             f"<h1>Оплата подтверждена</h1><p>Доступ к курсу «{safe_title}» открыт.</p>"
+            f"{_access_until_html(expires_at)}"
             f'<p><a href="{safe_url}">Войти в кабинет</a></p>'
             "<p>Если вы ещё не задавали пароль, нажмите "
             f'«<a href="{forgot_url}">Забыли пароль?</a>» на странице входа.</p>'
@@ -281,7 +313,7 @@ class EmailService:
         email: str, course_title: str, days: int, expires_at: str
     ) -> None:
         safe_title = escape(course_title)
-        safe_expires_at = escape(expires_at)
+        safe_expires_at = escape(format_msk_datetime(expires_at))
         login_url = escape(f"{settings.FRONTEND_URL.rstrip('/')}/dashboard", quote=True)
         html = (
             f"<h1>Доступ закончится через {days} дн.</h1>"
@@ -295,9 +327,12 @@ class EmailService:
     @staticmethod
     async def send_access_expired(email: str, course_title: str) -> None:
         safe_title = escape(course_title)
+        renew_url = escape(f"{settings.FRONTEND_URL.rstrip('/')}/dashboard", quote=True)
         html = (
             f"<h1>Срок доступа завершён</h1><p>Доступ к курсу «{safe_title}» закончился.</p>"
-            "<p>Если это ошибка или вам нужна помощь, ответьте на это письмо.</p>"
+            f'<p><a href="{renew_url}">Продлить доступ</a> можно в личном кабинете.</p>'
+            "<p>Это письмо отправлено автоматически, отвечать на него не нужно. "
+            f'Если это ошибка или нужна помощь, напишите нам в <a href="{SUPPORT_TELEGRAM_URL}">Telegram</a>.</p>'
         )
         await EmailService._send(
             email, "Срок доступа к курсу завершён — Lucy Smirnova", html
