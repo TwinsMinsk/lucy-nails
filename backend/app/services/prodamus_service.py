@@ -27,6 +27,13 @@ _BRACKET_SEGMENT_RE = re.compile(r"\[([^\[\]]*)\]")
 # PHP's default max_input_nesting_level: deeper form keys never reach $_POST.
 _MAX_INPUT_NESTING_LEVEL = 64
 
+# Up to 4096 characters; must not carry secrets, Prodamus emails it as is.
+PAID_CONTENT_TEMPLATE = (
+    "Доступ к курсу откроется в личном кабинете {site}/dashboard в течение пары минут "
+    "после оплаты. Если вы оплачивали без регистрации, ссылка для входа придёт на email, "
+    "указанный при оплате."
+)
+
 
 def _to_str(value: Any) -> Any:
     """Рекурсивно приводит все значения к строкам и сортирует ключи."""
@@ -135,6 +142,7 @@ class ProdamusService:
         """
         base_url = settings.PRODAMUS_URL.rstrip("/") + "/"
         secret = settings.PRODAMUS_SECRET_KEY
+        frontend_url = settings.FRONTEND_URL.rstrip("/")
 
         # Backend API URL for webhook notifications
         backend_url = settings.BACKEND_URL.rstrip("/") if settings.BACKEND_URL else "http://localhost:8000"
@@ -152,11 +160,17 @@ class ProdamusService:
             "products[0][price]": product["price"],
             "products[0][quantity]": product["quantity"],
             "products[0][type]": product["type"],
-            "urlSuccess": success_url or f"{settings.FRONTEND_URL.rstrip('/')}/payment-success",
-            "urlReturn": f"{settings.FRONTEND_URL.rstrip('/')}/#pricing",
+            "urlSuccess": success_url or f"{frontend_url}/payment-success",
+            "urlReturn": f"{frontend_url}/#pricing",
+            # Prodamus posts to the URL set in the cabinet; this one is ignored
+            # (observed 2026-10-31) but kept for forms that honour it.
             "urlNotification": f"{backend_url}/api/payments/webhook",
             # callbackType=json — вебхуки будут приходить в JSON
             "callbackType": "json",
+            # «Доступы к материалам»: Prodamus' cash register issues the 54-FZ
+            # full-settlement receipt only when the link names what the buyer
+            # receives. Prodamus also shows and emails this text after payment.
+            "paid_content": PAID_CONTENT_TEMPLATE.format(site=frontend_url),
         }
 
         if order_id:
@@ -184,6 +198,11 @@ class ProdamusService:
         link = f"{base_url}?{query}"
         logger.debug("Prodamus link generated (order_id present: %s)", bool(order_id))
         return link
+
+    @staticmethod
+    def demo_payments_allowed() -> bool:
+        """Test payments are honoured outside production or when forced on."""
+        return settings.PRODAMUS_DEMO_MODE or settings.ENVIRONMENT.lower() != "production"
 
     @staticmethod
     def verify_signature(payload: dict, signature: str) -> bool:
@@ -216,7 +235,7 @@ class ProdamusService:
         # when demo mode is explicitly enabled (or outside production), otherwise a
         # leaked secret could forge a demo-signed webhook against a live shop and
         # grant free access. See audit 2026-07-06 (P0-2 / INTEG-01).
-        demo_allowed = settings.PRODAMUS_DEMO_MODE or settings.ENVIRONMENT.lower() != "production"
+        demo_allowed = ProdamusService.demo_payments_allowed()
         if demo_allowed:
             expected_demo = _make_signature(payload, secret + "demo")
             if hmac.compare_digest(expected_demo.encode("ascii"), received):

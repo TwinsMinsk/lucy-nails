@@ -48,6 +48,13 @@ def _to_str(value: Any) -> Any:
         return {k: _to_str(v) for k, v in sorted(value.items())}
     if isinstance(value, list):
         return [_to_str(item) for item in value]
+    # Match PHP strval(), which Prodamus applies before signing.
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "1" if value else ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
     return str(value)
 
 
@@ -61,6 +68,14 @@ def make_signature(data: dict, secret_key: str) -> str:
         json_str.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
+
+
+# Mirrors PAID_CONTENT_TEMPLATE in the backend service for the production site.
+DEFAULT_PAID_CONTENT = (
+    "Доступ к курсу откроется в личном кабинете https://lucysmirnova.ru/dashboard в течение пары минут "
+    "после оплаты. Если вы оплачивали без регистрации, ссылка для входа придёт на email, "
+    "указанный при оплате."
+)
 
 
 # === env / .env loader =======================================================
@@ -111,14 +126,20 @@ def cmd_link(args: argparse.Namespace) -> int:
     base = _require("PRODAMUS_URL", args.url).rstrip("/") + "/"
     secret = _require("PRODAMUS_SECRET_KEY", args.secret)
 
+    product = {
+        "name": args.course,
+        "price": str(args.price),
+        "quantity": "1",
+        "type": "course",
+    }
     params: dict[str, Any] = {
         "do": "pay",
-        "products[0][name]": args.course,
-        "products[0][price]": f"{args.price}",
-        "products[0][quantity]": "1",
-        "products[0][type]": "course",
+        **{f"products[0][{key}]": value for key, value in product.items()},
         "callbackType": "json",
     }
+    if args.paid_content:
+        # «Доступы к материалам»: without it Prodamus prints no receipt.
+        params["paid_content"] = args.paid_content
     if args.success_url:
         params["urlSuccess"] = args.success_url
     if args.return_url:
@@ -134,7 +155,12 @@ def cmd_link(args: argparse.Namespace) -> int:
     if args.demo or os.environ.get("PRODAMUS_DEMO_MODE", "").lower() in ("1", "true", "yes"):
         params["demo_mode"] = "1"
 
-    params["signature"] = make_signature(params, secret)
+    # Prodamus rebuilds the nested "products" list from the products[0][...]
+    # query keys and verifies the signature over that structure, so the flat
+    # dict must not be signed (Prodamus answers «Ошибка подписи»).
+    sign_data = {k: v for k, v in params.items() if not k.startswith("products[")}
+    sign_data["products"] = [product]
+    params["signature"] = make_signature(sign_data, secret)
     query = urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
     print(f"{base}?{query}")
     return 0
@@ -144,13 +170,14 @@ def cmd_verify_sign(args: argparse.Namespace) -> int:
     _load_dotenv_if_missing(["PRODAMUS_SECRET_KEY"])
     secret = _require("PRODAMUS_SECRET_KEY", args.secret)
     body = _read_body_arg(args.body)
+    received = args.sign.strip().lower().encode("utf-8")
 
     expected = make_signature(body, secret)
-    if hmac.compare_digest(expected, args.sign):
+    if hmac.compare_digest(expected.encode("ascii"), received):
         print("OK (production secret)")
         return 0
     expected_demo = make_signature(body, secret + "demo")
-    if hmac.compare_digest(expected_demo, args.sign):
+    if hmac.compare_digest(expected_demo.encode("ascii"), received):
         print("OK (demo secret = secret_key + 'demo')")
         return 0
     print("MISMATCH", file=sys.stderr)
@@ -251,6 +278,8 @@ def _build_parser() -> argparse.ArgumentParser:
     pl.add_argument("--success-url", dest="success_url", help="urlSuccess")
     pl.add_argument("--return-url", dest="return_url", help="urlReturn")
     pl.add_argument("--notification-url", dest="notification_url", help="urlNotification (webhook)")
+    pl.add_argument("--paid-content", dest="paid_content", default=DEFAULT_PAID_CONTENT,
+                    help="paid_content («доступы к материалам»), needed for the receipt; '' to omit")
     pl.add_argument("--demo", action="store_true", help="Force demo_mode=1")
     pl.set_defaults(func=cmd_link)
 

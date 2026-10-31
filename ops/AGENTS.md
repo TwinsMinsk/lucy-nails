@@ -14,6 +14,7 @@
 | [`backup/Dockerfile`](backup/Dockerfile) | Образ на `postgres:17` (даёт `pg_dump`, `pg_restore`, `psql`) плюс `awscli`, `ca-certificates`, `python3`. Копирует `scripts/ops/backup_postgres.py` и `restore_postgres.py` в `/app`; `CMD` запускает backup в `/tmp/backups`. Контекст сборки — корень репозитория. `AWS_*_CHECKSUM_*=when_required` отключает заголовки CRC64NVME, которые `aws-cli` 2.23+ шлёт по умолчанию |
 | [`postgres/init/01-test-database.sql`](postgres/init/01-test-database.sql) | Идемпотентно создаёт `test_nails_course` через `\gexec` (нужен `psql`) |
 | [`railway/backup.toml`](railway/backup.toml) | Backup cron: builder `DOCKERFILE`, `dockerfilePath = "ops/backup/Dockerfile"`, тот же старт, что `CMD` образа, `cronSchedule = "0 1 * * *"`, `restartPolicyType = "NEVER"` |
+| [`webhook-relay/main.ts`](webhook-relay/main.ts) | Ретранслятор вебхуков для Deno Deploy (playground в console.deno.com): пропускает только `/api/payments/webhook` (Prodamus) и `/api/integrations/kinescope/drm/authorize` на `https://api.lucysmirnova.ru` без изменений, тело до 64 КБ; `/healthz` — 200, остальное 404. Подпись и Basic auth проверяет backend. Файл в репозитории — источник истины, в playground его копируют целиком |
 
 ## Subdirectories
 
@@ -22,6 +23,7 @@
 | `backup/` | Образ для запуска `scripts/ops/*` |
 | `postgres/init/` | SQL для `/docker-entrypoint-initdb.d` локального контейнера |
 | `railway/` | Config-файл backup cron; остальные сервисы настроены в самом Railway |
+| `webhook-relay/` | Ретранслятор вебхуков на Deno Deploy. Нужен потому, что из российских дата-центров (серверы Prodamus) Railway недоступен: TCP открывается, TLS виснет (проверено 31.10.2026 по ответу в кабинете Prodamus и check-host); `*.deno.net` оттуда доступен |
 
 ## For AI Agents
 
@@ -35,6 +37,7 @@
 - **Переменные backup.** В TOML их нет, они задаются окружением сервиса: `DATABASE_URL`, `BACKUP_S3_URI`, `BACKUP_REQUIRE_S3`, `BACKUP_S3_ENDPOINT`, `BACKUP_S3_SSE`, `BACKUP_S3_KMS_KEY_ID`, `BACKUP_RETENTION_DAYS`, `BACKUP_REQUIRE_UPLOADS`, `BACKUP_UPLOADS_DIR` или `BACKUP_UPLOADS_URL` с `BACKUP_UPLOADS_TOKEN`, `BACKUP_UPLOADS_MARKER`, `BACKUP_HEARTBEAT_URL`, AWS credentials, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_OWNER_CHAT_ID`.
 - **Значения по умолчанию.** Без `BACKUP_REQUIRE_S3=true` и `BACKUP_S3_URI` job завершается с `status=ok`, а архив остаётся только в `/tmp/backups` контейнера: volume в `backup.toml` не описан. Полный backup с uploads требует настроек из `LAUNCH_OPERATIONS.md`.
 - **Безопасность.** Секреты в Dockerfile и TOML не записывать. Backup, restore и изменения в Railway — только по явному запросу. Restore — только в пустую отдельную БД; `--allow-production` — только в объявленном инциденте.
+- **Ретранслятор вебхуков.** Работает как playground в Deno Deploy (console.deno.com); после правки `main.ts` скопировать файл в playground и нажать Deploy. URL уведомлений в кабинете Prodamus указывает на ретранслятор: Prodamus шлёт вебхук только на адрес из кабинета, параметр `urlNotification` в ссылке игнорирует. Добавляя путь в `RELAYED_PATHS`, помни, что ретранслятор открыт всем — пропускай только эндпоинты, которые сами проверяют подпись. Проверка: `POST <relay>/api/payments/webhook` без `Sign` должен вернуть 400 `Missing signature` от production, `/healthz` — 200.
 - **`.dockerignore`.** Его нет, поэтому локальная сборка передаёт демону весь корень репозитория, включая локальные `.env` и тяжёлые медиа, хотя в образ попадают только два файла.
 
 ### Testing Requirements

@@ -1313,6 +1313,45 @@ async def test_webhook_amount_mismatch_rejected(client: AsyncClient, db: AsyncSe
 
 
 @pytest.mark.asyncio
+async def test_webhook_demo_payment_rejected_in_production(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # Prodamus signs demo webhooks with the regular secret, so only the
+    # demo_mode flag tells a test payment apart from a real one.
+    course = await _published_course(db, "Demo Payment Course")
+    email = "demo-pay@example.com"
+    checkout = await client.post(
+        "/api/payments/guest-link",
+        json={"course_id": str(course.id), "tariff": "self", "customer_email": email, "offer_accepted": True, "personal_data_consent": True},
+    )
+    assert checkout.status_code == 200, checkout.text
+    notification = {
+        **_prodamus_notification(checkout.json()["order_id"], email, f"{course.title} — Самостоятельный"),
+        "demo_mode": "1",
+    }
+    payload, headers = _signed_payload(notification)
+
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "PRODAMUS_DEMO_MODE", False)
+    rejected = await client.post("/api/payments/webhook", json=payload, headers=headers)
+    assert rejected.status_code == 422
+    assert (await db.execute(select(func.count(Purchase.id)))).scalar_one() == 0
+    event = (await db.execute(select(PaymentEvent))).scalar_one()
+    assert event.processing_status == "rejected"
+    assert event.error_code == "demo_payment"
+
+    # A deployment that explicitly runs test payments still honours them.
+    monkeypatch.setattr(settings, "PRODAMUS_DEMO_MODE", True)
+    retry = {**notification, "attempt": "2"}
+    payload, headers = _signed_payload(retry)
+    accepted = await client.post("/api/payments/webhook", json=payload, headers=headers)
+    assert accepted.status_code == 200, accepted.text
+    assert (await db.execute(select(func.count(Purchase.id)))).scalar_one() == 1
+
+
+@pytest.mark.asyncio
 async def test_webhook_empty_status_rejected(client: AsyncClient, db: AsyncSession):
     """A signed webhook with no status marker must NOT be treated as success."""
     course = await _published_course(db, "Empty Status Course")

@@ -43,7 +43,7 @@ This skill is built from **one** source type (official help documentation at `he
 - **Секретный ключ (secret key)** — generated in the merchant cabinet under «Настройки». Used both for **signing** outbound payment links and for **verifying** inbound webhooks. The same key is what every CMS integration screen asks for.
 - **`urlNotification`** — the webhook URL Prodamus will POST to after a payment event. Settable globally in «Настройки» or per-link via the `urlNotification` parameter. Prodamus signs the body with HMAC-SHA256 and sends the digest in the **`Sign`** header.
 - **`callbackType=json`** — send `callbackType=json` on link generation so the webhook arrives as JSON instead of form-encoded; this is the recommended mode for modern backends.
-- **`demo_mode=1`** — turns a single link into a test transaction. Test cards (Visa 4006 8009 0096 2514, MC 5469 9801 0004 8525, МИР 2202 2050 0001 2424, GazpromBank 4242 4242 4242 4242) only work in demo mode. **Important quirk:** in demo mode, the webhook signature is computed using `secret_key + "demo"` (suffix), not the plain secret. Verifiers must try both.
+- **`demo_mode=1`** — turns a single link into a test transaction. Test cards (Visa 4006 8009 0096 2514, MC 5469 9801 0004 8525, МИР 2202 2050 0001 2424, GazpromBank 4242 4242 4242 4242) only work in demo mode. **Important quirk:** older forms signed demo webhooks with `secret_key + "demo"`, but on 2026-10-31 a demo SberPay payment on `lucysmirnovanails.payform.ru` was signed with the **plain** secret and carried `"demo_mode": "1"` in the body. Verifiers may try both secrets, and a live shop must reject any webhook with `demo_mode=1` — the signature alone does not tell a test payment from a real one.
 - **Клубная система / Recurrent** — Prodamus's native subscription system. Subscriptions are configured in the cabinet; the REST API exposes `setActivity` (activate/deactivate), `setSubscriptionDiscount` (apply discount to upcoming charges), and `setSubscriptionPaymentDate` (move the next charge date).
 - **Виджет (widget)** — JS embed (`https://widget.prodamus.ru/src/init.js`) for Tilda/Taplink/Linkrr/Creatium and similar site builders; lets the checkout open in an overlay without leaving the site.
 - **Льготный период** — onboarding gives a 3-month / 100 000 ₽ no-commission window on RUB-card / СБП / SberOnline / requisites payments. Worth knowing when estimating fees in tooling.
@@ -91,6 +91,13 @@ def _to_str(value):
         return {k: _to_str(v) for k, v in sorted(value.items())}
     if isinstance(value, list):
         return [_to_str(v) for v in value]
+    # PHP strval(): None -> "", True -> "1", False -> "", 5900.0 -> "5900"
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "1" if value else ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
     return str(value)
 
 def prodamus_sign(data: dict, secret: str) -> str:
@@ -109,23 +116,27 @@ This exact algorithm is what produces the `signature` query param on outbound li
 ### 4. Generate a payment link (From codebase — pattern used in production)
 
 ```python
+product = {"name": course_name, "price": str(price), "quantity": "1", "type": "course"}
 params = {
     "do": "pay",
-    "products[0][name]":     course_name,
-    "products[0][price]":    str(price),
-    "products[0][quantity]": "1",
-    "products[0][type]":     "course",
+    **{f"products[0][{k}]": v for k, v in product.items()},
     "urlSuccess":      f"{frontend}/payment-success",
     "urlReturn":       f"{frontend}/#pricing",
     "urlNotification": f"{backend}/api/payments/webhook",
     "callbackType":    "json",
+    # «Доступы к материалам»: the Prodamus cash register prints no receipt without it.
+    "paid_content":    "Доступ к курсу откроется в личном кабинете ...",
     "order_id":        order_id,
     "customer_email":  email.lower(),
 }
 if environment != "production":
     params["demo_mode"] = "1"
 
-params["signature"] = prodamus_sign(params, PRODAMUS_SECRET_KEY)
+# Sign the NESTED structure Prodamus rebuilds from products[0][...] query keys.
+# Signing the flat dict is rejected with «Ошибка подписи передаваемых данных».
+sign_data = {k: v for k, v in params.items() if not k.startswith("products[")}
+sign_data["products"] = [product]
+params["signature"] = prodamus_sign(sign_data, PRODAMUS_SECRET_KEY)
 link = f"https://{merchant}.payform.ru/?{urlencode(params, quote_via=quote)}"
 ```
 
@@ -269,7 +280,9 @@ Within this skill there is only one source family (official help docs). When the
 
 These come from real integration work and are not always explicit in the docs:
 
-- **Demo signatures use `secret + "demo"`.** The docs only hint at this; the verifier must try both. (See Quick Reference §5.)
+- **Demo webhooks: check `demo_mode`, not just the signature.** Older forms signed demo webhooks with `secret + "demo"`; a 2026-10-31 demo payment was signed with the plain secret and had `"demo_mode": "1"`. Reject `demo_mode=1` on a live shop. (See Quick Reference §5.)
+- **Prodamus posts webhooks to the cabinet URL.** On 2026-10-31 the notification went to «Настройки → URL адреса для уведомлений», and the per-link `urlNotification` was ignored. Set the cabinet field.
+- **Receipts need `paid_content`.** The Prodamus cash register prints the full-settlement receipt only when the link fills «доступы к материалам» (`paid_content`, up to 4096 chars).
 - **Signature is over a flat key/value dict, with `/` escaped.** The literal escaping step (`"/" → "\/"`) is easy to miss — without it, every signature mismatches.
 - **`callbackType=json` is recommended.** Without it, the webhook arrives form-encoded, which then has to be reconstructed into a dict before signing, multiplying the chances of a sort/encoding bug.
 - **`order_id` is your idempotency anchor.** The docs do not promise that Prodamus deduplicates retries — your webhook handler must.
