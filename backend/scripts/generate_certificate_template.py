@@ -110,7 +110,7 @@ def generate_template() -> Image.Image:
     canvas = Image.alpha_composite(canvas.convert("RGBA"), overlay).convert("RGB")
     draw = ImageDraw.Draw(canvas)
 
-    # Header: "LUCY NAILS ACADEMY".
+    # Header: "LUCY SMIRNOVA NAILS".
     header_font = ImageFont.truetype(str(layout.HEADER_FONT), layout.HEADER_SIZE)
     _draw_spaced_text(
         draw, layout.CENTER_X, layout.HEADER_Y, layout.HEADER_TEXT, header_font, layout.HEADER_LETTER_SPACING, layout.HEADER_COLOR

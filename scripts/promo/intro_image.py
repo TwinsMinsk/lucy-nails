@@ -1,8 +1,9 @@
-"""AI-фон для intro-карточки + единая типографика Pillow (бренд Lucy Nails)."""
+"""AI-фон для intro-карточки + единая типографика Pillow (бренд Lucy Smirnova)."""
 
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import logging
 import os
@@ -117,7 +118,7 @@ def _overlay_brand(
     *,
     lesson_title: str,
     lesson_order: int,
-    subtitle: str = "Lucy Nails Academy · Превью урока",
+    subtitle: str = "Lucy Smirnova · Превью урока",
 ) -> None:
     """Рисует типографику поверх base (in-place)."""
     draw = ImageDraw.Draw(base)
@@ -302,7 +303,7 @@ def build_intro_card(
     out_png: Path,
     *,
     lesson_order: int,
-    subtitle: str = "Lucy Nails Academy · Превью урока",
+    subtitle: str = "Lucy Smirnova · Превью урока",
     cache_dir: Path | None = None,
     regen_background: bool = False,
 ) -> Path:
@@ -321,8 +322,18 @@ def build_intro_card(
     return out_png
 
 
+OUTRO_TITLE = "Полный урок — в онлайн-курсе"
+OUTRO_SUBTITLE = "Lucy Smirnova"
+
+
 def ensure_shared_outro_png(out_path: Path) -> Path:
-    """Общая outro-карточка (градиент + типографика без номера урока)."""
+    """Общая outro-карточка (градиент + типографика без номера урока).
+
+    The cached file name carries a hash of the card text, so a new text (e.g. the brand) draws a new card
+    instead of reusing the cached one. Returns the path actually written.
+    """
+    digest = hashlib.sha1(f"{OUTRO_TITLE}\n{OUTRO_SUBTITLE}".encode()).hexdigest()[:8]
+    out_path = out_path.with_name(f"{out_path.stem}-{digest}{out_path.suffix}")
     if out_path.is_file():
         return out_path
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -339,8 +350,8 @@ def ensure_shared_outro_png(out_path: Path) -> Path:
     font_title = _find_serif_title_font(52)
     font_sub = _find_sans_font(26)
     cx, cy = CARD_WIDTH // 2, CARD_HEIGHT // 2 - 10
-    title = "Полный урок — в онлайн-курсе"
-    sub = "Lucy Nails Academy"
+    title = OUTRO_TITLE
+    sub = OUTRO_SUBTITLE
     for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
         draw.text((cx + dx, cy + dy), title, font=font_title, fill=(255, 255, 255), anchor="mm")
     draw.text((cx, cy), title, font=font_title, fill=COLOR_TITLE, anchor="mm")

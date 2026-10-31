@@ -16,7 +16,7 @@ export function Footer() {
                 <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
                     <div className="flex flex-col items-center gap-4 md:flex-row md:gap-2 md:px-0">
                         <p className="text-center text-sm leading-loose text-text-secondary md:text-left">
-                            © {new Date().getFullYear()} Lucy Nails Academy. Все права защищены.
+                            © {new Date().getFullYear()} Lucy Smirnova Nails. Все права защищены.
                         </p>
                     </div>
                     <div className="flex flex-wrap justify-center gap-x-4">

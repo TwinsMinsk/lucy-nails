@@ -182,8 +182,8 @@ async def test_send_certificate_composes_subject_and_attachment(monkeypatch):
     )
 
     assert captured["email"] == "student@example.com"
-    assert captured["subject"] == "🎓 Ваш сертификат — Lucy Nails Academy"
+    assert captured["subject"] == "🎓 Ваш сертификат — Lucy Smirnova"
     assert len(captured["attachments"]) == 1
     attachment = captured["attachments"][0]
-    assert attachment.filename == "Lucy-Nails-Certificate-LN-0007.pdf"
+    assert attachment.filename == "Lucy-Smirnova-Nails-Certificate-LN-0007.pdf"
     assert attachment.content == pdf_bytes

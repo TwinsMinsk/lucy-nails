@@ -91,7 +91,7 @@ export function Header() {
                 <div className="flex items-center gap-6">
                     <Link href="/" className="flex items-center gap-2">
                         <span className="text-xl font-bold text-primary tracking-tight font-serif">
-                            Lucy Nails Academy
+                            Lucy Smirnova
                         </span>
                     </Link>
                 </div>
@@ -188,7 +188,7 @@ export function Header() {
                             </SheetTrigger>
                             <SheetContent side="right">
                                 <SheetHeader>
-                                    <SheetTitle className="text-left font-serif text-xl text-primary">Lucy Nails Academy</SheetTitle>
+                                    <SheetTitle className="text-left font-serif text-xl text-primary">Lucy Smirnova</SheetTitle>
                                 </SheetHeader>
                                 <div className="flex flex-col gap-6 mt-8">
                                     <nav className="flex flex-col gap-4">

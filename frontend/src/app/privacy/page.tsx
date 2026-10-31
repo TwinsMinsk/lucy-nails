@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { baseOpenGraph } from "@/lib/seo";
 
 const title = "Политика конфиденциальности";
-const description = "Политика обработки персональных данных на сайте Lucy Nails Academy.";
+const description = "Политика обработки персональных данных на сайте Lucy Smirnova.";
 
 export const metadata: Metadata = {
     title,

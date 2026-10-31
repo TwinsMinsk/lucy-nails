@@ -17,7 +17,7 @@ export function CertificateActions({ certificateNumber, className }: Certificate
 
     if (navigator.share) {
       try {
-        await navigator.share({ title: "Мой сертификат Lucy Nails Academy", url });
+        await navigator.share({ title: "Мой сертификат Lucy Smirnova Nails", url });
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") return;
       }

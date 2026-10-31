@@ -1,6 +1,9 @@
 import type { LandingCourseSnapshot } from "@/lib/api";
 
-export const SITE_NAME = "Lucy Nails Academy";
+export const SITE_NAME = "Lucy Smirnova";
+// The school as an organisation: certificates, copyright and the Organization in JSON-LD,
+// so search engines do not merge it with the author (Person "Люся Смирнова").
+export const ORGANIZATION_NAME = "Lucy Smirnova Nails";
 export const AUTHOR_NAME = "Люся Смирнова";
 
 // Search snippet for the landing page. The CMS hero title stays in the H1 and social cards.
@@ -46,7 +49,7 @@ export function buildHomeJsonLd({ siteUrl, course, title, description, imageUrl 
         {
             "@type": "Organization",
             "@id": organizationId,
-            name: SITE_NAME,
+            name: ORGANIZATION_NAME,
             url: siteUrl,
             // Google reads an Organization with a phone as a local business and asks for an image.
             image: new URL(SOCIAL_IMAGE.url, siteUrl).toString(),
@@ -59,6 +62,16 @@ export function buildHomeJsonLd({ siteUrl, course, title, description, imageUrl 
             "@id": authorId,
             name: AUTHOR_NAME,
             worksFor: { "@id": organizationId },
+        },
+        {
+            // Site name in search results: Google takes it from WebSite on the home page.
+            "@type": "WebSite",
+            "@id": `${siteUrl}/#website`,
+            name: SITE_NAME,
+            alternateName: ORGANIZATION_NAME,
+            url: siteUrl,
+            inLanguage: "ru",
+            publisher: { "@id": organizationId },
         },
     ];
 

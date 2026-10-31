@@ -6,7 +6,7 @@ import "./globals.css";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { getPublicSiteUrl } from "@/lib/env";
-import { baseOpenGraph } from "@/lib/seo";
+import { baseOpenGraph, SITE_NAME } from "@/lib/seo";
 import { AnalyticsBootstrap } from "@/components/analytics/AnalyticsBootstrap";
 import { ConsentBanner } from "@/components/analytics/ConsentBanner";
 
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
     default: "Обучающие курсы по маникюру от Люси Смирновой",
-    template: "%s — Lucy Nails Academy",
+    template: `%s — ${SITE_NAME}`,
   },
   description: "Авторские онлайн-курсы маникюра и дизайна ногтей с защищёнными видео-уроками.",
   openGraph: {
