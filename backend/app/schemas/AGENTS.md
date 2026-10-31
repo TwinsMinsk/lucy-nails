@@ -1,7 +1,7 @@
 # schemas
 
 **Parent context:** `../AGENTS.md`
-**Generated:** 2026-07-06 · **Updated:** 2026-10-30
+**Generated:** 2026-07-06 · **Updated:** 2026-10-31
 
 ## Purpose
 
@@ -19,6 +19,7 @@ Pydantic v2 схемы запросов/ответов, сгруппирован
 | `module.py` | `ModuleBase`/`ModuleResponse`, `ModuleWithLessonsResponse` (импортирует `LessonOutlineResponse` из `lesson.py` — единственный кросс-файловый импорт схем в модуле, объявлен после определения `ModuleResponse` во избежание цикла) |
 | `progress.py` | `ProgressBase`/`ProgressUpdate`/`ProgressResponse` |
 | `purchase.py` | `TariffType(str, Enum)`, `PurchaseCreate`, `PaymentStartResponse` (+ `order_id`, `status_token`), `PurchaseResponse` (роутерами сейчас не используется), `MyCourseResponse` (курс в личном кабинете: `progress`, `total_lessons`/`completed_lessons`, `last_lesson_*`, `tariff`, `expires_at`, `support_chat_url`, `certificate_number`), `ExpiredCourseResponse` (истёкший доступ для продления) |
+| `ads.py` | Раздел «Реклама». Литералы `CampaignStatus`, `MaterialKind`, `MaterialStatus`, `FileRole` и `KEY_PATTERN` (`^[a-z0-9][a-z0-9_-]{0,63}$` для slug, code, key, variant). Вход синхронизации с лимитами длины и числа элементов: `AdCampaignSync` (+ `AdMaterialSync`, `AdTaskSync`, `AdCalendarSync`, `AdGroup`, `AdSection`, флаг `prune`). Ответы: `AdCampaignSummary`, `AdCampaignDetail`, `AdMaterialResponse`, `AdFileResponse` (подписанные `url`/`download_url` относительно корня API), `AdTaskResponse`, `AdCalendarEntryResponse`, `AdCommentResponse` (`is_mine`), `AdPerson`. Обновления из админки: `AdMaterialUpdate`, `AdTaskUpdate`, `AdCommentCreate`. `from_attributes` нет: ответы собирает `app/services/ads_service.py` |
 
 ## For AI Agents
 

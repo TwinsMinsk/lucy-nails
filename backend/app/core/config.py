@@ -179,6 +179,11 @@ class Settings(BaseSettings):
     # Persistent upload directory. Leave empty in production to disable local uploads.
     UPLOAD_STORAGE_DIR: str = ""
     UPLOAD_PUBLIC_BASE_URL: str = ""
+    # Private directory for ad materials (reels, covers, voice recordings), outside the public
+    # uploads mount. Empty in production disables the ads files; development falls back to backend/.ads-storage.
+    ADS_STORAGE_DIR: str = ""
+    # Lets the local ads pipeline push campaigns to /api/internal/ads; off when shorter than 32 chars.
+    ADS_SYNC_TOKEN: str = ""
 
     @property
     def is_deployed(self) -> bool:

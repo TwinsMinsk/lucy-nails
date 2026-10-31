@@ -1681,3 +1681,167 @@ export async function verifyCertificate(number: string): Promise<CertificateVeri
 export function certificateFileUrl(number: string, format: "pdf" | "png"): string {
     return `${API_BASE_URL}/certificates/${encodeURIComponent(number)}/file?format=${format}`;
 }
+
+/**
+ * Admin «Реклама»: campaigns, reels and their files.
+ * File links are signed by the backend and expire; refetch the campaign for fresh ones.
+ */
+export type AdMaterialStatus = "draft" | "ready" | "published";
+export type AdFileRole = "video" | "cover" | "photo" | "voice" | "other";
+
+export interface AdPerson {
+    id: string;
+    name: string;
+}
+
+export interface AdFile {
+    id: string;
+    key: string;
+    role: AdFileRole;
+    variant: string | null;
+    label: string | null;
+    filename: string;
+    content_type: string;
+    size_bytes: number;
+    sha256: string;
+    uploaded_by: AdPerson | null;
+    created_at: string;
+    updated_at: string;
+    url: string;
+    download_url: string;
+}
+
+export interface AdMaterial {
+    id: string;
+    code: string;
+    kind: "reel" | "photo" | "story" | "post" | "other";
+    title: string;
+    group_key: string | null;
+    hook: string | null;
+    voiceover: string | null;
+    caption: string | null;
+    link_url: string | null;
+    utm_content: string | null;
+    duration_seconds: number | null;
+    order_index: number;
+    status: AdMaterialStatus;
+    published_url: string | null;
+    published_at: string | null;
+    files: AdFile[];
+}
+
+export interface AdTask {
+    id: string;
+    key: string;
+    title: string;
+    note: string | null;
+    order_index: number;
+    done_at: string | null;
+    done_by: AdPerson | null;
+}
+
+export interface AdCalendarEntry {
+    id: string;
+    day: string;
+    time: string | null;
+    week: number | null;
+    title: string;
+    note: string | null;
+    material_id: string | null;
+}
+
+export interface AdComment {
+    id: string;
+    material_id: string | null;
+    author: AdPerson | null;
+    body: string;
+    created_at: string;
+    is_mine: boolean;
+}
+
+export interface AdCampaignSummary {
+    id: string;
+    slug: string;
+    title: string;
+    summary: string | null;
+    status: "draft" | "active" | "finished";
+    starts_on: string | null;
+    materials_total: number;
+    materials_ready: number;
+    materials_published: number;
+    tasks_total: number;
+    tasks_done: number;
+    cover_url: string | null;
+    updated_at: string;
+}
+
+export interface AdCampaign {
+    id: string;
+    slug: string;
+    title: string;
+    summary: string | null;
+    status: "draft" | "active" | "finished";
+    starts_on: string | null;
+    groups: { key: string; title: string; note: string | null }[];
+    about: { title: string; body: string }[];
+    materials: AdMaterial[];
+    tasks: AdTask[];
+    calendar: AdCalendarEntry[];
+    comments: AdComment[];
+    updated_at: string;
+}
+
+export const adsFileUrl = (path: string): string => `${API_BASE_URL}${path}`;
+
+export const adminGetAdCampaigns = () => apiFetch<AdCampaignSummary[]>("/admin/ads/campaigns");
+
+export const adminGetAdCampaign = (campaignId: string) =>
+    apiFetch<AdCampaign>(`/admin/ads/campaigns/${campaignId}`);
+
+export const adminUpdateAdMaterial = (
+    materialId: string,
+    data: { status?: AdMaterialStatus; published_url?: string | null },
+) => apiFetch<AdMaterial>(`/admin/ads/materials/${materialId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+});
+
+export const adminUpdateAdTask = (taskId: string, done: boolean) =>
+    apiFetch<AdTask>(`/admin/ads/tasks/${taskId}`, { method: "PATCH", body: JSON.stringify({ done }) });
+
+export const adminCreateAdComment = (campaignId: string, body: string, materialId?: string | null) =>
+    apiFetch<AdComment>(`/admin/ads/campaigns/${campaignId}/comments`, {
+        method: "POST",
+        body: JSON.stringify({ body, material_id: materialId ?? null }),
+    });
+
+export const adminDeleteAdComment = async (commentId: string): Promise<void> => {
+    await apiFetch(`/admin/ads/comments/${commentId}`, { method: "DELETE" });
+};
+
+export const adminDeleteAdFile = async (fileId: string): Promise<void> => {
+    await apiFetch(`/admin/ads/files/${fileId}`, { method: "DELETE" });
+};
+
+/** Upload one file (a voice recording or an attachment) as the raw request body. */
+export async function adminUploadAdFile(materialId: string, file: File): Promise<AdFile> {
+    const query = new URLSearchParams({ filename: file.name });
+    const send = () => fetch(`${API_BASE_URL}/admin/ads/materials/${materialId}/files?${query}`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+            "Content-Type": "application/octet-stream",
+            ...(getCookie("csrf_token") && { "X-CSRF-Token": getCookie("csrf_token") as string }),
+        },
+        body: file,
+    });
+    let response = await send();
+    if (response.status === 401 && await refreshAccessToken()) {
+        response = await send();
+    }
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
+        throw new ApiError(response.status, errorData.detail, `HTTP ${response.status}`);
+    }
+    return response.json();
+}

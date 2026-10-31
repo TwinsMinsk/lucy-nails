@@ -1,11 +1,11 @@
 # services
 
 **Parent context:** `../AGENTS.md`
-**Generated:** 2026-07-06 · **Updated:** 2026-10-30
+**Generated:** 2026-07-06 · **Updated:** 2026-10-31
 
 ## Purpose
 
-Бизнес-логика и внешние интеграции, вызываемые из `app/api/*` и воркера [`app/workers/outbox.py`](../workers/outbox.py). Большинство сервисов — классы со `@staticmethod` без состояния (принимают `AsyncSession` первым аргументом); исключения: `KinescopeService`/`KinescopeJwtService` инстанциируются как модуль-level singleton с конфигурацией из `settings`, а `outbox_service.py`, `audit_service.py`, `support_access_service.py`, `payment_event_service.py`, `operations_health_service.py`, `admin_bootstrap.py` — наборы функций.
+Бизнес-логика и внешние интеграции, вызываемые из `app/api/*` и воркера [`app/workers/outbox.py`](../workers/outbox.py). Большинство сервисов — классы со `@staticmethod` без состояния (принимают `AsyncSession` первым аргументом); исключения: `KinescopeService`/`KinescopeJwtService` инстанциируются как модуль-level singleton с конфигурацией из `settings`, а `outbox_service.py`, `audit_service.py`, `support_access_service.py`, `payment_event_service.py`, `operations_health_service.py`, `ads_service.py`, `admin_bootstrap.py` — наборы функций.
 
 ## Key Files
 
@@ -38,6 +38,8 @@
 | `certificate_service.py` | `CertificateService`: `claim` (идемпотентен, проверяет email, доступ, полное прохождение, хранилище; рендерит файлы, пишет `Certificate` и outbox `certificate_issued`, сам делает commit), `get_status` (`available`/`not_available`/`issued`/`revoked`), `get_by_number`, `generate_certificate_number` (`LN-<год>-XXXXXX`). Право на сертификат (`_has_course_access`) сохраняется после обычного истечения, но не после отзыва, приостановки или полного возврата. Доменные исключения: `CertificateError`, `NoCourseAccessError`, `CourseNotCompletedError`, `CourseNotFoundError`, `CertificateStorageNotConfiguredError`, `CertificateRevokedError`. `get_for_user_course` в `app/` не вызывается. |
 | `certificate_renderer.py` | Чистый синхронный рендер без БД и FastAPI: `render_certificate_png`, `png_to_pdf` (Pillow, `qrcode`, `img2pdf`). |
 | `certificate_layout.py` | Константы макета диплома (A4, 300 DPI), общие с `backend/scripts/generate_certificate_template.py`; шаблон и шрифты — `app/assets/certificates/`. |
+| **Реклама** | |
+| `ads_service.py` | Раздел «Реклама»: приватное хранилище, подписанные ссылки, синхронизация кампаний, сериализация ответов. Хранилище — `ADS_STORAGE_DIR` (без значения в dev — `backend/.ads-storage`, в production/staging `storage_root()` даёт `None`, загрузка — `AdsStorageNotConfigured`), вне публичного монтирования `/uploads`. Тип содержимого `clean_filename` берёт только из фиксированной карты расширений (`CONTENT_TYPES`), иначе `AdFileRejected`: файлы отдаются inline с хоста API, загруженный HTML или SVG выполняться не должен. `store_stream` пишет поток в `.partial` и переименовывает (лимит `MAX_FILE_BYTES` 400 МБ, `AdFileTooLarge`), `put_file` заменяет файл по `key`, `commit_file_changes` коммитит и лишь затем удаляет замещённые файлы (при сбое коммита — файлы этого запроса). `file_links`/`verify_link`: HMAC-SHA256 от `file_id:exp`, ключ выводится из `JWT_SECRET_KEY`, срок до 12 часов с округлением до часа (повторная загрузка страницы даёт те же URL и кэш браузера). `sync_campaign`: upsert по `slug`, материалы по `code`, задачи по `key`; состояние команды (`status`/`published_*` материала, отметки задач, файлы, комментарии) сохраняется, календарь заменяется целиком, `prune` удаляет отсутствующие материалы и задачи и возвращает `storage_key` их файлов. |
 | **Уведомления, аналитика, эксплуатация** | |
 | `email_service.py` | `EmailService`: Resend HTTP API при `RESEND_API_KEY`, иначе SMTP через `aiosmtplib`; таймаут 10 с, с вложением 30 с. `is_configured()` проверяет наличие транспорта; без него — warning и выход без исключения, поэтому outbox считает письмо отправленным. Письма: `send_account_activation`, `send_email_verification`, `send_access_granted`, `send_login_link`, `send_access_expiry_reminder`, `send_access_expired`, `send_password_reset`, `send_certificate_link`. `send_credentials` и `send_certificate` в `app/` не вызываются (на них ссылаются только тесты). |
 | `outbox_service.py` | Транзакционный outbox: `enqueue_outbox_message`, `enqueue_owner_telegram_alert` (один раз на `dedupe_key`; без бота или чата владельца — no-op), `format_rub`, `deliver_outbox_message` (маршрут по `channel`/`kind`), `process_outbox_batch` (claim через `skip_locked`, повтор с backoff до часа, `dead_letter` после `max_attempts`, зависший `processing` забирается через 10 минут, каждая попытка — `DeliveryAttempt`), `send_telegram_message`, `remove_telegram_group_member`, `restore_telegram_group_member`. Токен бота не попадает в сохранённые ошибки: `_telegram_request` поднимает `TelegramApiError` без URL, `redact_telegram_token` маскирует текст до записи в `DeliveryAttempt.error` и `last_error`. |
@@ -52,7 +54,7 @@
 ### Working In This Directory
 
 - Сервисы не поднимают `HTTPException` — это забота роутера (`app/api/*`); сервис возвращает `None`/`False`/бросает доменное исключение (`ValueError`, `RefundError`, `CertificateError` и наследники, `KinescopeNotConfiguredError`, `KinescopeJwtNotConfiguredError`).
-- Транзакцию обычно закрывает вызывающий код: сервис делает `db.add`/`flush`. Сами коммитят `LessonService.update_progress`, `CertificateService.claim`, `process_outbox_batch`, `record_terminal_payment_event`.
+- Транзакцию обычно закрывает вызывающий код: сервис делает `db.add`/`flush`. Сами коммитят `LessonService.update_progress`, `CertificateService.claim`, `process_outbox_batch`, `record_terminal_payment_event`, `ads_service.commit_file_changes`.
 - Активный доступ к курсу решает только `AccessService.has_active_access`/`LessonService.check_access`: `Entitlement` со статусом `active` в окне `starts_at`…`expires_at` плюс подтверждённый email у не-admin. `Purchase` с `payment_status="success"` и `expires_at > now` учитывается, только если по паре user+course нет ни одного `Entitlement`. При добавлении новой проверки доступа не дублировать SQL инлайн.
 - `Purchase` — неизменяемая финансовая история: отзыв и возврат меняют `Entitlement`/`RefundRequest`, а не `payment_status`. Выручка считается только через `paid_financial_filter()` из `app/models/purchase.py`.
 - Prodamus: `verify_signature` — единственное место, где решается «оплата подтверждена»; редиректы `urlSuccess`/`urlReturn` не гарантируют оплату — не добавлять по ним логику активации доступа.
@@ -70,7 +72,7 @@ $env:PYTHONPATH = "backend"
 python -m pytest backend/tests -v --tb=short
 ```
 
-Точечно: `test_kinescope.py`/`test_kinescope_drm.py` (embed URL, mock-режим, DRM JWT), `test_content_health.py`, `test_admin_bootstrap.py` (`ensure_admin_user`), `test_purchases.py`, `test_commerce_safety.py`, `test_expired_access.py` (доступ, webhook), `test_refunds.py` (`RefundService`), `test_prodamus_signature.py`, `test_auth*.py`, `test_mfa_sessions.py`, `test_email_ownership.py`, `test_outbox.py`, `test_telegram_notifications.py` (`LifecycleService`), `test_email_service.py`, `test_email_attachments.py`, `test_certificates.py`, `test_certificate_number.py`, `test_certificate_renderer.py`, `test_analytics_events.py`, `test_learning_events.py`, `test_operations_health.py`.
+Точечно: `test_kinescope.py`/`test_kinescope_drm.py` (embed URL, mock-режим, DRM JWT), `test_content_health.py`, `test_admin_bootstrap.py` (`ensure_admin_user`), `test_purchases.py`, `test_commerce_safety.py`, `test_expired_access.py` (доступ, webhook), `test_refunds.py` (`RefundService`), `test_prodamus_signature.py`, `test_auth*.py`, `test_mfa_sessions.py`, `test_email_ownership.py`, `test_outbox.py`, `test_telegram_notifications.py` (`LifecycleService`), `test_email_service.py`, `test_email_attachments.py`, `test_certificates.py`, `test_certificate_number.py`, `test_certificate_renderer.py`, `test_admin_ads.py` (`ads_service`), `test_analytics_events.py`, `test_learning_events.py`, `test_operations_health.py`.
 
 ### Common Patterns
 

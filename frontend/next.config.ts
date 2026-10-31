@@ -59,7 +59,8 @@ const nextConfig: NextConfig = {
                 `frame-ancestors ${metrikaFrameAncestors.join(" ")}`,
                 `frame-src 'self' https://kinescope.io https://*.kinescope.io https://www.youtube.com https://*.youtube.com ${metrikaOrigins.join(" ")}`,
                 `img-src 'self' data: blob: https: ${apiOrigin}`,
-                "media-src 'self' blob: https://kinescope.io https://*.kinescope.io",
+                // Ad reels in the admin play from the API host by signed link.
+                `media-src 'self' blob: ${apiOrigin} https://kinescope.io https://*.kinescope.io`,
                 "object-src 'none'",
                 `script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com ${metrikaOrigins.join(" ")} https://yastatic.net`,
                 "style-src 'self' 'unsafe-inline'",

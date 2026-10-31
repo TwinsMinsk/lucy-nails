@@ -41,6 +41,7 @@
 | `/admin/purchases` | `commerce.read` | Старая страница покупок с отзывом доступа; в меню нет, открывается только прямой ссылкой |
 | `/admin/courses`, `/admin/courses/[id]` | `content.manage` | CRUD курсов, загрузка обложек, проверка видео (`adminCheckVideoHealth`); редактор модулей и уроков (`Editor`) |
 | `/admin/landing` | `content.manage` | Редактор hero, модулей и галереи лендинга, импорт статической галереи в БД |
+| `/admin/ads`, `/admin/ads/[id]` | `ads.read` | Реклама: список кампаний (`adminGetAdCampaigns`) и страница кампании с вкладками «Ролики», «Календарь», «Задачи», «Комментарии», «О кампании» (пустые вкладки скрыты). Лист ролика — `components/ads/ReelSheet`. Смена статуса и ссылка на пост, загрузка голоса и файлов, отметки задач, комментарии — `ads.manage` (`useAdminPermission("ads.manage")`). Видео и обложки отдаются подписанными ссылками API (`adsFileUrl`); текст и ролики приходят из локального конвейера |
 | `/admin/certificates` | `certificates.manage` | Поиск, скачивание, перевыпуск, отзыв |
 | `/admin/notifications` | `notifications.manage` | Очередь сообщений: фильтры, повторная отправка |
 | `/admin/analytics` | `analytics.read` | Отчёты за период, источники (`basis`: `payment`/`acquisition`), CSV (`adminReportSourcesCsvUrl`) |
