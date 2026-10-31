@@ -97,6 +97,8 @@ pnpm-debug.log*
 # Redis / локальные дампы для dev
 dump.rdb
 backups/
+# Dev storage of the admin ads section (reels from the paid course): never commit
+/backend/.ads-storage/
 /frontend/test-results/
 /frontend/playwright-report/
 *.sqlite

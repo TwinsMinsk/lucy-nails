@@ -1,7 +1,7 @@
 # models
 
 **Parent context:** `../AGENTS.md`
-**Generated:** 2026-07-06 · **Updated:** 2026-10-30
+**Generated:** 2026-07-06 · **Updated:** 2026-10-31
 
 ## Purpose
 
@@ -31,6 +31,7 @@ SQLAlchemy 2 async ORM-модели (`Mapped`/`mapped_column`, `DeclarativeBase`
 | `runtime_setting.py` | `RuntimeSetting` → `runtime_settings`. Нечувствительные операционные настройки из админки: PK `key` (строка), `value`, `updated_by_id` (`SET NULL`), `updated_at` |
 | `certificate.py` | `Certificate` → `certificates`. FK `user_id`/`course_id` (`CASCADE`, unique-пара `uq_certificates_user_course`), `certificate_number` (unique), `student_name`, `pdf_url`/`png_url`, `issued_at`, `status`, `revoked_at`, `revoked_by_id` (`SET NULL`), `revoke_reason` |
 | `gallery.py` | `GalleryItem` → `gallery_items`. Без FK (глобальная галерея для лендинга): `order_index`, `image_url`, `title`, `caption`, `alt`, `is_published` |
+| `ad.py` | Раздел «Реклама». `AdCampaign` → `ad_campaigns` (unique `slug`, `status` CHECK `draft/active/finished`, `starts_on`, `groups`/`about` JSONB). `AdMaterial` → `ad_materials` (FK `campaign_id` `CASCADE`, unique `campaign_id`+`code`, `kind` CHECK `reel/photo/story/post/other`, `status` CHECK `draft/ready/published`, `hook`, `voiceover`, `caption`, `link_url`, `utm_content`, `published_url`/`published_at`). `AdFile` → `ad_files` (FK `material_id` `CASCADE`, unique `material_id`+`key`, `role` CHECK `video/cover/photo/voice/other`, `variant`, `content_type`, `size_bytes`, `sha256`, `storage_key` — путь внутри `ADS_STORAGE_DIR`, `uploaded_by_id` `SET NULL`, пуст у файлов конвейера). `AdTask` → `ad_tasks` (unique `campaign_id`+`key`, `done_at`, `done_by_id` `SET NULL`). `AdCalendarEntry` → `ad_calendar_entries` (unique `campaign_id`+`key`, `day`, `time`, `week`, `material_id` `SET NULL`). `AdComment` → `ad_comments` (`material_id` `CASCADE`, опц.; `author_id` `SET NULL`). Дочерние связи кампании — `cascade="all, delete-orphan"`. Текст приходит из локального конвейера (`ads_service.sync_campaign`), статус публикации, отметки задач, голос и комментарии ведёт команда |
 
 ## For AI Agents
 

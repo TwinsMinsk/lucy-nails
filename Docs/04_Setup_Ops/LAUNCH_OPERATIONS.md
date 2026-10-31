@@ -65,6 +65,8 @@ The image uses PostgreSQL 17. Configure `DATABASE_URL`, `BACKUP_REQUIRE_S3=true`
 
 **Upload attachment is an open external gate:** supply a consistent read-only snapshot of the backend volume. A separate Railway service cannot be assumed to share that volume. Provide a real snapshot/export mechanism or execute the job where its snapshot is available. An empty unrelated upload directory does not satisfy full recovery.
 
+**Ad materials** (admin section «Реклама») use two more Backend variables, both empty by default. `ADS_STORAGE_DIR=/app/data/ads`: the same backend volume as uploads, but outside the public `/uploads` mount, and not part of the uploads backup export (`/api/internal/backup/uploads.tar` and `BACKUP_UPLOADS_DIR` cover only `UPLOAD_STORAGE_DIR`). Reels and covers are regenerable by the local pipeline; the team's voice recordings are pulled to the workstation by `ads/campaign/publish.py`. An empty value disables ad files in production. `ADS_SYNC_TOKEN`: a separate random secret of at least 32 characters for `/api/internal/ads` (shorter means HTTP 503, a wrong header HTTP 401); `publish.py` on the workstation sends the same value in `X-Ads-Token`. Keep both out of git and logs.
+
 The archive includes `database.dump`, uploaded files and SHA-256 manifest. Upload `.tar` and `.tar.sha256`. Compatible database-only `.dump` is insufficient for full acceptance.
 
 ```sh

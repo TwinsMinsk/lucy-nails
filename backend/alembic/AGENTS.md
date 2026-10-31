@@ -1,7 +1,7 @@
 # alembic
 
 **Parent context:** `../AGENTS.md`
-**Generated:** 2026-07-06 · **Updated:** 2026-10-30
+**Generated:** 2026-07-06 · **Updated:** 2026-10-31
 
 ## Purpose
 Миграции схемы БД поверх асинхронного SQLAlchemy 2 (`app/core/database.py: Base`). `env.py` конвертирует async-URL в sync-URL для самого Alembic, так что миграции пишутся и применяются синхронно (`psycopg2`), а приложение в рантайме работает через `asyncpg`. Применяются при старте web-процесса (`alembic upgrade head` в `../Procfile` и в команде старта сервиса на Railway).
@@ -16,7 +16,7 @@
 ## Subdirectories
 | Directory | Purpose |
 |-----------|---------|
-| `versions/` | 28 ревизий схемы, линейная цепочка (без веток), head — `8c9d0e1f2a3b`; см. список ниже |
+| `versions/` | 29 ревизий схемы, линейная цепочка (без веток), head — `9d0e1f2a3b4c`; см. список ниже |
 
 ### Цепочка миграций (`versions/`)
 Файл — `<revision>_<slug>.py`. Префиксы не отражают порядок (`0a7b8c9d0e1f` идёт после `f6a7b8c9d0e1`, есть похожие ID вроде `3d5067c10861`/`3d9d0e1f2a3b`) — порядок задаёт только `down_revision`.
@@ -50,17 +50,18 @@
 | `5f6a7b8c9d0e` | `4e9d0e1f2a3b` | Lowercase `users.email`, unique-индекс `ix_users_email_lower`; падает с `RuntimeError`, если есть дубли по регистру. |
 | `6a7b8c9d0e1f` | `5f6a7b8c9d0e` | `offer_accepted_at`/`personal_data_consent_at`/`consent_version` в `orders` и `users`. |
 | `7b8c9d0e1f2a` | `6a7b8c9d0e1f` | `users.email_verified_at`. |
-| `8c9d0e1f2a3b` | `7b8c9d0e1f2a` | `purchases.transaction_kind` + `ck_purchase_transaction_kind`, backfill `admin_grant_*` → `manual_grant`. **Head.** |
+| `8c9d0e1f2a3b` | `7b8c9d0e1f2a` | `purchases.transaction_kind` + `ck_purchase_transaction_kind`, backfill `admin_grant_*` → `manual_grant`. |
+| `9d0e1f2a3b4c` | `8c9d0e1f2a3b` | Раздел «Реклама»: `ad_campaigns`, `ad_materials`, `ad_files`, `ad_tasks`, `ad_calendar_entries`, `ad_comments`; права `ads.read` (`...014`) и `ads.manage` (`...015`), роль `marketer` (`...006`); оба права выдаются `owner`, `admin`, `marketer`. Downgrade удаляет права, роль и её назначения. **Head.** |
 
 ## For AI Agents
 
 ### Working In This Directory
-- Любое изменение ORM-моделей в `../app/models/` **обязательно** сопровождается новой ревизией здесь. Ревизии не переписываются задним числом — новая миграция всегда добавляется в конец цепочки (`down_revision` = текущий head, сейчас `8c9d0e1f2a3b`; при сомнении проверяй `alembic heads`).
+- Любое изменение ORM-моделей в `../app/models/` **обязательно** сопровождается новой ревизией здесь. Ревизии не переписываются задним числом — новая миграция всегда добавляется в конец цепочки (`down_revision` = текущий head, сейчас `9d0e1f2a3b4c`; при сомнении проверяй `alembic heads`).
 - Тестовые фикстуры (`backend/tests/conftest.py`) строят схему через `Base.metadata.create_all`, **минуя Alembic** — расхождение между моделями и файлами миграций pytest не поймает. Оно обнаруживается только в CI (см. `.github/workflows/ci.yml`) на БД `nails_course`, не той, что использует pytest: `alembic upgrade head`, затем проверка единственного head, `alembic downgrade -1`, снова `upgrade head` и `alembic check`. Поэтому downgrade последней ревизии должен реально работать.
 - Триггер `audit_logs_immutable` и функция `prevent_audit_log_mutation` существуют только в миграции `a1f2b3c4d5e6`: в pytest-схеме их нет, `alembic check` их не сравнивает.
 - Не редактировать существующие файлы `versions/*.py` задним числом, если они уже применялись где-либо (production/staging) — только новая ревизия.
 - Data-only миграции (примеры: `f6e4f3b2a901`, `3d9d0e1f2a3b`, `4e9d0e1f2a3b`) допустимы через `op.execute(...)`, но должны быть безопасны для повторного запуска и не ломать `upgrade head` на пустой БД.
-- Новые права RBAC — миграцией с фиксированным UUID и `ON CONFLICT DO NOTHING` (права `01000000-...`, последний занятый суффикс `...013`; роли `02000000-...`), см. `4e9d0e1f2a3b`.
+- Новые права RBAC — миграцией с фиксированным UUID и `ON CONFLICT DO NOTHING` (права `01000000-...`, последний занятый суффикс `...015`; роли `02000000-...`, последний занятый суффикс `...006`), см. `4e9d0e1f2a3b`.
 
 ### Testing Requirements
 Запускать из `backend/` (те же шаги, что в CI):

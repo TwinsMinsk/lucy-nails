@@ -22,6 +22,7 @@ from app.models.crm import StudentNote, StudentTag, StudentTagAssignment
 from app.models.analytics_event import AnalyticsEvent
 from app.models.telegram_link import TelegramLinkToken
 from app.models.runtime_setting import RuntimeSetting
+from app.models.ad import AdCalendarEntry, AdCampaign, AdComment, AdFile, AdMaterial, AdTask
 
 __all__ = [
     "User",
@@ -50,4 +51,10 @@ __all__ = [
     "AnalyticsEvent",
     "TelegramLinkToken",
     "RuntimeSetting",
+    "AdCampaign",
+    "AdMaterial",
+    "AdFile",
+    "AdTask",
+    "AdCalendarEntry",
+    "AdComment",
 ]
