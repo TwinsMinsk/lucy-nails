@@ -62,6 +62,25 @@ def test_payment_link_signature_is_over_nested_products():
     assert signature == _make_signature(nested, settings.PRODAMUS_SECRET_KEY)
 
 
+def test_payment_link_names_paid_content_for_the_receipt():
+    """Prodamus' cash register issues the 54-FZ receipt only with paid_content."""
+    url = ProdamusService.generate_payment_link(
+        course_name="Nail Design PRO",
+        price=5900,
+        tariff="self",
+        customer_email="guest@example.com",
+    )
+
+    params = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(url).query, keep_blank_values=True))
+    signature = params.pop("signature")
+
+    paid_content = params["paid_content"]
+    assert f"{settings.FRONTEND_URL.rstrip('/')}/dashboard" in paid_content
+    assert 0 < len(paid_content) <= 4096
+    # It is signed like every other field.
+    assert signature == _make_signature(_reconstruct_nested(params), settings.PRODAMUS_SECRET_KEY)
+
+
 def test_payment_link_signature_is_not_the_old_flat_form():
     """Guard against regressing back to signing the flat dict."""
     url = ProdamusService.generate_payment_link(
