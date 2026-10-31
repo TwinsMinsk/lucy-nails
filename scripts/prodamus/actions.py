@@ -70,6 +70,14 @@ def make_signature(data: dict, secret_key: str) -> str:
     ).hexdigest()
 
 
+# Mirrors PAID_CONTENT_TEMPLATE in the backend service for the production site.
+DEFAULT_PAID_CONTENT = (
+    "Доступ к курсу откроется в личном кабинете https://lucysmirnova.ru/dashboard в течение пары минут "
+    "после оплаты. Если вы оплачивали без регистрации, ссылка для входа придёт на email, "
+    "указанный при оплате."
+)
+
+
 # === env / .env loader =======================================================
 
 def _load_dotenv_if_missing(keys: list[str]) -> None:
@@ -129,6 +137,9 @@ def cmd_link(args: argparse.Namespace) -> int:
         **{f"products[0][{key}]": value for key, value in product.items()},
         "callbackType": "json",
     }
+    if args.paid_content:
+        # «Доступы к материалам»: without it Prodamus prints no receipt.
+        params["paid_content"] = args.paid_content
     if args.success_url:
         params["urlSuccess"] = args.success_url
     if args.return_url:
@@ -267,6 +278,8 @@ def _build_parser() -> argparse.ArgumentParser:
     pl.add_argument("--success-url", dest="success_url", help="urlSuccess")
     pl.add_argument("--return-url", dest="return_url", help="urlReturn")
     pl.add_argument("--notification-url", dest="notification_url", help="urlNotification (webhook)")
+    pl.add_argument("--paid-content", dest="paid_content", default=DEFAULT_PAID_CONTENT,
+                    help="paid_content («доступы к материалам»), needed for the receipt; '' to omit")
     pl.add_argument("--demo", action="store_true", help="Force demo_mode=1")
     pl.set_defaults(func=cmd_link)
 

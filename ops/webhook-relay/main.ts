@@ -38,6 +38,39 @@ const DROPPED_RESPONSE_HEADERS = new Set([
   "connection",
 ]);
 
+// Reads the body but stops as soon as it exceeds the cap, so an oversized or
+// chunked request never gets buffered in full. Returns undefined when too big.
+async function readCapped(
+  stream: ReadableStream<Uint8Array> | null,
+  limit: number,
+): Promise<Uint8Array | undefined> {
+  if (stream === null) {
+    return new Uint8Array();
+  }
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  const reader = stream.getReader();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    size += value.byteLength;
+    if (size > limit) {
+      await reader.cancel();
+      return undefined;
+    }
+    chunks.push(value);
+  }
+  const body = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+}
+
 Deno.serve(async (request) => {
   const url = new URL(request.url);
   if (url.pathname === "/healthz") {
@@ -47,10 +80,14 @@ Deno.serve(async (request) => {
     return new Response("Not Found", { status: 404 });
   }
 
-  let body: ArrayBuffer | undefined;
+  let body: Uint8Array | undefined;
   if (request.method !== "GET" && request.method !== "HEAD") {
-    body = await request.arrayBuffer();
-    if (body.byteLength > MAX_BODY_BYTES) {
+    const declared = Number(request.headers.get("content-length") ?? "0");
+    if (declared > MAX_BODY_BYTES) {
+      return new Response("Payload Too Large", { status: 413 });
+    }
+    body = await readCapped(request.body, MAX_BODY_BYTES);
+    if (body === undefined) {
       return new Response("Payload Too Large", { status: 413 });
     }
   }

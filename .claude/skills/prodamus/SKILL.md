@@ -124,6 +124,8 @@ params = {
     "urlReturn":       f"{frontend}/#pricing",
     "urlNotification": f"{backend}/api/payments/webhook",
     "callbackType":    "json",
+    # «Доступы к материалам»: the Prodamus cash register prints no receipt without it.
+    "paid_content":    "Доступ к курсу откроется в личном кабинете ...",
     "order_id":        order_id,
     "customer_email":  email.lower(),
 }
