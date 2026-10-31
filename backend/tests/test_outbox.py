@@ -516,7 +516,7 @@ async def test_payment_emails_name_the_access_end_date(monkeypatch):
 
     activation_html, access_html = sent[0][1], sent[1][1]
     for html in (activation_html, access_html):
-        assert "Доступ к курсу открыт до 30.11.2026 15:00 (МСК)" in html
+        assert "Доступ действует до 30.11.2026 15:00 (МСК)" in html
     # The link lifetime follows the setting, and a stale link has a way out.
     assert "Ссылка действует 48 ч." in activation_html
     assert 'href="https://school.example/auth/forgot-password"' in activation_html

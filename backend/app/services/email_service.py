@@ -45,7 +45,7 @@ def format_msk_datetime(value: datetime | str) -> str:
 def _access_until_html(expires_at: datetime | str | None) -> str:
     if not expires_at:
         return ""
-    return f"<p>Доступ к курсу открыт до {format_msk_datetime(expires_at)}.</p>"
+    return f"<p>Доступ действует до {format_msk_datetime(expires_at)}.</p>"
 
 
 # Ни одна отправка письма не должна висеть дольше этого времени внутри запроса.
