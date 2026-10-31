@@ -1,0 +1,89 @@
+{
+  "reel": "r14",
+  "title": "Клиентка ушла",
+  "headline": [
+    {
+      "text": "Клиентка ушла",
+      "at": "start"
+    },
+    {
+      "text": "к другому мастеру?",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "aerografiya/aerografiya-08",
+    "akvarium/akvarium-07",
+    "vtirka/vtirka-05",
+    "slaidery/slaidery-04",
+    "french/french-14",
+    "pigmenty/pigmenty-03",
+    "stemping/stemping-05",
+    "strazy/strazy-10",
+    "tekstury/tekstury-12",
+    "gradient/gradient-11",
+    "folga/folga-15"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r06/s09-reveal",
+          "label": "Дело не в цене",
+          "label_at": "дело"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "photo": "slaidery/slaidery-08",
+          "sfx": "swish"
+        },
+        {
+          "photo": "pigmenty/pigmenty-12",
+          "from": "дизайн"
+        },
+        {
+          "photo": "french/french-01",
+          "tone": "mono",
+          "from": "А"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "clip": "r02/s09-blue",
+          "sfx": "shimmer",
+          "label": "Растёт вместе с трендами",
+          "label_at": "растёт"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r05/s09-end",
+    "from": "line:4:Не",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

@@ -1,7 +1,16 @@
 # Reels для курса Nail Design PRO
 
-Кампания «За дизайн доплачивают»: 10 роликов 9:16 из уроков курса. Тексты, кадры и голос
-собираются в HyperFrames-композицию и рендерятся в MP4.
+Ролики 9:16 из уроков курса и фото работ. Тексты, кадры и голос собираются в HyperFrames-композицию
+и рендерятся в MP4. Кампании:
+
+- `campaign/` — «За дизайн доплачивают», R1–R10: польза из уроков (ошибки, лайфхаки) и продажа.
+- `campaign-vremya-rasti/` — «Время расти», R11–R16: мотивация без секретов уроков («хочешь зарабатывать
+  больше», «расти»), на «ты». Сделана 31.10.2026 по просьбе Люси: первая кампания раскрывает суть уроков.
+
+Каждая кампания — папка `ads/campaign*` с теми же файлами (`scripts.md`, `captions.md`, `calendar.md`,
+`about.md`, `admin.json`, `reels/`). Номера роликов сквозные, поэтому скрипты находят кампанию по коду ролика
+(`tts.py r12`, `build_reel.py r12`); группы роликов и ролики с вариантами хуков задаются в `admin.json`.
+Ниже примеры для первой кампании; код пайплайна (`publish.py`, `build_page.py`) лежит в `campaign/`.
 
 - Сценарии и тексты озвучки: [`campaign/scripts.md`](campaign/scripts.md) (единственный источник текста)
 - Суфлёр для записи: [`campaign/teleprompter.html`](campaign/teleprompter.html), опубликован как Artifact
@@ -86,6 +95,7 @@ owner/admin): ролики с плеером и скачиванием, подп
 ```powershell
 $env:ADS_SYNC_TOKEN = "<то же значение, что у Backend в Railway>"   # не коммитить, не печатать
 & ads/.venv/Scripts/python.exe ads/campaign/publish.py              # прод; --api http://127.0.0.1:8000/api — локально
+& ads/.venv/Scripts/python.exe ads/campaign/publish.py --campaign ads/campaign-vremya-rasti   # другая кампания
 ```
 
 `publish.py` берёт тексты из тех же источников, что и `build_page.py`, плюс [`campaign/about.md`](campaign/about.md)

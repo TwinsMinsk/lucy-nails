@@ -1,7 +1,8 @@
-"""Voice-over lines per reel, read from ads/campaign/scripts.md (the single source of the copy).
+"""Voice-over lines per reel, read from its campaign's scripts.md (the single source of the copy).
 
-A reel section starts with a heading "## R3 ..." and its voice-over is the block of
-"> ..." lines after "**Голос:**". Each "> " line is one phrase.
+Every campaign is a folder ads/campaign* (ads/campaign, ads/campaign-vremya-rasti, ...) and reel codes are
+numbered across campaigns, so a reel code alone finds its campaign. A reel section starts with a heading
+"## R3 ..." and its voice-over is the block of "> ..." lines after "**Голос:**". Each "> " line is one phrase.
 """
 
 from __future__ import annotations
@@ -10,7 +11,14 @@ import re
 from pathlib import Path
 
 ADS = Path(__file__).resolve().parents[1]
-SCRIPTS = ADS / "campaign" / "scripts.md"
+
+
+def campaign_dir(reel: str) -> Path:
+    """The campaign folder whose beat sheets hold this reel."""
+    found = sorted(ADS.glob(f"campaign*/reels/{reel}.json"))
+    if not found:
+        raise SystemExit(f"No ads/campaign*/reels/{reel}.json")
+    return found[0].parent.parent
 
 
 def reel_code(reel: str) -> str:
@@ -20,8 +28,9 @@ def reel_code(reel: str) -> str:
 
 def vo_lines(reel: str) -> list[str]:
     code = reel_code(reel)
+    scripts = campaign_dir(reel) / "scripts.md"
     lines, in_reel, in_vo = [], False, False
-    for raw in SCRIPTS.read_text(encoding="utf-8").splitlines():
+    for raw in scripts.read_text(encoding="utf-8").splitlines():
         if raw.startswith("## "):
             in_reel = re.match(rf"## {code}\b", raw) is not None
             in_vo = False
@@ -37,7 +46,7 @@ def vo_lines(reel: str) -> list[str]:
             elif lines and raw.strip() == "":
                 break
     if not lines:
-        raise SystemExit(f"No voice-over for {code} in {SCRIPTS}")
+        raise SystemExit(f"No voice-over for {code} in {scripts}")
     return lines
 
 

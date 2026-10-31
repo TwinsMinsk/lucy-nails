@@ -6,6 +6,44 @@
   "starts_on": "2026-11-09",
   "post_time": "19:30",
   "stories_link": "https://lucysmirnova.ru/?utm_source=instagram&utm_medium=stories&utm_campaign=za-dizain-doplachivayut&utm_content={utm}",
+  "groups": [
+    {
+      "key": "reach",
+      "title": "Охват",
+      "note": "Вау-визуал, который хочется досмотреть и переслать.",
+      "reels": [
+        "r01",
+        "r02"
+      ]
+    },
+    {
+      "key": "mistakes",
+      "title": "Серия «Ошибка мастера»",
+      "note": "Боль, причина и решение. Такие ролики сохраняют.",
+      "reels": [
+        "r03",
+        "r04",
+        "r05",
+        "r06",
+        "r07"
+      ]
+    },
+    {
+      "key": "sales",
+      "title": "Продажа",
+      "note": "Оффер, ответ на «дорого» и что внутри курса.",
+      "reels": [
+        "r08",
+        "r09",
+        "r10"
+      ]
+    }
+  ],
+  "hook_reels": [
+    "r01",
+    "r03",
+    "r08"
+  ],
   "tasks": [
     {
       "key": "voice",

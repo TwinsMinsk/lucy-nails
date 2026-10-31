@@ -1,0 +1,129 @@
+{
+  "reel": "r11",
+  "title": "Хочешь зарабатывать больше?",
+  "headline": [
+    {
+      "text": "Хочешь зарабатывать",
+      "at": "start"
+    },
+    {
+      "text": "больше?",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "aerografiya/aerografiya-08",
+    "akvarium/akvarium-07",
+    "vtirka/vtirka-05",
+    "slaidery/slaidery-04",
+    "french/french-14",
+    "pigmenty/pigmenty-03",
+    "stemping/stemping-05",
+    "strazy/strazy-10",
+    "tekstury/tekstury-12",
+    "gradient/gradient-11",
+    "folga/folga-15"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r07/s01-hook"
+        },
+        {
+          "clip": "r08/s01-plain",
+          "tone": "mono",
+          "from": "запись",
+          "sfx": "swish"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "photo": "french/french-10",
+          "tone": "mono"
+        },
+        {
+          "clip": "r02/s01-hook",
+          "from": "услуг",
+          "sfx": "shimmer"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "aerografiya/aerografiya-04",
+          "sfx": "swish"
+        },
+        {
+          "photo": "folga/folga-13",
+          "from": "строка",
+          "label": "+ строка в прайсе",
+          "label_at": "строка"
+        },
+        {
+          "photo": "pigmenty/pigmenty-09",
+          "from": "повод"
+        },
+        {
+          "photo": "strazy/strazy-08",
+          "from": "доплатить"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r02/s11-end",
+    "from": "line:4:Время",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  },
+  "hooks": {
+    "b": {
+      "headline": [
+        {
+          "text": "Запись забита,",
+          "at": "start"
+        },
+        {
+          "text": "а доход не растёт?",
+          "at": "start",
+          "accent": true
+        }
+      ]
+    },
+    "c": {
+      "headline": [
+        {
+          "text": "Как мастеру",
+          "at": "start"
+        },
+        {
+          "text": "поднять средний чек",
+          "at": "start",
+          "accent": true
+        }
+      ]
+    }
+  }
+}

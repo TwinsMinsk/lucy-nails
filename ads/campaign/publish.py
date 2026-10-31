@@ -4,11 +4,13 @@
     python ads/campaign/publish.py                                  -> https://api.lucysmirnova.ru/api
     python ads/campaign/publish.py --api http://127.0.0.1:8000/api  -> local backend
     python ads/campaign/publish.py --dry-run                        -> show what would be sent
+    python ads/campaign/publish.py --campaign ads/campaign-vremya-rasti   -> another campaign
 
-Texts come from scripts.md, captions.md, calendar.md, about.md, admin.json and reels/<reel>.json, the
-same sources as build_page.py; files are the renders in ads/out (the final `<reel>.mp4` when it exists,
-otherwise the draft). Only files whose sha256 changed are uploaded. Voice recordings and other files the
-team uploaded in the admin are downloaded to ads/vo/inbox/<reel>/, and the comments are printed.
+Texts come from the campaign folder (ads/campaign unless --campaign says otherwise): scripts.md, captions.md,
+calendar.md, about.md, admin.json and reels/<reel>.json, the same sources as build_page.py; files are the
+renders in ads/out (the final `<reel>.mp4` when it exists, otherwise the draft). Only files whose sha256
+changed are uploaded. Voice recordings and other files the team uploaded in the admin are downloaded to
+ads/vo/inbox/<reel>/, and the comments are printed.
 """
 
 from __future__ import annotations
@@ -28,7 +30,7 @@ from pathlib import Path
 CAMPAIGN = Path(__file__).resolve().parent
 ADS = CAMPAIGN.parent
 sys.path.insert(0, str(CAMPAIGN))
-from build_page import HOOK_REELS, LAYERS, REELS, calendar_rows, reel_data  # noqa: E402
+from build_page import calendar_rows, layers, reel_data  # noqa: E402
 
 DEFAULT_API = "https://api.lucysmirnova.ru/api"
 MSK = timezone(timedelta(hours=3))
@@ -89,8 +91,8 @@ def render(reel: str, name: str) -> Path:
     return final if final.exists() else out / name.replace("{v}", "-draft")
 
 
-def about_sections() -> list[dict]:
-    text = (CAMPAIGN / "about.md").read_text(encoding="utf-8")
+def about_sections(folder: Path) -> list[dict]:
+    text = (folder / "about.md").read_text(encoding="utf-8")
     sections = []
     for block in re.split(r"^## ", text, flags=re.M)[1:]:
         title, _, body = block.partition("\n")
@@ -118,19 +120,20 @@ def calendar_entries(rows: list[dict], start: date, time: str) -> list[dict]:
     return entries
 
 
-def build(config: dict) -> tuple[dict, dict[str, list[dict]]]:
-    scripts = (CAMPAIGN / "scripts.md").read_text(encoding="utf-8")
-    captions = (CAMPAIGN / "captions.md").read_text(encoding="utf-8")
-    groups = {reel: key for key, _, _, reels in LAYERS for reel in reels}
+def build(folder: Path, config: dict) -> tuple[dict, dict[str, list[dict]]]:
+    scripts = (folder / "scripts.md").read_text(encoding="utf-8")
+    captions = (folder / "captions.md").read_text(encoding="utf-8")
+    layout = layers(config)
+    group_of = {reel: key for key, _, _, reels in layout for reel in reels}
     materials, files = [], {}
-    for index, reel in enumerate(REELS, start=1):
+    for index, reel in enumerate((reel for *_, reels in layout for reel in reels), start=1):
         d = reel_data(reel, scripts, captions)
         base = d["utm"] or reel
         materials.append({
             "code": reel,
             "kind": "reel",
             "title": d["title"],
-            "group_key": groups.get(reel),
+            "group_key": group_of.get(reel),
             "hook": d["hook"],
             "voiceover": "\n".join(d["vo"]),
             "caption": d["caption"],
@@ -143,7 +146,7 @@ def build(config: dict) -> tuple[dict, dict[str, list[dict]]]:
             {"key": "video", "role": "video", "path": render(reel, f"{reel}{{v}}.mp4"), "filename": f"{base}.mp4"},
             {"key": "cover", "role": "cover", "path": render(reel, f"{reel}{{v}}-cover.jpg"), "filename": f"{base}-cover.jpg"},
         ]
-        for hook in d["hooks"][1:] if reel in HOOK_REELS else []:
+        for hook in d["hooks"][1:] if reel in config["hook_reels"] else []:
             label = " ".join(hook["lines"])
             for role, suffix in (("video", ".mp4"), ("cover", "-cover.jpg")):
                 reel_files.append({
@@ -157,14 +160,14 @@ def build(config: dict) -> tuple[dict, dict[str, list[dict]]]:
         files[reel] = [f for f in reel_files if f["path"].exists()]
 
     start = date.fromisoformat(config["starts_on"])
-    rows = calendar_rows((CAMPAIGN / "calendar.md").read_text(encoding="utf-8"))
+    rows = calendar_rows((folder / "calendar.md").read_text(encoding="utf-8"))
     payload = {
         "title": config["title"],
         "summary": config["summary"],
         "status": config["status"],
         "starts_on": config["starts_on"],
-        "groups": [{"key": key, "title": title, "note": note} for key, title, note, _ in LAYERS],
-        "about": about_sections(),
+        "groups": [{"key": key, "title": title, "note": note} for key, title, note, _ in layout],
+        "about": about_sections(folder),
         "materials": materials,
         "tasks": [dict(task, order_index=i) for i, task in enumerate(config["tasks"], start=1)],
         "calendar": calendar_entries(rows, start, config["post_time"]),
@@ -174,13 +177,14 @@ def build(config: dict) -> tuple[dict, dict[str, list[dict]]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--campaign", type=Path, default=CAMPAIGN, help="campaign folder (default: ads/campaign)")
     parser.add_argument("--api", default=os.environ.get("ADS_API_URL", DEFAULT_API))
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--prune", action="store_true", help="delete reels and tasks missing from the sources")
     args = parser.parse_args()
 
-    config = json.loads((CAMPAIGN / "admin.json").read_text(encoding="utf-8"))
-    payload, files = build(config)
+    config = json.loads((args.campaign / "admin.json").read_text(encoding="utf-8"))
+    payload, files = build(args.campaign, config)
     payload["prune"] = args.prune
     if args.dry_run:
         print(json.dumps(payload, ensure_ascii=False, indent=2))

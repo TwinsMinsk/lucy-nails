@@ -21,15 +21,18 @@ CAMPAIGN = Path(__file__).resolve().parent
 ADS = CAMPAIGN.parent
 OUT = ADS / "out" / "presentation"
 sys.path.insert(0, str(ADS / "audio"))
-from script import vo_lines  # noqa: E402
+from script import campaign_dir, reel_code, vo_lines  # noqa: E402
 
-REELS = [f"r{n:02d}" for n in range(1, 11)]
-LAYERS = [
-    ("reach", "Охват", "Вау-визуал, который хочется досмотреть и переслать.", ["r01", "r02"]),
-    ("mistakes", "Серия «Ошибка мастера»", "Боль, причина и решение. Такие ролики сохраняют.", ["r03", "r04", "r05", "r06", "r07"]),
-    ("sales", "Продажа", "Оффер, ответ на «дорого» и что внутри курса.", ["r08", "r09", "r10"]),
-]
-HOOK_REELS = ["r01", "r03", "r08"]
+
+def layers(config: dict) -> list[tuple[str, str, str, list[str]]]:
+    """A campaign's reel groups from its admin.json: (key, title, note, reels)."""
+    return [(g["key"], g["title"], g["note"], g["reels"]) for g in config["groups"]]
+
+
+CONFIG = json.loads((CAMPAIGN / "admin.json").read_text(encoding="utf-8"))
+LAYERS = layers(CONFIG)
+REELS = [reel for *_, reels in LAYERS for reel in reels]
+HOOK_REELS = CONFIG["hook_reels"]
 TELEPROMPTER = "https://claude.ai/artifact/DumQ6M9FQSLJR2LZAteHfX"
 PR_URL = "https://github.com/TwinsMinsk/lucy-nails/pull/31"
 
@@ -47,14 +50,14 @@ def duration(path: Path) -> float:
 
 
 def reel_data(reel: str, scripts: str, captions: str) -> dict:
-    code = "R" + str(int(reel[1:]))
+    code = reel_code(reel)
     sc = section(scripts, code)
     title = re.search(r"«(.+?)»", sc.splitlines()[0]).group(1)
     hook = re.search(r"\*\*Хук на экране:\*\*\s*(.+)", sc).group(1).strip()
     cap = section(captions, code)
     utm = re.search(r"utm_content=([\w-]+)", cap)
     body = "\n".join(cap.splitlines()[1:]).strip()
-    spec = json.loads((CAMPAIGN / "reels" / f"{reel}.json").read_text(encoding="utf-8"))
+    spec = json.loads((campaign_dir(reel) / "reels" / f"{reel}.json").read_text(encoding="utf-8"))
     hooks = [{"id": "a", "lines": [h["text"] for h in spec["headline"]]}]
     hooks += [{"id": k, "lines": [h["text"] for h in v["headline"]]} for k, v in spec.get("hooks", {}).items()]
     final = ADS / "out" / reel / f"{reel}.mp4"

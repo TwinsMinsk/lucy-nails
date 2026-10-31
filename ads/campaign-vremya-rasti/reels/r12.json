@@ -1,0 +1,126 @@
+{
+  "reel": "r12",
+  "title": "Потолок однотонки",
+  "headline": [
+    {
+      "text": "У однотонки",
+      "at": "start"
+    },
+    {
+      "text": "есть потолок",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "aerografiya/aerografiya-08",
+    "akvarium/akvarium-07",
+    "vtirka/vtirka-05",
+    "slaidery/slaidery-04",
+    "french/french-14",
+    "pigmenty/pigmenty-03",
+    "stemping/stemping-05",
+    "strazy/strazy-10",
+    "tekstury/tekstury-12",
+    "gradient/gradient-11",
+    "folga/folga-15"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r09/s02-prep",
+          "tone": "mono"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "photo": "gradient/gradient-01",
+          "tone": "mono",
+          "label": "Потолок однотонки",
+          "label_at": "потолок"
+        },
+        {
+          "photo": "french/french-01",
+          "tone": "mono",
+          "from": "платят"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "vtirka/vtirka-15",
+          "tone": "mono"
+        },
+        {
+          "clip": "r04/s11-pink",
+          "from": "навыками",
+          "sfx": "shimmer"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "photo": "tekstury/tekstury-10",
+          "sfx": "swish"
+        },
+        {
+          "photo": "aerografiya/aerografiya-06",
+          "from": "платят"
+        },
+        {
+          "photo": "strazy/strazy-07",
+          "from": "именно",
+          "label": "Платят именно тебе",
+          "label_at": "именно"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r06/s10-end",
+    "from": "line:4",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  },
+  "hooks": {
+    "b": {
+      "headline": [
+        {
+          "text": "Работаешь без выходных,",
+          "at": "start"
+        },
+        {
+          "text": "а доход на месте?",
+          "at": "start",
+          "accent": true
+        }
+      ]
+    },
+    "c": {
+      "headline": [
+        {
+          "text": "Сколько ещё",
+          "at": "start"
+        },
+        {
+          "text": "делать однотонку?",
+          "at": "start",
+          "accent": true
+        }
+      ]
+    }
+  }
+}
