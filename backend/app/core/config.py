@@ -112,14 +112,14 @@ class Settings(BaseSettings):
     SMTP_START_TLS: bool = True
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
-    SMTP_FROM_NAME: str = "Lucy Nails Academy"
+    SMTP_FROM_NAME: str = "Lucy Smirnova"
 
     # === Resend (HTTP email API) ===
     # Preferred transport in production: Railway blocks outbound SMTP below the Pro
     # plan, so credentials/reset emails must go over HTTPS. When RESEND_API_KEY is
     # set, EmailService uses Resend; otherwise it falls back to SMTP (local dev).
     RESEND_API_KEY: str = ""
-    # Full From header, e.g. "Lucy Nails Academy <noreply@lucysmirnova.ru>".
+    # Full From header, e.g. "Lucy Smirnova <noreply@lucysmirnova.ru>".
     # The domain must be verified in Resend. Empty -> "<SMTP_FROM_NAME> <SMTP_USER>".
     EMAIL_FROM: str = ""
 

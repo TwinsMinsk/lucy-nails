@@ -1,4 +1,4 @@
-"""AI-фон для intro-карточки + единая типографика Pillow (бренд Lucy Nails)."""
+"""AI-фон для intro-карточки + единая типографика Pillow (бренд Lucy Smirnova)."""
 
 from __future__ import annotations
 
@@ -117,7 +117,7 @@ def _overlay_brand(
     *,
     lesson_title: str,
     lesson_order: int,
-    subtitle: str = "Lucy Nails Academy · Превью урока",
+    subtitle: str = "Lucy Smirnova · Превью урока",
 ) -> None:
     """Рисует типографику поверх base (in-place)."""
     draw = ImageDraw.Draw(base)
@@ -302,7 +302,7 @@ def build_intro_card(
     out_png: Path,
     *,
     lesson_order: int,
-    subtitle: str = "Lucy Nails Academy · Превью урока",
+    subtitle: str = "Lucy Smirnova · Превью урока",
     cache_dir: Path | None = None,
     regen_background: bool = False,
 ) -> Path:
@@ -340,7 +340,7 @@ def ensure_shared_outro_png(out_path: Path) -> Path:
     font_sub = _find_sans_font(26)
     cx, cy = CARD_WIDTH // 2, CARD_HEIGHT // 2 - 10
     title = "Полный урок — в онлайн-курсе"
-    sub = "Lucy Nails Academy"
+    sub = "Lucy Smirnova"
     for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
         draw.text((cx + dx, cy + dy), title, font=font_title, fill=(255, 255, 255), anchor="mm")
     draw.text((cx, cy), title, font=font_title, fill=COLOR_TITLE, anchor="mm")

@@ -11,7 +11,7 @@ export default function CertificateNotFound() {
             <h1 className="font-serif text-2xl text-text-primary">Сертификат не найден</h1>
             <p className="text-text-secondary">
                 Проверьте номер сертификата — возможно, в ссылке опечатка. Подлинные сертификаты
-                Lucy Nails Academy открываются по ссылке из QR-кода на дипломе.
+                Lucy Smirnova Nails открываются по ссылке из QR-кода на дипломе.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                 <Button

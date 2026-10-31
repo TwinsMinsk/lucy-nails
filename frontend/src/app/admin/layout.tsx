@@ -143,7 +143,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <div className="border-b p-5">
                     <Link href="/admin" className="flex items-center gap-3 font-semibold">
                         <span className="rounded-lg bg-primary p-2 text-primary-foreground"><LayoutDashboard className="h-5 w-5" /></span>
-                        Lucy Nails · Admin
+                        Lucy Smirnova · Admin
                     </Link>
                 </div>
                 <div className="flex-1 overflow-y-auto p-3">{nav}</div>

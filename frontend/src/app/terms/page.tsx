@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { baseOpenGraph } from "@/lib/seo";
 
 const title = "Публичная оферта";
-const description = "Публичная оферта ИП Смирновой Л. А. на покупку онлайн-курсов Lucy Nails Academy.";
+const description = "Публичная оферта ИП Смирновой Л. А. на покупку онлайн-курсов Lucy Smirnova.";
 
 export const metadata: Metadata = {
     title,

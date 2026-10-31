@@ -75,7 +75,7 @@ class MfaService:
             secret = MfaService.decrypt_secret(credential)
         uri = pyotp.TOTP(secret).provisioning_uri(
             name=user.email,
-            issuer_name="Lucy Nails Academy",
+            issuer_name="Lucy Smirnova",
         )
         return credential, secret, uri
 

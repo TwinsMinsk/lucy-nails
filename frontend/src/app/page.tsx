@@ -154,7 +154,7 @@ export default async function Home() {
                 <div className="w-full h-full bg-[#EBC8C8] relative">
                   <Image
                     src={instructorImageSrc}
-                    alt="Мастер маникюра в студии Lucy Nails Academy"
+                    alt="Мастер маникюра в студии Lucy Smirnova Nails"
                     fill
                     sizes="(max-width: 1024px) min(100vw, 448px), 448px"
                     className="object-cover"

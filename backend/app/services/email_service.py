@@ -195,7 +195,7 @@ class EmailService:
 <body>
 <div class="wrapper">
   <div class="header">
-    <h1>💅 Lucy Nails Academy</h1>
+    <h1>💅 Lucy Smirnova</h1>
     <p>Добро пожаловать в мир идеального маникюра!</p>
   </div>
   <div class="body">
@@ -210,7 +210,7 @@ class EmailService:
     </p>
   </div>
   <div class="footer">
-    © 2025 Lucy Nails Academy · Если вы не совершали эту покупку, напишите нам в поддержку.
+    © Lucy Smirnova Nails · Если вы не совершали эту покупку, напишите нам в поддержку.
   </div>
 </div>
 </body>
@@ -221,7 +221,7 @@ class EmailService:
     async def send_credentials(email: str, password: str) -> None:
         """Отправляет email с логином и сгенерированным паролем."""
         html = EmailService._build_credentials_html(email, password)
-        await EmailService._send(email, "🎉 Ваш доступ к курсу — Lucy Nails Academy", html)
+        await EmailService._send(email, "🎉 Ваш доступ к курсу — Lucy Smirnova", html)
 
     @staticmethod
     async def send_account_activation(email: str, activation_url: str, course_title: str) -> None:
@@ -233,7 +233,7 @@ class EmailService:
             "<p>Просмотр курса станет доступен после подтверждения email. Прежние сеансы будут завершены.</p>"
             "<p>Ссылка действует 24 часа и может быть использована один раз.</p>"
         )
-        await EmailService._send(email, "Установите пароль — Lucy Nails Academy", html)
+        await EmailService._send(email, "Установите пароль — Lucy Smirnova", html)
 
     @staticmethod
     async def send_email_verification(email: str, activation_url: str) -> None:
@@ -245,7 +245,7 @@ class EmailService:
             f"<p>Ссылка действует {settings.ACCOUNT_ACTIVATION_TOKEN_EXPIRE_HOURS} ч. и используется один раз.</p>"
             "<p>Если вы не создавали аккаунт, проигнорируйте письмо.</p>"
         )
-        await EmailService._send(email, "Подтвердите email — Lucy Nails Academy", html)
+        await EmailService._send(email, "Подтвердите email — Lucy Smirnova", html)
 
     @staticmethod
     async def send_access_granted(email: str, login_url: str, course_title: str) -> None:
@@ -261,20 +261,20 @@ class EmailService:
             "<p>Если вы ещё не задавали пароль, нажмите "
             f'«<a href="{forgot_url}">Забыли пароль?</a>» на странице входа.</p>'
         )
-        await EmailService._send(email, "Доступ к курсу открыт — Lucy Nails Academy", html)
+        await EmailService._send(email, "Доступ к курсу открыт — Lucy Smirnova", html)
 
     @staticmethod
     async def send_login_link(email: str, login_url: str) -> None:
         safe_url = escape(login_url, quote=True)
         html = (
             "<h1>Вход в личный кабинет</h1>"
-            "<p>Служба поддержки отправила вам ссылку для входа в кабинет Lucy Nails Academy.</p>"
+            "<p>Служба поддержки отправила вам ссылку для входа в кабинет Lucy Smirnova.</p>"
             f'<p><a href="{safe_url}">Задать пароль и войти</a></p>'
             f"<p>Ссылка действует {settings.ACCOUNT_ACTIVATION_TOKEN_EXPIRE_HOURS} ч. "
             "и может быть использована один раз. Если вы не обращались в поддержку, "
             "просто проигнорируйте это письмо.</p>"
         )
-        await EmailService._send(email, "Ссылка для входа — Lucy Nails Academy", html)
+        await EmailService._send(email, "Ссылка для входа — Lucy Smirnova", html)
 
     @staticmethod
     async def send_access_expiry_reminder(
@@ -289,7 +289,7 @@ class EmailService:
             f'<p><a href="{login_url}">Продолжить обучение</a></p>'
         )
         await EmailService._send(
-            email, f"До окончания доступа осталось {days} дн. — Lucy Nails Academy", html
+            email, f"До окончания доступа осталось {days} дн. — Lucy Smirnova", html
         )
 
     @staticmethod
@@ -300,7 +300,7 @@ class EmailService:
             "<p>Если это ошибка или вам нужна помощь, ответьте на это письмо.</p>"
         )
         await EmailService._send(
-            email, "Срок доступа к курсу завершён — Lucy Nails Academy", html
+            email, "Срок доступа к курсу завершён — Lucy Smirnova", html
         )
 
     @staticmethod
@@ -330,7 +330,7 @@ class EmailService:
 <body>
 <div class="wrapper">
   <div class="header">
-    <h1>Сброс пароля — Lucy Nails Academy</h1>
+    <h1>Сброс пароля — Lucy Smirnova</h1>
   </div>
   <div class="body">
     <p>Вы запросили сброс пароля. Нажмите кнопку ниже, чтобы задать новый пароль. Ссылка действует ограниченное время.</p>
@@ -340,7 +340,7 @@ class EmailService:
     <p style="color:#999; font-size:13px; margin-top:24px;">Если вы не запрашивали сброс — просто проигнорируйте это письмо, пароль останется прежним.</p>
   </div>
   <div class="footer">
-    Lucy Nails Academy
+    Lucy Smirnova
   </div>
 </div>
 </body>
@@ -351,7 +351,7 @@ class EmailService:
     async def send_password_reset(email: str, reset_url: str) -> None:
         """Отправляет письмо со ссылкой на сброс пароля."""
         html = EmailService._build_reset_html(reset_url)
-        await EmailService._send(email, "Сброс пароля — Lucy Nails Academy", html)
+        await EmailService._send(email, "Сброс пароля — Lucy Smirnova", html)
 
     @staticmethod
     async def send_certificate_link(
@@ -365,7 +365,7 @@ class EmailService:
         html = EmailService._build_certificate_html(
             student_name, course_title, certificate_number, verify_url
         )
-        await EmailService._send(email, "Ваш сертификат — Lucy Nails Academy", html)
+        await EmailService._send(email, "Ваш сертификат — Lucy Smirnova", html)
 
     @staticmethod
     def _build_certificate_html(
@@ -418,7 +418,7 @@ class EmailService:
     <p style="color:#999; font-size:13px; margin-top:24px;">PDF-версия сертификата — во вложении к этому письму. Поделитесь достижением в соцсетях!</p>
   </div>
   <div class="footer">
-    © 2025 Lucy Nails Academy
+    © Lucy Smirnova Nails
   </div>
 </div>
 </body>
@@ -439,8 +439,8 @@ class EmailService:
             student_name, course_title, certificate_number, verify_url
         )
         attachment = EmailAttachment(
-            filename=f"Lucy-Nails-Certificate-{certificate_number}.pdf", content=pdf_bytes
+            filename=f"Lucy-Smirnova-Nails-Certificate-{certificate_number}.pdf", content=pdf_bytes
         )
         await EmailService._send(
-            email, "🎓 Ваш сертификат — Lucy Nails Academy", html, [attachment]
+            email, "🎓 Ваш сертификат — Lucy Smirnova", html, [attachment]
         )

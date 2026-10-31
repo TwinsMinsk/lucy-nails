@@ -386,13 +386,13 @@ async def test_download_certificate_file(client: AsyncClient, db: AsyncSession):
     pdf_response = await client.get(f"/api/certificates/{number}/file", params={"format": "pdf"})
     assert pdf_response.status_code == 200
     assert pdf_response.headers["content-type"] == "application/pdf"
-    assert f"Lucy-Nails-Certificate-{number}.pdf" in pdf_response.headers["content-disposition"]
+    assert f"Lucy-Smirnova-Nails-Certificate-{number}.pdf" in pdf_response.headers["content-disposition"]
     assert pdf_response.content[:4] == b"%PDF"
 
     png_response = await client.get(f"/api/certificates/{number}/file", params={"format": "png"})
     assert png_response.status_code == 200
     assert png_response.headers["content-type"] == "image/png"
-    assert f"Lucy-Nails-Certificate-{number}.png" in png_response.headers["content-disposition"]
+    assert f"Lucy-Smirnova-Nails-Certificate-{number}.png" in png_response.headers["content-disposition"]
     assert png_response.content[:8] == b"\x89PNG\r\n\x1a\n"
 
     bad_format = await client.get(f"/api/certificates/{number}/file", params={"format": "gif"})

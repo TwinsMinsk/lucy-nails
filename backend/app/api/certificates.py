@@ -147,5 +147,5 @@ async def download_certificate_file(
     return FileResponse(
         file_path,
         media_type=_FILE_FORMATS[format],
-        filename=f"Lucy-Nails-Certificate-{certificate_number}.{format}",
+        filename=f"Lucy-Smirnova-Nails-Certificate-{certificate_number}.{format}",
     )

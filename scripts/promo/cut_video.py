@@ -69,7 +69,7 @@ def _render_outro_card_fallback(
     out_png: Path,
     text: str = "Полный урок — в онлайн-курсе",
 ) -> None:
-    _render_title_card_fallback(out_png, text, subtitle="Lucy Nails Academy")
+    _render_title_card_fallback(out_png, text, subtitle="Lucy Smirnova")
 
 
 def _run(cmd: list[str]) -> None:

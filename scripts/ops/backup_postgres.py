@@ -44,7 +44,7 @@ def notify_failure(message: str) -> None:
         log_warning("Failure alert is not configured")
         return
     payload = urllib.parse.urlencode(
-        {"chat_id": chat_id, "text": f"⚠️ Backup Lucy Nails failed: {message[:1000]}"}
+        {"chat_id": chat_id, "text": f"⚠️ Backup Lucy Smirnova failed: {message[:1000]}"}
     ).encode()
     try:
         urllib.request.urlopen(

@@ -19,7 +19,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
     try {
         const [course, landing] = await Promise.all([getPublicCourse(id), getLandingContent()]);
-        const description = course.description || "Онлайн-курс Lucy Nails Academy по дизайну ногтей.";
+        const description = course.description || "Онлайн-курс Люси Смирновой по дизайну ногтей.";
         const images = course.cover_image_url ? [course.cover_image_url] : baseOpenGraph.images;
         // The landing page sells this course with fuller content, so it is the page to index.
         const canonical = landing.course?.id === id ? "/" : `/courses/${id}`;

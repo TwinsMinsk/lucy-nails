@@ -81,7 +81,7 @@ React-компоненты приложения, сгруппированные 
 
 | File | Description |
 |------|-------------|
-| `Header.tsx` | `"use client"`. Разное меню для лендинга (`#about`, `#program`, `#gallery`, `#pricing`, smooth-scroll по якорям) и для кабинета (`/dashboard`); проверяет сессию через `getMe()` в `useEffect` при каждой смене `pathname`; десктоп — `DropdownMenu` с аватаром, моб. — `Sheet`. Ссылка "Админ панель" (`/admin/courses`) показывается только при `user.role === "admin"`. Email в меню помечен `ym-hide-content` для Вебвизора. Логотип — «Lucy Nails Academy» (единое имя бренда, как в письмах и сертификатах). Ссылки меню и кнопки входа — с `lg`, ниже — `Sheet`: на планшете центрированное меню наезжало на логотип |
+| `Header.tsx` | `"use client"`. Разное меню для лендинга (`#about`, `#program`, `#gallery`, `#pricing`, smooth-scroll по якорям) и для кабинета (`/dashboard`); проверяет сессию через `getMe()` в `useEffect` при каждой смене `pathname`; десктоп — `DropdownMenu` с аватаром, моб. — `Sheet`. Ссылка "Админ панель" (`/admin/courses`) показывается только при `user.role === "admin"`. Email в меню помечен `ym-hide-content` для Вебвизора. Логотип — «Lucy Smirnova» (`SITE_NAME`: имя бренда, как в письмах и роликах; сертификаты и «©» — от «Lucy Smirnova Nails», `ORGANIZATION_NAME` в `lib/seo.ts`). Ссылки меню и кнопки входа — с `lg`, ниже — `Sheet`: на планшете центрированное меню наезжало на логотип |
 | `Footer.tsx` | `"use client"`. Скрывается на страницах уроков (`pathname.includes("/lessons/")`, чтобы не мешать просмотру видео); содержит реквизиты ИП (ИНН, ОГРНИП, email и телефон — ссылками `mailto:`/`tel:`) и ссылки на `/privacy`, `/terms` |
 
 ## For AI Agents

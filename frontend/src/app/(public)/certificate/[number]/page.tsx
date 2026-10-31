@@ -23,7 +23,7 @@ export async function generateMetadata({
     }
 
     const title = `Сертификат ${cert.student_name}`;
-    const description = `Подтверждённый сертификат о прохождении курса «${cert.course_title}» в Lucy Nails Academy. № ${cert.certificate_number}.`;
+    const description = `Подтверждённый сертификат о прохождении курса «${cert.course_title}» в Lucy Smirnova Nails. № ${cert.certificate_number}.`;
     const url = `/certificate/${cert.certificate_number}`;
     const ogImages = cert.png_url
         ? [{ url: cert.png_url, width: 3508, height: 2480, alt: title }]
@@ -69,7 +69,7 @@ export default async function CertificatePage({
             {/* Hero band */}
             <div className="bg-[#fff1f4] border-b border-primary/10 py-12 md:py-16 text-center">
                 <p className="text-xs tracking-[0.3em] uppercase text-primary">
-                    LUCY NAILS ACADEMY
+                    LUCY SMIRNOVA NAILS
                 </p>
                 <h1 className="mt-3 font-serif text-3xl md:text-4xl text-text-primary">
                     Сертификат о прохождении курса
@@ -149,7 +149,7 @@ export default async function CertificatePage({
                 <div className="bg-[#fff1f4] rounded-3xl p-8 text-center space-y-4">
                     <h2 className="font-serif text-2xl text-text-primary">Хотите так же?</h2>
                     <p className="text-[#666]">
-                        Пройдите курс «{cert.course_title}» в Lucy Nails Academy
+                        Пройдите курс «{cert.course_title}» в Lucy Smirnova Nails
                     </p>
                     <Button
                         asChild

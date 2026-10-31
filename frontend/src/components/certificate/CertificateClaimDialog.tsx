@@ -159,7 +159,7 @@ export function CertificateClaimDialog({
               </div>
               <DialogTitle className="text-center font-serif">Поздравляем, курс пройден!</DialogTitle>
               <DialogDescription className="text-center">
-                Вы прошли все уроки курса «{courseTitle}». Получите именной сертификат Lucy Nails Academy.
+                Вы прошли все уроки курса «{courseTitle}». Получите именной сертификат Lucy Smirnova Nails.
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -177,7 +177,7 @@ export function CertificateClaimDialog({
                 />
               </div>
               <div className="rounded-xl bg-[#fff1f4] border border-[#D4AF37]/40 p-4 text-center">
-                <p className="text-[10px] tracking-[0.25em] text-primary">LUCY NAILS ACADEMY</p>
+                <p className="text-[10px] tracking-[0.25em] text-primary">LUCY SMIRNOVA NAILS</p>
                 <p
                   className={cn(
                     "mt-2 font-serif italic text-2xl",

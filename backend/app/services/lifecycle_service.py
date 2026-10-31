@@ -158,7 +158,7 @@ class LifecycleService:
                 recipient=str(settings.TELEGRAM_OWNER_CHAT_ID),
                 payload={
                     "text": (
-                        "⚠️ Lucy Nails: не доставлено уведомлений: "
+                        "⚠️ Lucy Smirnova: не доставлено уведомлений: "
                         f"{dead_letters}. Откройте админку → «Уведомления» "
                         "и отправьте их повторно."
                     )
