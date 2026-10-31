@@ -155,6 +155,7 @@ async def deliver_outbox_message(message: OutboxMessage) -> None:
             message.recipient,
             message.payload["activation_url"],
             message.payload["course_title"],
+            message.payload.get("expires_at"),
         )
         return
     if message.kind == "email_verification":
@@ -168,6 +169,7 @@ async def deliver_outbox_message(message: OutboxMessage) -> None:
             message.recipient,
             message.payload["login_url"],
             message.payload["course_title"],
+            message.payload.get("expires_at"),
         )
         return
     if message.kind == "login_link":

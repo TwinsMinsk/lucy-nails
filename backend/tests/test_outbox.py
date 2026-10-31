@@ -14,7 +14,7 @@ from app.models.entitlement import Entitlement
 from app.models.outbox import DeliveryAttempt, OutboxMessage
 from app.models.user import User
 from app.services.access_service import AccessService
-from app.services.email_service import EmailService
+from app.services.email_service import EmailService, format_msk_datetime
 from app.services.outbox_service import enqueue_outbox_message
 import app.workers.outbox as outbox_worker
 
@@ -486,3 +486,54 @@ async def test_access_granted_email_points_passwordless_buyers_to_password_reset
     assert sent["email"] == "returning@example.com"
     assert "Если вы ещё не задавали пароль" in sent["html"]
     assert 'href="https://school.example/auth/forgot-password"' in sent["html"]
+
+
+def test_access_dates_are_shown_in_moscow_time():
+    # 21:30 UTC is already the next day in Moscow (UTC+3 all year).
+    assert format_msk_datetime(datetime(2026, 11, 30, 21, 30)) == "01.12.2026 00:30 (МСК)"
+    assert format_msk_datetime("2026-11-30T12:00:00") == "30.11.2026 15:00 (МСК)"
+
+
+@pytest.mark.asyncio
+async def test_payment_emails_name_the_access_end_date(monkeypatch):
+    sent: list[tuple[str, str]] = []
+
+    async def fake_send(email, subject, html, attachments=None):
+        sent.append((subject, html))
+
+    monkeypatch.setattr(EmailService, "_send", fake_send)
+    monkeypatch.setattr(settings, "FRONTEND_URL", "https://school.example")
+    monkeypatch.setattr(settings, "ACCOUNT_ACTIVATION_TOKEN_EXPIRE_HOURS", 48)
+
+    await EmailService.send_account_activation(
+        "new@example.com", "https://school.example/auth/activate?token=t", "Nail Design PRO",
+        "2026-11-30T12:00:00",
+    )
+    await EmailService.send_access_granted(
+        "old@example.com", "https://school.example/auth/login", "Nail Design PRO",
+        "2026-11-30T12:00:00",
+    )
+
+    activation_html, access_html = sent[0][1], sent[1][1]
+    for html in (activation_html, access_html):
+        assert "Доступ действует до 30.11.2026 15:00 (МСК)" in html
+    # The link lifetime follows the setting, and a stale link has a way out.
+    assert "Ссылка действует 48 ч." in activation_html
+    assert 'href="https://school.example/auth/forgot-password"' in activation_html
+
+
+@pytest.mark.asyncio
+async def test_access_expired_email_offers_renewal_instead_of_a_reply(monkeypatch):
+    sent: dict = {}
+
+    async def fake_send(email, subject, html, attachments=None):
+        sent.update(subject=subject, html=html)
+
+    monkeypatch.setattr(EmailService, "_send", fake_send)
+    monkeypatch.setattr(settings, "FRONTEND_URL", "https://school.example")
+
+    await EmailService.send_access_expired("student@example.com", "Nail Design PRO")
+
+    assert 'href="https://school.example/dashboard"' in sent["html"]
+    assert "Продлить доступ" in sent["html"]
+    assert "ответьте на это письмо" not in sent["html"]

@@ -34,6 +34,46 @@ PAID_CONTENT_TEMPLATE = (
     "указанный при оплате."
 )
 
+# 54-FZ receipt line for the course. The seller is on УСН with the VAT exemption;
+# access opens right after payment, so the receipt is «полный расчёт» for «услуга».
+# Without these fields Prodamus falls back to the shop defaults.
+RECEIPT_TAX_TYPE_NO_VAT = "0"
+RECEIPT_PAYMENT_METHOD_FULL_PAYMENT = "4"
+RECEIPT_PAYMENT_OBJECT_SERVICE = "4"
+# Fiscal tag 1030 (item name) holds at most 128 characters.
+RECEIPT_NAME_MAX_LENGTH = 128
+
+
+def _days_word(count: int) -> str:
+    if count % 10 == 1 and count % 100 != 11:
+        return "день"
+    if count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14):
+        return "дня"
+    return "дней"
+
+
+def receipt_item_name(course_title: str, access_days: int) -> str:
+    """Receipt item name: «Онлайн-курс «Nail Design PRO», доступ 30 дней»."""
+    prefix = "Онлайн-курс «"
+    suffix = f"», доступ {access_days} {_days_word(access_days)}"
+    room = RECEIPT_NAME_MAX_LENGTH - len(prefix) - len(suffix)
+    title = course_title.strip()
+    if len(title) > room:
+        title = title[: room - 1].rstrip() + "…"
+    return f"{prefix}{title}{suffix}"
+
+
+def _bracket_fields(prefix: str, value: dict[str, Any]) -> dict[str, Any]:
+    """Flatten a nested dict into the products[0][tax][tax_type]-style GET keys."""
+    fields: dict[str, Any] = {}
+    for key, item in value.items():
+        name = f"{prefix}[{key}]"
+        if isinstance(item, dict):
+            fields.update(_bracket_fields(name, item))
+        else:
+            fields[name] = item
+    return fields
+
 
 def _to_str(value: Any) -> Any:
     """Рекурсивно приводит все значения к строкам и сортирует ключи."""
@@ -147,19 +187,19 @@ class ProdamusService:
         # Backend API URL for webhook notifications
         backend_url = settings.BACKEND_URL.rstrip("/") if settings.BACKEND_URL else "http://localhost:8000"
 
-        product = {
+        product: dict[str, Any] = {
             "name": course_name,
             "price": str(price),
             "quantity": "1",
             "type": "course",
+            "tax": {"tax_type": RECEIPT_TAX_TYPE_NO_VAT},
+            "paymentMethod": RECEIPT_PAYMENT_METHOD_FULL_PAYMENT,
+            "paymentObject": RECEIPT_PAYMENT_OBJECT_SERVICE,
         }
 
         params: dict[str, Any] = {
             "do": "pay",
-            "products[0][name]": product["name"],
-            "products[0][price]": product["price"],
-            "products[0][quantity]": product["quantity"],
-            "products[0][type]": product["type"],
+            **_bracket_fields("products[0]", product),
             "urlSuccess": success_url or f"{frontend_url}/payment-success",
             "urlReturn": f"{frontend_url}/#pricing",
             # Prodamus posts to the URL set in the cabinet; this one is ignored

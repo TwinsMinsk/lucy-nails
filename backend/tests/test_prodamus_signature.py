@@ -14,10 +14,12 @@ from starlette.datastructures import UploadFile
 
 from app.core.config import settings
 from app.services.prodamus_service import (
+    RECEIPT_NAME_MAX_LENGTH,
     ProdamusService,
     _make_signature,
     _to_str,
     nest_form_fields,
+    receipt_item_name,
 )
 
 _WEBHOOK_PAYLOAD = {
@@ -29,15 +31,8 @@ _WEBHOOK_PAYLOAD = {
 
 
 def _reconstruct_nested(params: dict) -> dict:
-    """Rebuild the nested products structure Prodamus derives from products[0][...]."""
-    product: dict = {}
-    scalars: dict = {}
-    for key, value in params.items():
-        if key.startswith("products[0]["):
-            product[key[len("products[0][") : -1]] = value
-        else:
-            scalars[key] = value
-    return {**scalars, "products": [product]}
+    """Rebuild the nested structure Prodamus derives from products[0][tax][tax_type]-style keys."""
+    return nest_form_fields(params.items())
 
 
 def test_payment_link_signature_is_over_nested_products():
@@ -79,6 +74,36 @@ def test_payment_link_names_paid_content_for_the_receipt():
     assert 0 < len(paid_content) <= 4096
     # It is signed like every other field.
     assert signature == _make_signature(_reconstruct_nested(params), settings.PRODAMUS_SECRET_KEY)
+
+
+def test_payment_link_carries_receipt_fields_for_the_seller_on_usn():
+    """«без НДС», «полный расчёт», «услуга» are sent with the item, not left to shop defaults."""
+    url = ProdamusService.generate_payment_link(
+        course_name=receipt_item_name("Nail Design PRO", 30),
+        price=5900,
+        tariff="self",
+        customer_email="guest@example.com",
+    )
+
+    params = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(url).query, keep_blank_values=True))
+    signature = params.pop("signature")
+
+    assert params["products[0][name]"] == "Онлайн-курс «Nail Design PRO», доступ 30 дней"
+    assert params["products[0][tax][tax_type]"] == "0"
+    assert params["products[0][paymentMethod]"] == "4"
+    assert params["products[0][paymentObject]"] == "4"
+    nested = _reconstruct_nested(params)
+    assert nested["products"][0]["tax"] == {"tax_type": "0"}
+    assert signature == _make_signature(nested, settings.PRODAMUS_SECRET_KEY)
+
+
+def test_receipt_item_name_fits_the_fiscal_limit():
+    assert receipt_item_name("Курс", 1) == "Онлайн-курс «Курс», доступ 1 день"
+    assert receipt_item_name("Курс", 3) == "Онлайн-курс «Курс», доступ 3 дня"
+    assert receipt_item_name("Курс", 11) == "Онлайн-курс «Курс», доступ 11 дней"
+    long_name = receipt_item_name("Очень длинное название курса " * 10, 30)
+    assert len(long_name) == RECEIPT_NAME_MAX_LENGTH
+    assert long_name.endswith("…», доступ 30 дней")
 
 
 def test_payment_link_signature_is_not_the_old_flat_form():

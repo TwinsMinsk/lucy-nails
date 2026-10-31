@@ -45,8 +45,9 @@ from app.services.outbox_service import (
     format_rub,
 )
 from app.services.runtime_settings_service import RuntimeSettingsService
-from app.services.prodamus_service import ProdamusService, nest_form_fields
+from app.services.prodamus_service import ProdamusService, nest_form_fields, receipt_item_name
 from app.services.access_service import AccessService
+from app.services.email_service import format_msk_datetime
 from app.services.payment_event_service import (
     PaymentEventData,
     build_payment_event_data,
@@ -316,7 +317,7 @@ def _checkout_link_for_course(
     if tariff not in SELLABLE_TARIFFS:
         raise HTTPException(status_code=400, detail="Invalid tariff")
     price = float(course.price_self if tariff == "self" else course.price_support)
-    course_name = f"{course.title} — {TARIFF_LABELS[tariff]}"
+    course_name = receipt_item_name(course.title, course.access_days)
     order_id = order_id or _build_prodamus_order_id(course.id, tariff)
     success_url = None
     if status_token:
@@ -473,7 +474,13 @@ async def _record_purchase_once(
 
         paid_at = datetime.utcnow()
         access_days = order.access_days if order is not None else settings.COURSE_ACCESS_DAYS
-        expires_at = paid_at + timedelta(days=access_days)
+        # An early renewal adds the paid days on top of access that is still running,
+        # like a manual grant does, instead of restarting the period from today.
+        current_access = await AccessService.get_active_entitlement(
+            db, user.id, course.id, now=paid_at
+        )
+        access_base = max(paid_at, current_access.expires_at) if current_access else paid_at
+        expires_at = access_base + timedelta(days=access_days)
 
         purchase = Purchase(
             user_id=user.id,
@@ -537,7 +544,7 @@ async def _record_purchase_once(
                 payload={
                     "text": (
                         f"✅ Оплата подтверждена. Доступ к курсу «{course.title}» открыт "
-                        f"до {expires_at:%d.%m.%Y}.{support_note}"
+                        f"до {format_msk_datetime(expires_at)}.{support_note}"
                     )
                 },
                 dedupe_key=f"payment:{dedupe_hash}:access:telegram",

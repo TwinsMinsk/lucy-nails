@@ -116,10 +116,18 @@ This exact algorithm is what produces the `signature` query param on outbound li
 ### 4. Generate a payment link (From codebase — pattern used in production)
 
 ```python
-product = {"name": course_name, "price": str(price), "quantity": "1", "type": "course"}
+product = {
+    "name": course_name,           # receipt item name (fiscal tag 1030), at most 128 chars
+    "price": str(price), "quantity": "1", "type": "course",
+    # Receipt fields; omitted ones fall back to the shop defaults in the cabinet.
+    "tax": {"tax_type": "0"},      # 0 = без НДС
+    "paymentMethod": "4",          # 4 = полный расчёт (1 = предоплата 100%)
+    "paymentObject": "4",          # 4 = услуга
+}
 params = {
     "do": "pay",
-    **{f"products[0][{k}]": v for k, v in product.items()},
+    # Nested keys flatten to products[0][tax][tax_type]=0 and so on.
+    **bracket_fields("products[0]", product),
     "urlSuccess":      f"{frontend}/payment-success",
     "urlReturn":       f"{frontend}/#pricing",
     "urlNotification": f"{backend}/api/payments/webhook",

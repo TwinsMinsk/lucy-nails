@@ -345,3 +345,55 @@ async def test_get_embed_url_includes_drm_token_when_configured(configured_drm):
     url = svc.get_embed_url("vid-1", fake_user, lesson_id=uuid.uuid4())
     assert "drmauthtoken=" in url
     assert "watermark=" in url
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("expires_in", "allowed"),
+    [(timedelta(minutes=5), True), (timedelta(seconds=-1), False)],
+)
+async def test_access_ends_exactly_at_entitlement_expiry(
+    client: AsyncClient, db: AsyncSession, configured_drm, expires_in: timedelta, allowed: bool
+):
+    """Every access check compares expires_at with now; none waits for the lifecycle job
+    that flips the status to "expired" every few minutes."""
+    from app.services.auth_service import AuthService
+
+    user, lesson = await _seed_course(db, with_paid_purchase=False, video_id="vid-expiry")
+    course_id = (await db.get(Module, lesson.module_id)).course_id
+    now = datetime.utcnow()
+    db.add(
+        Entitlement(
+            user_id=user.id,
+            course_id=course_id,
+            source="purchase",
+            tariff="self",
+            status="active",
+            starts_at=now - timedelta(days=30),
+            expires_at=now + expires_in,
+        )
+    )
+    await db.commit()
+    headers = {
+        "Authorization": f"Bearer {AuthService.create_tokens(user.id, user.token_version).access_token}"
+    }
+
+    details = await client.get(f"/api/lessons/{lesson.id}", headers=headers)
+    assert details.status_code == 200, details.text
+    assert (details.json()["video_url"] is not None) is allowed
+
+    play = await client.get(f"/api/lessons/{lesson.id}/play", headers=headers)
+    assert play.status_code == (200 if allowed else 403), play.text
+
+    progress = await client.get(f"/api/courses/{course_id}/my-progress", headers=headers)
+    assert progress.status_code == (200 if allowed else 403), progress.text
+
+    token = KinescopeJwtService().create_drm_token(
+        user_id=str(user.id), email=user.email, lesson_id=str(lesson.id)
+    )
+    drm = await client.post(
+        "/api/integrations/kinescope/drm/authorize",
+        json={"id": "vid-expiry", "token": token},
+        headers={"Authorization": _basic_auth_header("kinescope-drm", "test-pass-123")},
+    )
+    assert drm.status_code == (200 if allowed else 403), drm.text

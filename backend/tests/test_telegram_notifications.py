@@ -88,7 +88,15 @@ async def test_lifecycle_scheduler_is_idempotent_and_expires_access(
         price_support=15000,
         is_published=True,
     )
-    db.add_all([user, course])
+    # A second course: access to the same course that ends later would
+    # silence the expiry notices (see the superseded-access test below).
+    other_course = Course(
+        title="Lifecycle second course",
+        price_self=10000,
+        price_support=15000,
+        is_published=True,
+    )
+    db.add_all([user, course, other_course])
     await db.flush()
     reminder = Entitlement(
         user_id=user.id,
@@ -101,7 +109,7 @@ async def test_lifecycle_scheduler_is_idempotent_and_expires_access(
     )
     expired = Entitlement(
         user_id=user.id,
-        course_id=course.id,
+        course_id=other_course.id,
         source="purchase",
         tariff="support",
         status="active",
@@ -133,6 +141,67 @@ async def test_lifecycle_scheduler_is_idempotent_and_expires_access(
     )
     assert event is not None
     assert event.user_id == user.id
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_stays_silent_for_access_covered_by_a_later_entitlement(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """An early renewal leaves the first entitlement running; its end is not the end of access."""
+    now = datetime(2026, 8, 26, 12, 0, 0)
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "TELEGRAM_SUPPORT_GROUP_ID", -1001234567890)
+    user = User(
+        email="renewed@example.com",
+        password_hash=get_password_hash("renewed-password"),
+        role="student",
+        telegram_id=123456780,
+    )
+    course = Course(title="Renewed course", price_self=10000, price_support=15000, is_published=True)
+    db.add_all([user, course])
+    await db.flush()
+    first = Entitlement(
+        user_id=user.id,
+        course_id=course.id,
+        source="purchase",
+        tariff="support",
+        status="active",
+        starts_at=now - timedelta(days=30),
+        expires_at=now - timedelta(minutes=1),
+    )
+    covered_reminder = Entitlement(
+        user_id=user.id,
+        course_id=course.id,
+        source="manual",
+        tariff="self",
+        status="active",
+        starts_at=now - timedelta(days=23),
+        expires_at=now + timedelta(days=7),
+    )
+    renewal = Entitlement(
+        user_id=user.id,
+        course_id=course.id,
+        source="purchase",
+        tariff="self",
+        status="active",
+        starts_at=now - timedelta(days=5),
+        expires_at=now + timedelta(days=55),
+    )
+    db.add_all([first, covered_reminder, renewal])
+    await db.commit()
+
+    assert await LifecycleService.schedule(db, now=now) == 0
+    await db.commit()
+
+    await db.refresh(first)
+    await db.refresh(renewal)
+    assert first.status == "expired"
+    assert renewal.status == "active"
+    assert (await db.execute(select(OutboxMessage))).scalars().all() == []
+    assert await db.scalar(
+        select(AnalyticsEvent).where(AnalyticsEvent.event_name == "access_expired")
+    ) is None
 
 
 @pytest.mark.asyncio

@@ -574,6 +574,65 @@ async def test_successful_webhook_creates_purchase_entitlement(
     assert entitlement.status == "active"
     assert entitlement.tariff == "self"
     assert entitlement.expires_at == purchase.expires_at
+    # The offer promises 30 calendar days from payment confirmation.
+    assert purchase.expires_at - purchase.paid_at == timedelta(days=settings.COURSE_ACCESS_DAYS)
+    assert entitlement.starts_at == purchase.paid_at
+
+
+@pytest.mark.asyncio
+async def test_early_renewal_adds_paid_days_to_running_access(
+    client: AsyncClient,
+    db: AsyncSession,
+):
+    course = await _published_course(db, "Renewed Course")
+    buyer = await _create_user(db, "renewing-buyer@example.com")
+    running_until = datetime.utcnow() + timedelta(days=10)
+    db.add(
+        Entitlement(
+            user_id=buyer.id,
+            course_id=course.id,
+            source="manual",
+            tariff="self",
+            status="active",
+            starts_at=datetime.utcnow() - timedelta(days=20),
+            expires_at=running_until,
+            reason="Earlier access",
+        )
+    )
+    await db.commit()
+
+    order_id = _build_prodamus_order_id(course.id, "self")
+    payload, headers = _signed_payload(
+        {
+            "order_id": order_id,
+            "customer_email": "renewing-buyer@example.com",
+            "sum": "5000",
+            "currency": "rub",
+            "payment_status": "success",
+        }
+    )
+    response = await client.post("/api/payments/webhook", json=payload, headers=headers)
+    assert response.status_code == 200, response.text
+
+    purchase = (
+        await db.execute(select(Purchase).where(Purchase.payment_id == f"order_id:{order_id}"))
+    ).scalar_one()
+    assert purchase.expires_at == running_until + timedelta(days=settings.COURSE_ACCESS_DAYS)
+    renewal = (
+        await db.execute(select(Entitlement).where(Entitlement.source_purchase_id == purchase.id))
+    ).scalar_one()
+    assert renewal.expires_at == purchase.expires_at
+    # The access email names the new end date (Moscow time) for the buyer.
+    message = (
+        await db.execute(
+            select(OutboxMessage).where(
+                OutboxMessage.recipient == "renewing-buyer@example.com",
+                OutboxMessage.kind == "access_granted",
+                OutboxMessage.channel == "email",
+            )
+        )
+    ).scalar_one()
+    assert message.payload["expires_at"] == purchase.expires_at.isoformat()
 
 
 @pytest.mark.asyncio

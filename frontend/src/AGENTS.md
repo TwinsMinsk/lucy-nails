@@ -17,7 +17,7 @@
 
 | Directory | Purpose |
 |-----------|---------|
-| `app/` | Маршруты App Router: публичный лендинг, `(public)`/`(protected)` группы, `admin/`, `payment-success/`, `privacy/`, `terms/` |
+| `app/` | Маршруты App Router: публичный лендинг, `(public)`/`(protected)` группы, `admin/`, `payment-success/`, `payment-failed/`, `privacy/`, `terms/` |
 | `components/` | React-компоненты: `ui/` (shadcn), `analytics/`, `certificate/`, `course/`, `landing/`, `layout/`, `legal/` |
 | `lib/` | API-клиент, env-хелперы, схемы валидации, санитайзер HTML, форматирование дат, согласие и аналитика, контент лендинга |
 | `test/` | `setup.ts` — глобальная настройка Vitest: `@testing-library/jest-dom/vitest` и in-memory mock `window.localStorage` |
