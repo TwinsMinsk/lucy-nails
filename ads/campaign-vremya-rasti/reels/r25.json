@@ -1,0 +1,110 @@
+{
+  "reel": "r25",
+  "title": "Опыт есть",
+  "headline": [
+    {
+      "text": "Опытному мастеру",
+      "at": "start"
+    },
+    {
+      "text": "учиться поздно?",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "folga/folga-09",
+    "akvarium/akvarium-02",
+    "vtirka/vtirka-13",
+    "slaidery/slaidery-12",
+    "french/french-04",
+    "pigmenty/pigmenty-06",
+    "stemping/stemping-05",
+    "strazy/strazy-05",
+    "tekstury/tekstury-02",
+    "gradient/gradient-03",
+    "aerografiya/aerografiya-16"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r09/s02-prep"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "photo": "french/french-07",
+          "sfx": "swish",
+          "label": "Рука поставлена",
+          "label_at": "Рука"
+        },
+        {
+          "photo": "strazy/strazy-02",
+          "from": "клиентки"
+        },
+        {
+          "clip": "r05/s08-smooth",
+          "from": "покрытие"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "vtirka/vtirka-01",
+          "tone": "mono"
+        },
+        {
+          "clip": "r17/g01-gradient-set",
+          "from": "новых",
+          "sfx": "shimmer",
+          "label": "+ новые техники"
+        },
+        {
+          "photo": "gradient/gradient-11",
+          "from": "быстрое"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "photo": "tekstury/tekstury-13",
+          "sfx": "swish"
+        },
+        {
+          "photo": "akvarium/akvarium-04",
+          "from": "уже",
+          "label": "Для практикующих мастеров"
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r02/s11-end",
+    "from": "line:4:Ссылка",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

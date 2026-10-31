@@ -1,0 +1,109 @@
+{
+  "reel": "r13",
+  "title": "Через месяц",
+  "headline": [
+    {
+      "text": "Каким мастером",
+      "at": "start"
+    },
+    {
+      "text": "ты будешь через месяц?",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "aerografiya/aerografiya-08",
+    "akvarium/akvarium-07",
+    "vtirka/vtirka-05",
+    "slaidery/slaidery-12",
+    "french/french-04",
+    "pigmenty/pigmenty-03",
+    "stemping/stemping-05",
+    "strazy/strazy-07",
+    "tekstury/tekstury-12",
+    "gradient/gradient-11",
+    "folga/folga-15"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r02/s02-glass"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "photo": "french/french-10",
+          "tone": "mono",
+          "sfx": "swish"
+        },
+        {
+          "photo": "gradient/gradient-01",
+          "tone": "mono",
+          "from": "три"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "stemping/stemping-11",
+          "sfx": "shimmer"
+        },
+        {
+          "clip": "r06/s01-hook",
+          "frame": "phone",
+          "from": "фото",
+          "sfx": "swish"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "clip": "r07/s08-reveal",
+          "label": "Начни сегодня",
+          "label_at": "начнёшь"
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "photo": "pigmenty/pigmenty-04",
+          "sfx": "swish",
+          "stats": [
+            {
+              "big": "11",
+              "small": "техник",
+              "at": "Одиннадцать"
+            },
+            {
+              "big": "~5 ч",
+              "small": "практики",
+              "at": "пять"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r07/s09-end",
+    "from": "line:5:Курс",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

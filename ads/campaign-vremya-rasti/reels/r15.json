@@ -1,0 +1,110 @@
+{
+  "reel": "r15",
+  "title": "Надоела однотонка",
+  "headline": [
+    {
+      "text": "Однотонка, снова однотонка…",
+      "at": "start"
+    },
+    {
+      "text": "Пора расти",
+      "at": "line:1:пора",
+      "accent": true,
+      "sfx": "thump"
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "aerografiya/aerografiya-08",
+    "akvarium/akvarium-07",
+    "vtirka/vtirka-05",
+    "slaidery/slaidery-12",
+    "french/french-04",
+    "pigmenty/pigmenty-03",
+    "stemping/stemping-05",
+    "strazy/strazy-07",
+    "tekstury/tekstury-12",
+    "gradient/gradient-11",
+    "folga/folga-15"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r08/s01-plain",
+          "tone": "mono"
+        },
+        {
+          "photo": "french/french-10",
+          "tone": "mono",
+          "from": "снова"
+        },
+        {
+          "photo": "gradient/gradient-01",
+          "tone": "mono",
+          "from": "опять"
+        },
+        {
+          "photo": "vtirka/vtirka-15",
+          "tone": "mono",
+          "from": "Надоело"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "photo": "french/french-01",
+          "tone": "mono"
+        },
+        {
+          "clip": "r04/s11-pink",
+          "from": "пора",
+          "sfx": "shimmer"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "pigmenty/pigmenty-03",
+          "sfx": "swish"
+        },
+        {
+          "photo": "slaidery/slaidery-12",
+          "from": "идеи"
+        },
+        {
+          "photo": "aerografiya/aerografiya-08",
+          "from": "клиентки"
+        },
+        {
+          "photo": "akvarium/akvarium-07",
+          "from": "радость"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r04/s10-end",
+    "from": "line:3:курсе",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

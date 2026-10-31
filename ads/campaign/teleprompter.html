@@ -1,0 +1,278 @@
+<title>Суфлёр Nail Design PRO</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600&family=Inter:wght@400;500;600&display=swap">
+<style>
+  /* Layout: one reading column; each reel is a script card; a full-screen reader for recording. */
+  :root {
+    --bg: #fdf8f6;
+    --surface: #ffffff;
+    --blush: #fff1f4;
+    --ink: #3f3434;
+    --muted: #8a7676;
+    --line: #efdfe1;
+    --gold: #b8932c;
+    --rose: #c23a64;
+    --rose-ink: #ffffff;
+    --font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+    --font-body: "Inter", "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1c1618; --surface: #262022; --blush: #33272b; --ink: #f4e9ea; --muted: #b9a6a8;
+      --line: #3d3135; --gold: #e0c26a; --rose: #ec7097; --rose-ink: #1c1618; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1c1618; --surface: #262022; --blush: #33272b; --ink: #f4e9ea; --muted: #b9a6a8;
+    --line: #3d3135; --gold: #e0c26a; --rose: #ec7097; --rose-ink: #1c1618; color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.5;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 24px 64px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; display: grid; gap: 20px; }
+  h1, h2 { font-family: var(--font-display); font-weight: 600; text-wrap: balance; margin: 0; }
+  h1 { font-size: clamp(28px, 6vw, 40px); line-height: 1.1; }
+  .eyebrow { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); font-weight: 600; }
+  .lead { color: var(--muted); margin: 6px 0 0; max-width: 60ch; }
+  .progress { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--muted); }
+  .bar { flex: 1; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--rose); transition: width .3s; }
+
+  details.memo { background: var(--blush); border-radius: 14px; padding: 14px 18px; }
+  details.memo summary { cursor: pointer; font-weight: 600; }
+  details.memo ul { margin: 10px 0 0; padding-left: 20px; display: grid; gap: 6px; }
+
+  .reel { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 20px; display: grid; gap: 12px; }
+  .reel.done { opacity: .62; }
+  .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; }
+  .code { font-family: var(--font-display); font-size: 15px; color: var(--gold); font-weight: 600; }
+  .head h2 { font-size: 22px; }
+  .meta { font-size: 13px; color: var(--muted); }
+  .chip { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; padding: 3px 8px; border-radius: 999px; background: var(--rose); color: var(--rose-ink); }
+  .hook { font-size: 14px; color: var(--muted); }
+  .hook b { color: var(--ink); font-weight: 600; }
+  .vo { font-size: 19px; line-height: 1.6; margin: 0; display: grid; gap: 6px; }
+  .vo p { margin: 0; }
+  .tone { font-size: 14px; color: var(--muted); font-style: italic; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+  label.check { display: inline-flex; gap: 8px; align-items: center; font-size: 15px; cursor: pointer; }
+  label.check input { width: 20px; height: 20px; accent-color: var(--rose); }
+  button { font: inherit; cursor: pointer; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 8px 16px; }
+  button.primary { background: var(--rose); color: var(--rose-ink); border-color: transparent; font-weight: 600; }
+  button:focus-visible, input:focus-visible, summary:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+
+  /* Full-screen reader */
+  .reader { position: fixed; inset: 0; z-index: 20; background: var(--bg); display: grid; grid-template-rows: auto 1fr auto;
+    padding: calc(12px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+  .reader-top, .reader-bottom { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .reader-title { font-family: var(--font-display); font-size: 18px; }
+  .reader-text { overflow-y: auto; padding: 20px 4px; display: grid; align-content: center; gap: .7em; max-width: 34ch; margin: 0 auto; width: 100%; }
+  .reader-text p { margin: 0; font-size: var(--reader-size, 30px); line-height: 1.45; font-weight: 500; }
+  .reader-text .rhook { font-size: 15px; color: var(--muted); font-weight: 400; }
+  @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Кампания «За дизайн доплачивают»</div>
+    <h1>Тексты для озвучки</h1>
+    <p class="lead">10 коротких роликов для Reels. Каждая строка — отдельная фраза: между строками небольшая пауза. Начните с роликов, отмеченных «Сначала»: на них соберём пилот.</p>
+  </header>
+
+  <div class="progress" aria-live="polite"><span id="count">Записано 0 из 10</span><div class="bar"><i id="fill"></i></div></div>
+
+  <details class="memo" open>
+    <summary>Как записывать</summary>
+    <ul>
+      <li>Тихая комната. Лучше всего у шкафа с одеждой или под пледом: ткань гасит эхо.</li>
+      <li>Диктофон телефона, телефон в 15–20 см ото рта и чуть сбоку.</li>
+      <li>Перед каждым текстом 2 секунды тишины.</li>
+      <li>Каждый текст 2–3 раза подряд, с разной энергией. Оговорились — просто повторите фразу, паузы и ошибки вырежем при монтаже.</li>
+      <li>Говорите чуть бодрее, чем в уроках: в Reels голос должен «улыбаться». Темп спокойный, не торопитесь.</li>
+      <li>Название файла: номер ролика и дубль, например «R03 дубль 2». Один ролик — один файл.</li>
+      <li>Кнопка «Читать крупно» открывает текст на весь экран и не даёт экрану погаснуть.</li>
+    </ul>
+  </details>
+
+  <main id="list" class="wrap" style="gap:16px"></main>
+</div>
+
+<div class="reader" id="reader" hidden role="dialog" aria-modal="true" aria-labelledby="readerTitle">
+  <div class="reader-top">
+    <span class="reader-title" id="readerTitle"></span>
+    <span style="display:flex;gap:8px">
+      <button id="smaller" aria-label="Уменьшить текст">A−</button>
+      <button id="bigger" aria-label="Увеличить текст">A+</button>
+      <button id="close">Закрыть</button>
+    </span>
+  </div>
+  <div class="reader-text" id="readerText"></div>
+  <div class="reader-bottom">
+    <button id="prev">← Предыдущий</button>
+    <button id="markDone" class="primary">Записано</button>
+    <button id="next">Следующий →</button>
+  </div>
+</div>
+
+<script>
+const REELS = [
+  { code: "R1", title: "11 дизайнов", kind: "Охват", dur: "~24 с", first: true,
+    hook: "11 дизайнов, за которые доплачивают",
+    tone: "Ритмично. Каждое название — отдельный удар с короткой паузой. Последние две фразы спокойнее.",
+    vo: ["Одиннадцать дизайнов, за которые клиенты доплачивают.",
+         "Фольга. Аквариум. Втирка. Слайдеры. Френч. Пигменты.",
+         "Стемпинг. Стразы. Текстуры. Градиент. Аэрография.",
+         "Сколько из них уже есть в вашем прайсе?",
+         "Все одиннадцать я разобрала по шагам — с материалами и ошибками — в курсе Nail Design PRO.",
+         "Ссылка в шапке профиля."] },
+  { code: "R2", title: "Аквариум", kind: "Охват", dur: "~26 с",
+    hook: "Эффект стекла: куда прятать декор",
+    tone: "Мягко, с восхищением, как будто показываете подруге. «Просто посмотрите…» — с улыбкой.",
+    vo: ["Хотите, чтобы блёстки и декор выглядели как будто под стеклом? Это аквариум.",
+         "Декор кладём в базу, сверху ещё слой базы — для сцепки, потом прозрачный гель.",
+         "Молочный гель ведём от кутикулы до середины свободного края и опилом сводим на нет.",
+         "И не размахивайте кистью — отсюда пузыри.",
+         "Просто посмотрите, какая красота получается.",
+         "Урок «Аквариум» — в курсе Nail Design PRO. Ссылка в профиле."] },
+  { code: "R3", title: "Фольга не отпечатывается", kind: "Ошибка", dur: "~25 с", first: true,
+    hook: "Фольга не отпечатывается? Дело не в фольге",
+    tone: "Уверенно. Первая фраза — с лёгкой иронией. Перед «Дело не в фольге» — пауза.",
+    vo: ["Фольга не отпечатывается, и вы уже меняете фирму?",
+         "Дело не в фольге.",
+         "Она переносится только на липкую поверхность: гель-лак с остаточной липкостью, базу, бескислотный праймер или клей.",
+         "И каждый материал сохнет по-своему: база не досохла — фольга не отпечатается.",
+         "Поймали момент — чистый отпечаток с первого раза.",
+         "Все способы переноса — в уроке «Фольга». Курс Nail Design PRO, ссылка в профиле."] },
+  { code: "R4", title: "Втирка с проплешинами", kind: "Ошибка", dur: "~26 с",
+    hook: "Втирка с проплешинами? Протрите топ",
+    tone: "По-деловому. Лайфхак — чуть заговорщицки, как секрет.",
+    vo: ["Втирка ложится с проплешинами?",
+         "Причин три: неподходящий топ, мало втирки и неровная поверхность.",
+         "А если втирка капризничает на горячем топе — лайфхак: протрите топ безворсовой салфеткой с обезжиривателем и дайте подсохнуть.",
+         "После этого втирается любая.",
+         "А чтобы не стиралась на кончике — бескислотный праймер и топ в два слоя.",
+         "Все лайфхаки — в уроке «Втирка». Ссылка на курс в профиле."] },
+  { code: "R5", title: "Слайдер отслоился", kind: "Ошибка", dur: "~27 с",
+    hook: "Слайдер отслоился? 3 причины",
+    tone: "Чётко, как будто считаете на пальцах: «Первая… Вторая… Третья».",
+    vo: ["Слайдер с пузырями или отслоился после топа? Три причины.",
+         "Первая — не выгнали воздух: выгоняем пальчиком или силиконовым копытцем.",
+         "Вторая — завели за кутикулу: оставляйте миллиметр до кутикулы и до кончика.",
+         "Третья — кислотная база разъедает плёнку: подсушите её три-пять секунд.",
+         "А надрезы по краю нужны, чтобы плёнка легла без заломов.",
+         "Урок «Слайдеры» — в курсе Nail Design PRO. Ссылка в профиле."] },
+  { code: "R6", title: "Ровный френч", kind: "Ошибка", dur: "~27 с",
+    hook: "Ровный френч начинается со схемы",
+    tone: "Спокойно, как объяснение на уроке. Каждый шаг — отдельной фразой.",
+    vo: ["Чтобы нарисовать чёткий френч, нужна схема.",
+         "Ставим точки высоты усов и центр свободного края.",
+         "Каждую половинку делим ещё пополам — к этим точкам ведём усы.",
+         "Горизонтальной линией задаём ширину и скругляем углы. Симметрию проверяем на каждом шаге.",
+         "А на миндале усы ведём сразу к центру.",
+         "Схемы для всех форм — в уроке «Френч». Курс Nail Design PRO, ссылка в профиле."] },
+  { code: "R7", title: "Стразы перестают блестеть", kind: "Ошибка", dur: "~22 с",
+    hook: "Почему стразы перестают блестеть",
+    tone: "Вопрос — с сочувствием, ответ — уверенно.",
+    vo: ["Покрыли стразы топом — и блеск пропал? Материал замазал грани.",
+         "Стразы фиксируем только по торцам и в промежутках — на сами камни ничего не кладём.",
+         "А крупные стразы не ставим на кончик: это самое уязвимое место ногтя.",
+         "Как собрать царь-ноготь, который держится и блестит, — в уроке «Стразы». Ссылка на курс в профиле."] },
+  { code: "R8", title: "Однотонку умеют все", kind: "Продажа", dur: "~28 с",
+    hook: "Однотонку умеют все",
+    tone: "Медленнее всех, весомо. «А доплачивают за дизайн» — после паузы.",
+    vo: ["Однотонку сегодня умеет каждый мастер.",
+         "А доплачивают за дизайн.",
+         "Я собрала одиннадцать техник — от фольги и втирки до аэрографии.",
+         "Каждая — пошагово, с материалами и разбором ошибок. Всё, что я наработала с опытом.",
+         "Почти пять часов практики и тридцать дней доступа.",
+         "Это хороший плюс к вашему прайсу. Курс Nail Design PRO. Ссылка в профиле."] },
+  { code: "R9", title: "Что внутри курса", kind: "Продажа", dur: "~38 с",
+    hook: "Что внутри курса за 5 900 ₽",
+    tone: "Дружелюбно, по пунктам, без спешки.",
+    vo: ["Что вы получаете за пять тысяч девятьсот.",
+         "Одиннадцать видеоуроков — по одной технике в каждом.",
+         "Почти пять часов практики: материалы, подготовка, перенос, закрепление.",
+         "В каждом уроке — разбор ошибок: почему не отпечаталось, откуда пузыри и проплешины, почему отслойка.",
+         "Смотрите с телефона, в своём темпе, тридцать дней.",
+         "И всё это — за пять тысяч девятьсот.",
+         "Ссылка в шапке профиля."] },
+  { code: "R10", title: "Это дорого?", kind: "Продажа", dur: "~20 с",
+    hook: "5 900 ₽ за курс — это дорого?",
+    tone: "С улыбкой. «Давайте посчитаем» — легко, по-дружески.",
+    vo: ["Пять девятьсот за курс — дорого? Давайте посчитаем.",
+         "Одиннадцать техник — меньше пятисот пятидесяти рублей за каждую.",
+         "Один раз освоили — и техника навсегда в вашем прайсе.",
+         "А тридцати дней доступа хватит, чтобы спокойно отработать все.",
+         "Курс Nail Design PRO. Ссылка в профиле."] },
+];
+
+const STORE = "nailpro-vo-done";
+let done = {};
+try { done = JSON.parse(localStorage.getItem(STORE) || "{}") || {}; } catch (e) { done = {}; }
+function save() { try { localStorage.setItem(STORE, JSON.stringify(done)); } catch (e) {} }
+
+const list = document.getElementById("list");
+function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+
+function render() {
+  list.textContent = "";
+  REELS.forEach((r, i) => {
+    const card = el("article", "reel" + (done[r.code] ? " done" : ""));
+    const head = el("div", "head");
+    head.append(el("span", "code", r.code), el("h2", null, r.title));
+    if (r.first) head.append(el("span", "chip", "Сначала"));
+    head.append(el("span", "meta", r.kind + " · " + r.dur));
+    const hook = el("div", "hook"); hook.append("Надпись на экране: "); hook.append(el("b", null, r.hook));
+    const vo = el("div", "vo"); r.vo.forEach(line => vo.append(el("p", null, line)));
+    const tone = el("div", "tone", "Как читать: " + r.tone);
+    const row = el("div", "row");
+    const lab = el("label", "check"); const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.id = "done-" + r.code; cb.checked = !!done[r.code];
+    cb.addEventListener("change", () => { done[r.code] = cb.checked; save(); render(); });
+    lab.append(cb, document.createTextNode("Записано"));
+    const btn = el("button", "primary", "Читать крупно"); btn.id = "read-" + r.code;
+    btn.addEventListener("click", () => openReader(i));
+    row.append(lab, btn);
+    card.append(head, hook, vo, tone, row);
+    list.append(card);
+  });
+  const n = REELS.filter(r => done[r.code]).length;
+  document.getElementById("count").textContent = "Записано " + n + " из " + REELS.length;
+  document.getElementById("fill").style.width = (n / REELS.length * 100) + "%";
+}
+
+// Reader
+const reader = document.getElementById("reader");
+const readerText = document.getElementById("readerText");
+let current = 0, size = 30, lock = null;
+try { size = Number(localStorage.getItem(STORE + "-size")) || 30; } catch (e) {}
+function applySize() { reader.style.setProperty("--reader-size", size + "px"); try { localStorage.setItem(STORE + "-size", String(size)); } catch (e) {} }
+function fillReader() {
+  const r = REELS[current];
+  document.getElementById("readerTitle").textContent = r.code + " · " + r.title;
+  readerText.textContent = "";
+  readerText.append(el("p", "rhook", "Как читать: " + r.tone));
+  r.vo.forEach(line => readerText.append(el("p", null, line)));
+  readerText.scrollTop = 0;
+  document.getElementById("markDone").textContent = done[r.code] ? "Записано ✓" : "Отметить записанным";
+}
+async function keepAwake() { try { if ("wakeLock" in navigator) lock = await navigator.wakeLock.request("screen"); } catch (e) { lock = null; } }
+function openReader(i) { current = i; fillReader(); applySize(); reader.hidden = false; keepAwake(); document.getElementById("close").focus(); }
+function closeReader() { reader.hidden = true; try { lock && lock.release(); } catch (e) {} lock = null; render(); }
+document.getElementById("close").addEventListener("click", closeReader);
+document.getElementById("prev").addEventListener("click", () => { current = (current + REELS.length - 1) % REELS.length; fillReader(); });
+document.getElementById("next").addEventListener("click", () => { current = (current + 1) % REELS.length; fillReader(); });
+document.getElementById("bigger").addEventListener("click", () => { size = Math.min(48, size + 2); applySize(); });
+document.getElementById("smaller").addEventListener("click", () => { size = Math.max(20, size - 2); applySize(); });
+document.getElementById("markDone").addEventListener("click", () => { const c = REELS[current].code; done[c] = !done[c]; save(); fillReader(); });
+document.addEventListener("keydown", e => { if (!reader.hidden && e.key === "Escape") closeReader(); });
+document.addEventListener("visibilitychange", () => { if (!reader.hidden && document.visibilityState === "visible") keepAwake(); });
+
+render();
+</script>

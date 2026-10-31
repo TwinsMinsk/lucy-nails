@@ -1,0 +1,45 @@
+{
+  "reel": "r17",
+  "size": 680,
+  "shots": [
+    {
+      "id": "g01-gradient-set",
+      "slug": "gradient",
+      "start": 1504.3,
+      "end": 1506.4,
+      "cx": 620,
+      "cy": 360,
+      "note": "finished neon gradient set (wine-red, peach, pink-to-yellow, silver glitter) resting on the table, slight sway; no subtitles"
+    },
+    {
+      "id": "g02-airbrush-pink",
+      "slug": "aerografiya",
+      "start": 1116.0,
+      "end": 1119.6,
+      "cx": 560,
+      "cy": 360,
+      "size": 720,
+      "note": "finished pink airbrush set with a neon-yellow line, hand turns slowly; no subtitles"
+    },
+    {
+      "id": "g03-airbrush-violet",
+      "slug": "aerografiya",
+      "start": 1127.0,
+      "end": 1130.0,
+      "cx": 760,
+      "cy": 300,
+      "note": "finished violet, grey and periwinkle airbrush set, calm; no subtitles",
+      "size": 640
+    },
+    {
+      "id": "g04-texture-set",
+      "slug": "tekstury",
+      "start": 1452.9,
+      "end": 1455.1,
+      "cx": 680,
+      "cy": 360,
+      "size": 720,
+      "note": "finished texture set: violet marble, deep-blue swirl, galaxy, white marble with gold; no subtitles"
+    }
+  ]
+}

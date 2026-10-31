@@ -1,0 +1,22 @@
+# Heavy or generated: rendered reels, clip cache, voice-over takes, third-party tools
+.venv/
+vendor/
+cache/
+vo/
+out/
+node_modules/
+*.mp4
+*.wav
+*.mov
+
+# Rebuilt by the pipeline from the shot lists, beat sheets and works photos.
+# Lesson clips must never be committed: the repository is public and the lessons are the paid course.
+video/index.html
+video/.hyperframes/
+video/assets/clips/
+video/assets/photos/
+video/assets/vo/
+video/assets/sfx/
+
+# Agent tooling state
+.omc/

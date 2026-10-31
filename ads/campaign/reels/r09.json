@@ -1,0 +1,186 @@
+{
+  "reel": "r09",
+  "title": "Что внутри курса",
+  "headline": [
+    {
+      "text": "Что внутри курса",
+      "at": "start"
+    },
+    {
+      "text": "за 5 900 ₽",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "grid": [
+    "folga/folga-18",
+    "akvarium/akvarium-08",
+    "vtirka/vtirka-01",
+    "slaidery/slaidery-05",
+    "french/french-12",
+    "pigmenty/pigmenty-10",
+    "stemping/stemping-09",
+    "strazy/strazy-07",
+    "tekstury/tekstury-11",
+    "gradient/gradient-12",
+    "aerografiya/aerografiya-10"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "grid": true
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "card": "modules",
+          "sfx": "swish",
+          "rows": [
+            [
+              "Фольга",
+              "23 мин"
+            ],
+            [
+              "Аквариум",
+              "30 мин"
+            ],
+            [
+              "Втирка",
+              "24 мин"
+            ],
+            [
+              "Слайдеры и наклейки",
+              "21 мин"
+            ],
+            [
+              "Френч",
+              "42 мин"
+            ],
+            [
+              "Пигменты",
+              "13 мин"
+            ],
+            [
+              "Стемпинг",
+              "18 мин"
+            ],
+            [
+              "Стразы и объёмный декор",
+              "47 мин"
+            ],
+            [
+              "Текстуры",
+              "25 мин"
+            ],
+            [
+              "Градиент",
+              "25 мин"
+            ],
+            [
+              "Аэрография",
+              "19 мин"
+            ]
+          ]
+        },
+        {
+          "clip": "s01-materials",
+          "from": "материалы",
+          "label": "Материалы",
+          "sfx": "swish"
+        },
+        {
+          "clip": "s02-prep",
+          "from": "подготовка",
+          "label": "Подготовка"
+        },
+        {
+          "clip": "s03-transfer",
+          "from": "перенос",
+          "label": "Перенос"
+        },
+        {
+          "clip": "s04-top",
+          "from": "закрепление",
+          "label": "Закрепление"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "clip": "r07/s02-gel",
+          "label": "Разбор ошибок",
+          "sfx": "swish"
+        },
+        {
+          "clip": "r03/s01-tear",
+          "from": "отпечаталось",
+          "label": "Не отпечаталось"
+        },
+        {
+          "clip": "r05/s03-air",
+          "from": "пузыри",
+          "label": "Пузыри"
+        },
+        {
+          "clip": "r04/s01-hook",
+          "from": "проплешины",
+          "label": "Проплешины"
+        },
+        {
+          "clip": "r05/s01-hook",
+          "from": "отслойка",
+          "label": "Отслойка"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "clip": "r02/s09-blue",
+          "frame": "phone",
+          "label": "30 дней доступа",
+          "sfx": "swish"
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "card": "tariffs",
+          "sfx": "shimmer",
+          "tariffs": [
+            {
+              "title": "Nail Design PRO",
+              "price": "5 900 ₽",
+              "features": [
+                "11 видеоуроков",
+                "~5 часов практики",
+                "30 дней доступа",
+                "С телефона и ПК"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "s05-end",
+    "from": "line:5",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "11 техник, за которые доплачивают",
+    "cta": "Ссылка в профиле"
+  },
+  "min_shot": 0.7
+}
