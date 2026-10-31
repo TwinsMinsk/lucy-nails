@@ -91,6 +91,13 @@ def _to_str(value):
         return {k: _to_str(v) for k, v in sorted(value.items())}
     if isinstance(value, list):
         return [_to_str(v) for v in value]
+    # PHP strval(): None -> "", True -> "1", False -> "", 5900.0 -> "5900"
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "1" if value else ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
     return str(value)
 
 def prodamus_sign(data: dict, secret: str) -> str:
@@ -109,12 +116,10 @@ This exact algorithm is what produces the `signature` query param on outbound li
 ### 4. Generate a payment link (From codebase — pattern used in production)
 
 ```python
+product = {"name": course_name, "price": str(price), "quantity": "1", "type": "course"}
 params = {
     "do": "pay",
-    "products[0][name]":     course_name,
-    "products[0][price]":    str(price),
-    "products[0][quantity]": "1",
-    "products[0][type]":     "course",
+    **{f"products[0][{k}]": v for k, v in product.items()},
     "urlSuccess":      f"{frontend}/payment-success",
     "urlReturn":       f"{frontend}/#pricing",
     "urlNotification": f"{backend}/api/payments/webhook",
@@ -125,7 +130,11 @@ params = {
 if environment != "production":
     params["demo_mode"] = "1"
 
-params["signature"] = prodamus_sign(params, PRODAMUS_SECRET_KEY)
+# Sign the NESTED structure Prodamus rebuilds from products[0][...] query keys.
+# Signing the flat dict is rejected with «Ошибка подписи передаваемых данных».
+sign_data = {k: v for k, v in params.items() if not k.startswith("products[")}
+sign_data["products"] = [product]
+params["signature"] = prodamus_sign(sign_data, PRODAMUS_SECRET_KEY)
 link = f"https://{merchant}.payform.ru/?{urlencode(params, quote_via=quote)}"
 ```
 
