@@ -1,6 +1,6 @@
 """Cut a reel's shots out of the lessons as square, upscaled, subtitle-free clips.
 
-A shot list lives in ads/campaign/shots/<reel>.json:
+A shot list lives in the reel's campaign folder, ads/campaign*/shots/<reel>.json:
 
     {"reel": "r03", "size": 600, "shots": [
         {"id": "s01-tear", "slug": "folga", "start": 65.5, "end": 68.5, "cx": 980, "cy": 311,
@@ -39,7 +39,11 @@ FINISH = "unsharp=5:5:0.6:5:5:0.0,eq=saturation=1.06:contrast=1.03"
 
 
 def load(reel: str) -> dict:
-    return json.loads((ADS / "campaign" / "shots" / f"{reel}.json").read_text(encoding="utf-8"))
+    """The shot list in the reel's campaign folder (ads/campaign*/shots/<reel>.json)."""
+    found = sorted(ADS.glob(f"campaign*/shots/{reel}.json"))
+    if not found:
+        raise SystemExit(f"No ads/campaign*/shots/{reel}.json")
+    return json.loads(found[0].read_text(encoding="utf-8"))
 
 
 def crop_box(shot: dict, default_size: int) -> tuple[int, int, int]:

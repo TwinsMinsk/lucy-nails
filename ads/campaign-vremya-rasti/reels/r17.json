@@ -1,0 +1,153 @@
+{
+  "reel": "r17",
+  "title": "Секреты не расскажу",
+  "headline": [
+    {
+      "text": "Секреты не расскажу.",
+      "at": "start"
+    },
+    {
+      "text": "Покажу результат",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "min_shot": 0.6,
+  "grid": [
+    "folga/folga-09",
+    "akvarium/akvarium-02",
+    "vtirka/vtirka-13",
+    "slaidery/slaidery-12",
+    "french/french-04",
+    "pigmenty/pigmenty-06",
+    "stemping/stemping-05",
+    "strazy/strazy-05",
+    "tekstury/tekstury-02",
+    "gradient/gradient-03",
+    "aerografiya/aerografiya-16"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "photo": "strazy/strazy-05"
+        },
+        {
+          "clip": "r17/g02-airbrush-pink",
+          "from": "Покажу",
+          "sfx": "shimmer"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "clip": "r03/s11-set",
+          "sfx": "swish"
+        },
+        {
+          "photo": "aerografiya/aerografiya-16",
+          "from": "перестаёт"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "clip": "r17/g01-gradient-set",
+          "label": "Неон"
+        },
+        {
+          "clip": "r02/s02-glass",
+          "from": "Глубина",
+          "label": "Глубина"
+        },
+        {
+          "clip": "r17/g04-texture-set",
+          "from": "Мрамор",
+          "label": "Мрамор"
+        },
+        {
+          "photo": "vtirka/vtirka-13",
+          "from": "Хром",
+          "label": "Хром"
+        },
+        {
+          "clip": "r07/s01-hook",
+          "from": "Кристаллы",
+          "label": "Кристаллы"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "photo": "folga/folga-11",
+          "sfx": "swish"
+        },
+        {
+          "photo": "akvarium/akvarium-02",
+          "from": "услуга"
+        },
+        {
+          "photo": "pigmenty/pigmenty-06",
+          "from": "клиентка",
+          "label": "Вернётся к тебе",
+          "label_at": "вернётся"
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r08/s06-end",
+    "from": "line:4:курсе",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  },
+  "hooks": {
+    "b": {
+      "headline": [
+        {
+          "text": "Не покажу как.",
+          "at": "start"
+        },
+        {
+          "text": "Покажу, что получится",
+          "at": "start",
+          "accent": true
+        }
+      ]
+    },
+    "c": {
+      "headline": [
+        {
+          "text": "А ты",
+          "at": "start"
+        },
+        {
+          "text": "так умеешь?",
+          "at": "start",
+          "accent": true
+        }
+      ]
+    }
+  }
+}

@@ -14,7 +14,7 @@
 
 - Сценарии и тексты озвучки: [`campaign/scripts.md`](campaign/scripts.md) (единственный источник текста)
 - Суфлёр для записи: [`campaign/teleprompter.html`](campaign/teleprompter.html), опубликован как Artifact
-- Кадры ролика: `campaign/shots/<reel>.json`; что играет под какими словами: `campaign/reels/<reel>.json`
+- Кадры ролика: `campaign*/shots/<reel>.json`; что играет под какими словами: `campaign*/reels/<reel>.json`
 - Кадр в `reels/<reel>.json` — клип из урока (`"clip"`; `"r03/s01-tear"` берёт клип другого ролика), фото работы
   (`"photo": "folga/folga-14"` из `frontend/public/works`), сетка фото (`"grid": true`: пронумерованные фото или
   список `"grid"` ролика) или графическая карточка (`"card": "modules" | "tariffs" | "calc"`, R9, R10).
@@ -24,6 +24,10 @@
   `"frame": "phone"` — клип на экране телефона (R9). На весь ролик: `"scheme"` — схема в углу окна, которая
   рисуется под слова (R6). Финал (`"end"`) — клип или фото.
 - Фото `works/folga/folga-07` и `folga-10` подписаны другими мастерами («Мастер … LS Studio») — в рекламу не брать.
+- Не брать в рекламу и фото с надписями или чужими логотипами на ногтях: `slaidery-04` («SEX», «99% angel 1% demon»),
+  `pigmenty-12` и `stemping-12` (нецензурная надпись), `french-18` (нецензурное слово), `french-12` («Oooh baby»),
+  `french-14` (логотип Louis Vuitton), `strazy-10` (логотип Barbie), `folga-13` (обёртка «Love is»). Найдены 31.10.2026
+  при проверке кампании «Время расти»: перед тем как брать новое фото, смотреть его крупно.
 
 ## Старые субтитры
 

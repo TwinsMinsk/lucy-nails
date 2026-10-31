@@ -1,0 +1,126 @@
+{
+  "reel": "r19",
+  "title": "Я не умею рисовать",
+  "headline": [
+    {
+      "text": "«Я не умею рисовать»",
+      "at": "start"
+    },
+    {
+      "text": "Талант не нужен",
+      "at": "line:3:Талант",
+      "accent": true,
+      "sfx": "thump"
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "folga/folga-09",
+    "akvarium/akvarium-05",
+    "vtirka/vtirka-11",
+    "stemping/stemping-02",
+    "strazy/strazy-01",
+    "slaidery/slaidery-09",
+    "gradient/gradient-05",
+    "folga/folga-11",
+    "akvarium/akvarium-02",
+    "vtirka/vtirka-13",
+    "pigmenty/pigmenty-06"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r08/s01-plain",
+          "tone": "mono"
+        },
+        {
+          "photo": "aerografiya/aerografiya-01",
+          "tone": "mono",
+          "from": "Слышу"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "photo": "folga/folga-09",
+          "sfx": "shimmer"
+        },
+        {
+          "photo": "akvarium/akvarium-05",
+          "from": "работы"
+        },
+        {
+          "photo": "vtirka/vtirka-11",
+          "from": "нет",
+          "label": "Без рисования",
+          "label_at": "нет"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "stemping/stemping-02",
+          "sfx": "swish"
+        },
+        {
+          "photo": "strazy/strazy-01",
+          "from": "порядок"
+        },
+        {
+          "photo": "slaidery/slaidery-09",
+          "from": "практика"
+        },
+        {
+          "clip": "r09/s02-prep",
+          "from": "покрытием"
+        },
+        {
+          "photo": "gradient/gradient-05",
+          "from": "каждый"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "clip": "r17/g01-gradient-set"
+        },
+        {
+          "photo": "folga/folga-11",
+          "from": "Нужно"
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        },
+        {
+          "photo": "vtirka/vtirka-09",
+          "from": "большинство",
+          "label": "Без рисования от руки"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r10/s01-end",
+    "from": "line:4:Ссылка",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}
