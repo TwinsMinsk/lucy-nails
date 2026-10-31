@@ -1,0 +1,36 @@
+{
+  "reel": "r10",
+  "title": "Это дорого?",
+  "headline": [
+    {"text": "5 900 ₽ за курс —", "at": "start"},
+    {"text": "это дорого?", "at": "start", "accent": true}
+  ],
+  "speaker": "Люся Смирнова",
+  "grid": ["folga/folga-18", "akvarium/akvarium-08", "vtirka/vtirka-01", "slaidery/slaidery-05", "french/french-12",
+           "pigmenty/pigmenty-10", "stemping/stemping-09", "strazy/strazy-07", "tekstury/tekstury-11",
+           "gradient/gradient-12", "aerografiya/aerografiya-10"],
+  "beats": [
+    {"line": 0, "clips": [{"card": "calc", "steps": [
+      {"text": "5 900 ₽", "style": "big"},
+      {"text": "÷ 11 техник", "at": "line:1:Одиннадцать"},
+      {"text": "≈ {} ₽", "count": 536, "style": "result", "at": "line:1:меньше", "sfx": "shimmer"},
+      {"text": "за одну технику", "style": "small", "at": "line:1:меньше", "sfx": null}
+    ]}]},
+    {"line": 2, "clips": [
+      {"photo": "folga/folga-19", "sfx": "swish"},
+      {"photo": "french/french-03", "from": "освоили"},
+      {"photo": "gradient/gradient-12", "from": "техника", "label": "Навсегда в прайсе", "label_at": "навсегда"}
+    ]},
+    {"line": 3, "clips": [
+      {"photo": "strazy/strazy-07", "stats": [{"big": "30", "small": "дней доступа", "at": "тридцати"}]}
+    ]}
+  ],
+  "end": {
+    "clip": "s01-end",
+    "from": "line:4:Курс",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "11 техник, за которые доплачивают",
+    "cta": "Ссылка в профиле"
+  }
+}

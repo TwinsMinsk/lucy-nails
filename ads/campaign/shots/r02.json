@@ -1,0 +1,109 @@
+{
+  "reel": "r02",
+  "size": 600,
+  "shots": [
+    {
+      "id": "s01-hook",
+      "slug": "akvarium",
+      "start": 1320.3,
+      "end": 1323.8,
+      "cx": 770,
+      "cy": 380,
+      "note": "hook/cover: pink stained-glass gel over broken-glass shards, finger turns so light runs over the shards; no subtitles on screen, so the square sits lower (line 0)"
+    },
+    {
+      "id": "s02-glass",
+      "slug": "akvarium",
+      "start": 129.4,
+      "end": 131.9,
+      "cx": 730,
+      "cy": 360,
+      "size": 660,
+      "note": "side profile: holo glitter sealed inside the clear gel tip, hand sways slightly; subtitle-free, so a lower, wider square (line 0: 'this is aquarium')"
+    },
+    {
+      "id": "s03-decor",
+      "slug": "akvarium",
+      "start": 1075.0,
+      "end": 1078.6,
+      "cx": 600,
+      "cy": 345,
+      "size": 540,
+      "note": "brush lays rainbow glitter into wet base (line 1: decor into base)"
+    },
+    {
+      "id": "s04-base",
+      "slug": "akvarium",
+      "start": 894.8,
+      "end": 897.8,
+      "cx": 620,
+      "cy": 315,
+      "note": "base brushed over heart/shell decor for grip (line 1: base layer on top)"
+    },
+    {
+      "id": "s05-clear-gel",
+      "slug": "akvarium",
+      "start": 1165.0,
+      "end": 1168.5,
+      "cx": 670,
+      "cy": 315,
+      "note": "clear gel spread with a brush over rainbow shards (line 1: then clear gel)"
+    },
+    {
+      "id": "s06-milky",
+      "slug": "akvarium",
+      "start": 441.0,
+      "end": 445.0,
+      "cx": 630,
+      "cy": 315,
+      "note": "milky gel brushed from the cuticle down over the pink glitter tip (line 2)"
+    },
+    {
+      "id": "s07-file",
+      "slug": "akvarium",
+      "start": 492.2,
+      "end": 495.0,
+      "cx": 740,
+      "cy": 315,
+      "note": "grey file edge strokes the side; milky-to-pink gradient fades to nothing (line 2: file it away); no brand label in shot"
+    },
+    {
+      "id": "s08-calm-brush",
+      "slug": "akvarium",
+      "start": 948.5,
+      "end": 952.0,
+      "cx": 690,
+      "cy": 315,
+      "note": "slow, small brush strokes levelling gel over shell hearts, no bubbles (line 3: don't wave the brush)"
+    },
+    {
+      "id": "s09-blue",
+      "slug": "akvarium",
+      "start": 1347.0,
+      "end": 1350.5,
+      "cx": 730,
+      "cy": 315,
+      "note": "blue stained-glass over shards, finger turns, shards flash (line 4: just look)"
+    },
+    {
+      "id": "s10-gold",
+      "slug": "akvarium",
+      "start": 1592.6,
+      "end": 1596.6,
+      "cx": 680,
+      "cy": 350,
+      "size": 560,
+      "note": "finished nail: glitter, hexagons and gold charms under gel, slight turn (line 4: what beauty)"
+    },
+    {
+      "id": "s11-end",
+      "slug": "akvarium",
+      "start": 1775.6,
+      "end": 1780.7,
+      "cx": 490,
+      "cy": 360,
+      "size": 720,
+      "note": "END: finished set in a cupped hand - pink ombre, milky, clear tips with glitter and flowers; full frame, no subtitles (line 5 + CTA)"
+    }
+  ]
+}

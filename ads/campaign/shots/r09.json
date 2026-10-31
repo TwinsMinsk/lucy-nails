@@ -1,0 +1,55 @@
+{
+  "reel": "r09",
+  "size": 600,
+  "shots": [
+    {
+      "id": "s01-materials",
+      "slug": "pigmenty",
+      "start": 6.0,
+      "end": 9.0,
+      "cx": 680,
+      "cy": 327,
+      "note": "hands turning a stack of neon pigment jars"
+    },
+    {
+      "id": "s02-prep",
+      "slug": "gradient",
+      "start": 1284.0,
+      "end": 1287.6,
+      "cx": 560,
+      "cy": 374,
+      "size": 480,
+      "note": "base coat brushed over the nail"
+    },
+    {
+      "id": "s03-transfer",
+      "slug": "tekstury",
+      "start": 675.4,
+      "end": 678.6,
+      "cx": 520,
+      "cy": 309,
+      "note": "gold transfer foil pressed on and torn off, foil stays printed on the nail"
+    },
+    {
+      "id": "s04-top",
+      "slug": "aerografiya",
+      "start": 236.8,
+      "end": 240.4,
+      "cx": 600,
+      "cy": 360,
+      "size": 540,
+      "note": "clear top coat brushed over the airbrushed blue-violet nail"
+    },
+    {
+      "id": "s05-end",
+      "slug": "stemping",
+      "start": 1083.1,
+      "end": 1089.1,
+      "cx": 640,
+      "cy": 360,
+      "size": 720,
+      "note": "finished stamping set close-up: snake, lettering, gold lace, neon gradient; no subtitles on screen, slowed to 0.9 for 6.7 s",
+      "speed": 0.9
+    }
+  ]
+}

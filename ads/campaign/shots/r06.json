@@ -1,0 +1,99 @@
+{
+  "reel": "r06",
+  "size": 480,
+  "shots": [
+    {
+      "id": "s01-hook",
+      "slug": "french",
+      "start": 2500.6,
+      "end": 2503.1,
+      "cx": 500,
+      "cy": 319,
+      "size": 600,
+      "note": "HOOK / cover: daylight close-up of the finished set: pink square french with a crisp smile line, chrome almond above, blue glitter french at the top edge; hand drifts slowly (pink french sinks toward the caption in the last 0.5 s). Hook text + line 0"
+    },
+    {
+      "id": "s02-scheme",
+      "slug": "french",
+      "start": 347.8,
+      "end": 349.8,
+      "cx": 825,
+      "cy": 379,
+      "note": "the scheme on a pink square nail: moustache lines down both sides + centre dot on the free edge, nail fairly still (free edge sways about +-35 px in the 1080 output). Line 0 'нужна схема'; also the scheme-overlay shot"
+    },
+    {
+      "id": "s03-dots",
+      "slug": "french",
+      "start": 121.0,
+      "end": 123.8,
+      "cx": 810,
+      "cy": 379,
+      "note": "natural nail, dotting brush sets the moustache-height dot on the left side wall. Line 1 'Ставим точки высоты усов'"
+    },
+    {
+      "id": "s04-centre",
+      "slug": "french",
+      "start": 136.2,
+      "end": 139.4,
+      "cx": 720,
+      "cy": 379,
+      "note": "brush tip finds the centre of the free edge (tip sits just above the caption band). Line 1 'и центр свободного края'"
+    },
+    {
+      "id": "s05-moustache",
+      "slug": "french",
+      "start": 333.4,
+      "end": 337.0,
+      "cx": 830,
+      "cy": 379,
+      "note": "pink nail, brush draws the right moustache line from the side dot down to the half-point on the free edge. Line 1 'делим ещё пополам — к этим точкам ведём усы'"
+    },
+    {
+      "id": "s06-width",
+      "slug": "french",
+      "start": 351.4,
+      "end": 354.0,
+      "cx": 850,
+      "cy": 379,
+      "note": "brush comes in from the right and draws the horizontal width line along the free edge (line lies right at the caption top). Line 2 'Горизонтальной линией задаём ширину'"
+    },
+    {
+      "id": "s07-round",
+      "slug": "french",
+      "start": 366.0,
+      "end": 369.6,
+      "cx": 900,
+      "cy": 379,
+      "note": "white smile outline already on the pink nail, brush rounds the right corner and evens it up. Line 2 'скругляем углы. Симметрию проверяем'"
+    },
+    {
+      "id": "s08-almond",
+      "slug": "french",
+      "start": 852.0,
+      "end": 855.2,
+      "cx": 880,
+      "cy": 379,
+      "note": "pointed almond: brush pulls the red moustache line down the side straight into the tip centre, red V forms. Line 3 'на миндале усы ведём сразу к центру'"
+    },
+    {
+      "id": "s09-reveal",
+      "slug": "french",
+      "start": 619.9,
+      "end": 623.7,
+      "cx": 540,
+      "cy": 380,
+      "size": 600,
+      "note": "finished frenches side by side: pink square with white smile and white almond with black french, hand turns slightly; subtitle-free span (full_frame_clean). Line 4 'Схемы для всех форм'"
+    },
+    {
+      "id": "s10-end",
+      "slug": "french",
+      "start": 2511.0,
+      "end": 2518.9,
+      "cx": 570,
+      "cy": 319,
+      "size": 600,
+      "note": "END: daylight, the whole finished set turning slowly: blue glitter french, chrome almonds, pink square french; nails in the upper 3/4. Line 4 CTA"
+    }
+  ]
+}

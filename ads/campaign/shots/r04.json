@@ -1,0 +1,107 @@
+{
+  "reel": "r04",
+  "size": 600,
+  "shots": [
+    {
+      "id": "s01-hook",
+      "slug": "vtirka",
+      "start": 483.8,
+      "end": 486.6,
+      "cx": 700,
+      "cy": 338,
+      "size": 540,
+      "note": "hook / cover: prism powder rubbed onto black; holo-silver top half, bare black patch at the tip shrinking under the applicator (patchy vtirka); voice 0 'Втирка ложится с проплешинами?'"
+    },
+    {
+      "id": "s02-top",
+      "slug": "vtirka",
+      "start": 176.6,
+      "end": 179.5,
+      "cx": 580,
+      "cy": 308,
+      "note": "top coat brush stroked along a holo nail; voice 0 cause 1 'неподходящий топ'"
+    },
+    {
+      "id": "s03-powder",
+      "slug": "vtirka",
+      "start": 432.8,
+      "end": 436.0,
+      "cx": 520,
+      "cy": 308,
+      "note": "applicator caked with silver powder rubbed over a white nail, mirror silver appears; voice 0 cause 2 'мало втирки' (не жалеем материала)"
+    },
+    {
+      "id": "s04-surface",
+      "slug": "vtirka",
+      "start": 837.1,
+      "end": 839.8,
+      "cx": 620,
+      "cy": 308,
+      "note": "pastel gradient nail with a smooth glossy levelled top, then the top brush comes in at the cuticle; voice 0 cause 3 'неровная поверхность'"
+    },
+    {
+      "id": "s05-wipe",
+      "slug": "vtirka",
+      "start": 40.9,
+      "end": 42.6,
+      "cx": 780,
+      "cy": 308,
+      "note": "lint-free wipe held beside the glossy white top, then wrapped over the nail; voice 1 'протрите топ безворсовой салфеткой с обезжиривателем'; trimmed before the glove covers the frame"
+    },
+    {
+      "id": "s06-even",
+      "slug": "vtirka",
+      "start": 862.6,
+      "end": 865.6,
+      "cx": 740,
+      "cy": 308,
+      "note": "unicorn powder rubbed over the pastel gradient (degreased top), even opal holo sheen under the applicator; voice 1 'После этого втирается любая'"
+    },
+    {
+      "id": "s07-rose",
+      "slug": "vtirka",
+      "start": 382.0,
+      "end": 385.5,
+      "cx": 640,
+      "cy": 308,
+      "note": "silver chrome rubbed over coral = rose gold, second finish/colour; end of voice 1 ('любая')"
+    },
+    {
+      "id": "s08-primer",
+      "slug": "vtirka",
+      "start": 143.0,
+      "end": 145.8,
+      "cx": 420,
+      "cy": 308,
+      "note": "acid-free primer brushed onto the tip of the holo nail; voice 2 'бескислотный праймер'"
+    },
+    {
+      "id": "s09-toptip",
+      "slug": "vtirka",
+      "start": 1048.5,
+      "end": 1052.0,
+      "cx": 620,
+      "cy": 308,
+      "note": "top brush sealing the tip/edge of a mirror-chrome nail (holo nails beside it); voice 2 'топ в два слоя'"
+    },
+    {
+      "id": "s10-end",
+      "slug": "vtirka",
+      "start": 1402.0,
+      "end": 1410.0,
+      "cx": 600,
+      "cy": 360,
+      "size": 720,
+      "note": "END: finished set on the hand (holo, mirror chrome, chrome pattern, matte black with gold), hand turns slightly so light plays on the holo; no subtitles 1401.2-1412.5 -> full_frame_clean; voice 3 CTA"
+    },
+    {
+      "id": "s11-pink",
+      "slug": "vtirka",
+      "start": 560.0,
+      "end": 563.0,
+      "cx": 680,
+      "cy": 300,
+      "note": "hot-pink chrome, spare from mining; under «дайте подсохнуть»"
+    }
+  ]
+}
