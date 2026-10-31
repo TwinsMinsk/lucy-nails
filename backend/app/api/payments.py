@@ -282,6 +282,10 @@ def _is_success_payment_payload(payload: dict[str, Any]) -> bool:
     return any(value in success_values for value in normalized)
 
 
+def _is_demo_payment_payload(payload: dict[str, Any]) -> bool:
+    return str(payload.get("demo_mode", "")).strip().lower() in {"1", "true"}
+
+
 async def _resolve_course_for_checkout(
     db: AsyncSession,
     course_id_str: str,
@@ -681,6 +685,19 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     event_data = build_payment_event_data(payload)
+    if _is_demo_payment_payload(payload) and not ProdamusService.demo_payments_allowed():
+        # Prodamus signs demo webhooks with the regular secret (observed
+        # 2026-10-31), so the signature alone cannot stop a test payment from
+        # granting access on a live shop.
+        await _record_rejected_webhook(
+            event_data,
+            payload,
+            processing_status="rejected",
+            error_code="demo_payment",
+            error_detail="Demo payment webhook while demo payments are disabled",
+        )
+        logger.warning("Prodamus webhook: demo payment rejected")
+        raise HTTPException(status_code=422, detail="Demo payment")
     if not _is_success_payment_payload(payload):
         await _record_rejected_webhook(
             event_data,

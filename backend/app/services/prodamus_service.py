@@ -200,6 +200,11 @@ class ProdamusService:
         return link
 
     @staticmethod
+    def demo_payments_allowed() -> bool:
+        """Test payments are honoured outside production or when forced on."""
+        return settings.PRODAMUS_DEMO_MODE or settings.ENVIRONMENT.lower() != "production"
+
+    @staticmethod
     def verify_signature(payload: dict, signature: str) -> bool:
         """
         Проверяет HMAC-подпись вебхука от Prodamus.
@@ -230,7 +235,7 @@ class ProdamusService:
         # when demo mode is explicitly enabled (or outside production), otherwise a
         # leaked secret could forge a demo-signed webhook against a live shop and
         # grant free access. See audit 2026-07-06 (P0-2 / INTEG-01).
-        demo_allowed = settings.PRODAMUS_DEMO_MODE or settings.ENVIRONMENT.lower() != "production"
+        demo_allowed = ProdamusService.demo_payments_allowed()
         if demo_allowed:
             expected_demo = _make_signature(payload, secret + "demo")
             if hmac.compare_digest(expected_demo.encode("ascii"), received):
