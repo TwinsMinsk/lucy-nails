@@ -1,0 +1,112 @@
+{
+  "reel": "r35",
+  "title": "Угадай технику",
+  "headline": [
+    {
+      "text": "Угадаешь технику",
+      "at": "start"
+    },
+    {
+      "text": "по фото?",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "aerografiya/aerografiya-13",
+    "akvarium/akvarium-03",
+    "folga/folga-17",
+    "french/french-05",
+    "gradient/gradient-06",
+    "pigmenty/pigmenty-02",
+    "slaidery/slaidery-02",
+    "stemping/stemping-07",
+    "strazy/strazy-03",
+    "tekstury/tekstury-07",
+    "vtirka/vtirka-12"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r07/s01-hook"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "photo": "akvarium/akvarium-03",
+          "sfx": "swish",
+          "stats": [
+            {
+              "big": "1",
+              "small": "угадай",
+              "at": "Номер"
+            }
+          ],
+          "label": "Аквариум",
+          "label_at": "аквариум"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "vtirka/vtirka-12",
+          "sfx": "swish",
+          "stats": [
+            {
+              "big": "2",
+              "small": "угадай",
+              "at": "Номер"
+            }
+          ],
+          "label": "Втирка",
+          "label_at": "втирка"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "photo": "stemping/stemping-07",
+          "sfx": "swish",
+          "stats": [
+            {
+              "big": "3",
+              "small": "угадай",
+              "at": "Номер"
+            }
+          ],
+          "label": "Стемпинг",
+          "label_at": "стемпинг"
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r09/s05-end",
+    "from": "line:4:курсе",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

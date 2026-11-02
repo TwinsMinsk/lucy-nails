@@ -1,0 +1,91 @@
+{
+  "reel": "r37",
+  "title": "Подарок себе",
+  "headline": [
+    {
+      "text": "Что ты подаришь себе",
+      "at": "start"
+    },
+    {
+      "text": "на Новый год?",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "aerografiya/aerografiya-13",
+    "akvarium/akvarium-03",
+    "folga/folga-17",
+    "french/french-05",
+    "gradient/gradient-06",
+    "pigmenty/pigmenty-02",
+    "slaidery/slaidery-02",
+    "stemping/stemping-07",
+    "strazy/strazy-03",
+    "tekstury/tekstury-07",
+    "vtirka/vtirka-12"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r02/s11-end"
+        },
+        {
+          "clip": "r01/e1-set",
+          "from": "А",
+          "sfx": "shimmer",
+          "label": "Подарок себе"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "photo": "vtirka/vtirka-08",
+          "sfx": "swish"
+        },
+        {
+          "clip": "r17/g05-marble-gold",
+          "from": "новые",
+          "label": "Новые техники"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "folga/folga-17",
+          "sfx": "swish"
+        },
+        {
+          "photo": "aerografiya/aerografiya-15",
+          "from": "каждой"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r06/s10-end",
+    "from": "line:3:подарок",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

@@ -40,6 +40,26 @@
       "cy": 360,
       "size": 720,
       "note": "finished texture set: violet marble, deep-blue swirl, galaxy, white marble with gold; no subtitles"
+    },
+    {
+      "id": "g05-marble-gold",
+      "slug": "tekstury",
+      "start": 1469.2,
+      "end": 1472.4,
+      "cx": 720,
+      "cy": 330,
+      "size": 560,
+      "note": "close-up of a white marble nail with gold leaf, hand tilts in the light; no subtitles"
+    },
+    {
+      "id": "g06-neon-lines",
+      "slug": "pigmenty",
+      "start": 761.0,
+      "end": 766.0,
+      "cx": 620,
+      "cy": 290,
+      "size": 440,
+      "note": "finished nail with neon pigment lines and black linework held in a gloved hand; no subtitles"
     }
   ]
 }
