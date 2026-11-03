@@ -19,7 +19,14 @@
 - **DNS** в Cloudflare: три записи `A 87.232.67.155`, режим «DNS only». Проксирование Cloudflare не включать: его в России тоже замедляют.
 - **Вебхуки** Prodamus и Kinescope по-прежнему идут через [`../webhook-relay`](../webhook-relay/) на `https://api.lucysmirnova.ru`, теперь через этот прокси.
 
-## Проверка
+## Мониторинг
+
+- **Из России, раз в час:** workflow [`reachability.yml`](../../.github/workflows/reachability.yml) запускает [`scripts/ops/check_russia_reachability.py`](../../scripts/ops/check_russia_reachability.py): 10 проб Globalping в российских домашних и мобильных сетях открывают `/` и `/health`, плюс срок сертификатов всех трёх доменов. Падение (меньше 70% успешных проб или сертификат дольше 14 дней не продлевается) — письмо GitHub о неудачном workflow. Сбой самого Globalping — предупреждение без падения. Запустить вручную: Actions → «Reachability from Russia» → Run workflow. Секрет `GLOBALPING_TOKEN` необязателен, он поднимает лимит запросов.
+- **Доступность сервера:** внешний монитор раз в 1–5 минут на `https://lucysmirnova.ru/` и `https://api.lucysmirnova.ru/health` (UptimeRobot или аналог). Он видит падение сервера или кончившийся баланс, но не блокировку в России.
+
+GitHub отключает расписание в репозитории без активности 60 дней: тогда включить workflow заново во вкладке Actions.
+
+## Проверка вручную
 
 Без людей в России — Globalping, домашние и мобильные сети:
 

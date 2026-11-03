@@ -59,7 +59,8 @@ Configure an external uptime monitor every 30 seconds, alert after two consecuti
 1. Frontend `/` and API `/health`: HTTP 200.
 2. API `/health/operations`: HTTP 200, header `X-Monitoring-Token` from a separate random `MONITORING_TOKEN` of at least 32 characters.
 3. Operational probe exposes only counts. HTTP 503 means worker heartbeat missing (120s TTL), notification pending for >120s, dead letters, or DB/Redis unavailable. API and worker must share the environment's Redis; environments must not share Redis.
-4. Monitor external backup freshness independently: a complete archive and checksum younger than 24 hours. Healthy API does not prove fresh backups. Alerting belongs outside the app's Railway failure domain.
+4. Reachability from Russia: the hourly [`reachability.yml`](../../.github/workflows/reachability.yml) workflow loads `/` and `/health` from Russian home/mobile probes and checks proxy certificate expiry; a failed run emails the repository owner. A US/EU uptime monitor cannot see a Russian block, see [`ops/proxy/README.md`](../../ops/proxy/README.md#мониторинг).
+5. Monitor external backup freshness independently: a complete archive and checksum younger than 24 hours. Healthy API does not prove fresh backups. Alerting belongs outside the app's Railway failure domain.
 
 Heartbeat proves loop liveness; queue age and delivery ledger prove notifications. A dead letter needs operator resolution, not falsely marking it sent.
 

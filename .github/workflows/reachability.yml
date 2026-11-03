@@ -1,0 +1,28 @@
+name: Reachability from Russia
+
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reachability
+  cancel-in-progress: false
+
+jobs:
+  russia:
+    name: Site and API from Russian home/mobile networks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Check through Globalping and TLS expiry
+        env:
+          GLOBALPING_TOKEN: ${{ secrets.GLOBALPING_TOKEN }}
+        run: python scripts/ops/check_russia_reachability.py
