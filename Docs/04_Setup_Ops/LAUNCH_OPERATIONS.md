@@ -48,6 +48,10 @@ Read-only checks on 8 October found no fresh native snapshot: PostgreSQL had an 
 
 Attempts to create native snapshots through the authenticated Railway API returned `Not Authorized` for both correct volume-instance IDs. No snapshot success is claimed. Obtain a fresh copy through an authorized Railway operator, or an existing authenticated read-only pg_dump/SFTP export, before production migration. Native snapshots are limited to the same project/environment and remain a pre-rollout fallback, not the required independent external backup.
 
+## Access from Russia
+
+Since November 2026 Railway's network is unreachable from Russia, including home and mobile ISPs: TCP connects, TLS stalls. `lucysmirnova.ru`, `www` and `api` therefore point at a Caddy reverse proxy on a VPS in Minsk, which forwards to Railway with the original `Host` header. Backend `FORWARDED_ALLOW_IPS` includes the proxy address so client IPs survive. Setup, checks and rollback: [`ops/proxy/README.md`](../../ops/proxy/README.md). Provider webhooks keep going through [`ops/webhook-relay`](../../ops/webhook-relay/).
+
 ## Monitoring
 
 Configure an external uptime monitor every 30 seconds, alert after two consecutive failures, and test failure/recovery delivery:
