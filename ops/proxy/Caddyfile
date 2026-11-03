@@ -1,0 +1,40 @@
+# Reverse proxy in front of Railway for visitors whose networks cannot reach Railway directly.
+# Railway still terminates our custom domains: we connect with the *.up.railway.app SNI
+# (Railway's wildcard certificate) and pass the original Host header through.
+{
+	# Requests without SNI (e.g. by IP) get the main site's certificate.
+	default_sni lucysmirnova.ru
+
+	servers {
+		# QUIC is unreliable through Russian networks; stay on TCP.
+		protocols h1 h2
+	}
+}
+
+(frontend) {
+	reverse_proxy https://frontend-production-7b2e.up.railway.app {
+		header_up Host {host}
+		transport http {
+			tls_server_name frontend-production-7b2e.up.railway.app
+		}
+	}
+}
+
+www.lucysmirnova.ru {
+	import frontend
+}
+
+lucysmirnova.ru {
+	import frontend
+}
+
+api.lucysmirnova.ru {
+	reverse_proxy https://backend-production-f8f0f.up.railway.app {
+		header_up Host {host}
+		# Stream large responses (uploads export) instead of buffering them.
+		flush_interval -1
+		transport http {
+			tls_server_name backend-production-f8f0f.up.railway.app
+		}
+	}
+}
