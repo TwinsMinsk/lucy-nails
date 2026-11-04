@@ -1,0 +1,103 @@
+{
+  "reel": "r40",
+  "title": "Боишься, что не получится?",
+  "headline": [
+    {
+      "text": "Боишься,",
+      "at": "start"
+    },
+    {
+      "text": "что не получится?",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "aerografiya/aerografiya-13",
+    "akvarium/akvarium-03",
+    "folga/folga-17",
+    "french/french-05",
+    "gradient/gradient-06",
+    "pigmenty/pigmenty-02",
+    "slaidery/slaidery-02",
+    "stemping/stemping-07",
+    "strazy/strazy-03",
+    "tekstury/tekstury-07",
+    "vtirka/vtirka-12"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r09/s04-top"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "photo": "gradient/gradient-01",
+          "tone": "mono"
+        },
+        {
+          "photo": "aerografiya/aerografiya-13",
+          "from": "Даже",
+          "sfx": "shimmer"
+        },
+        {
+          "clip": "r17/g05-marble-gold",
+          "from": "любуешься"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "french/french-16",
+          "sfx": "swish"
+        },
+        {
+          "photo": "vtirka/vtirka-04",
+          "from": "пробовали",
+          "label": "Пробовать снова"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "clip": "r05/s08-smooth",
+          "frame": "phone",
+          "sfx": "swish",
+          "label": "Пересмотреть урок",
+          "label_at": "пересмотреть"
+        },
+        {
+          "photo": "tekstury/tekstury-01",
+          "from": "тридцать",
+          "stats": [
+            {
+              "big": "30",
+              "small": "дней",
+              "at": "тридцать"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r04/s10-end",
+    "from": "line:4",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

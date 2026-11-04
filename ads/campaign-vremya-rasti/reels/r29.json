@@ -1,0 +1,118 @@
+{
+  "reel": "r29",
+  "title": "Мастер или исполнитель",
+  "headline": [
+    {
+      "text": "Исполнитель",
+      "at": "start"
+    },
+    {
+      "text": "или мастер?",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "min_shot": 0.6,
+  "grid": [
+    "aerografiya/aerografiya-13",
+    "akvarium/akvarium-03",
+    "folga/folga-17",
+    "french/french-05",
+    "gradient/gradient-06",
+    "pigmenty/pigmenty-02",
+    "slaidery/slaidery-02",
+    "stemping/stemping-07",
+    "strazy/strazy-03",
+    "tekstury/tekstury-07",
+    "vtirka/vtirka-12"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "photo": "vtirka/vtirka-15",
+          "tone": "mono"
+        },
+        {
+          "photo": "tekstury/tekstury-06",
+          "from": "Мастер",
+          "sfx": "shimmer",
+          "label": "Мастер"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "clip": "r08/s01-plain",
+          "tone": "mono",
+          "label": "Исполнитель",
+          "label_at": "Исполнитель"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "clip": "r17/g03-airbrush-violet",
+          "sfx": "swish",
+          "label": "«Давай попробуем вот это»",
+          "label_at": "Давай"
+        },
+        {
+          "photo": "gradient/gradient-02",
+          "from": "показывает"
+        },
+        {
+          "photo": "folga/folga-06",
+          "from": "три"
+        },
+        {
+          "photo": "stemping/stemping-03",
+          "from": "варианта"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "photo": "french/french-01",
+          "tone": "mono",
+          "label": "За услугой",
+          "label_at": "услугой"
+        },
+        {
+          "clip": "r05/s07-veil",
+          "from": "мастеру",
+          "sfx": "shimmer",
+          "label": "За идеей",
+          "label_at": "идеей"
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r02/s11-end",
+    "from": "line:4:курсе",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

@@ -1,0 +1,124 @@
+{
+  "reel": "r31",
+  "title": "Новый год — новый прайс",
+  "headline": [
+    {
+      "text": "Новый год —",
+      "at": "start"
+    },
+    {
+      "text": "новый прайс",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "aerografiya/aerografiya-13",
+    "akvarium/akvarium-03",
+    "folga/folga-17",
+    "french/french-05",
+    "gradient/gradient-06",
+    "pigmenty/pigmenty-02",
+    "slaidery/slaidery-02",
+    "stemping/stemping-07",
+    "strazy/strazy-03",
+    "tekstury/tekstury-07",
+    "vtirka/vtirka-12"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r01/e1-set"
+        },
+        {
+          "photo": "french/french-10",
+          "tone": "mono",
+          "from": "рекламы"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "card": "calc",
+          "steps": [
+            {
+              "text": "Новый прайс",
+              "style": "small"
+            },
+            {
+              "text": "+ Аквариум",
+              "style": "mid",
+              "at": "техники"
+            },
+            {
+              "text": "+ Втирка",
+              "style": "mid",
+              "at": "услуги"
+            },
+            {
+              "text": "+ Стемпинг",
+              "style": "mid",
+              "at": "А"
+            },
+            {
+              "text": "Новый чек",
+              "style": "result",
+              "at": "чек",
+              "sfx": "shimmer"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "aerografiya/aerografiya-15",
+          "sfx": "swish"
+        },
+        {
+          "clip": "r17/g05-marble-gold",
+          "from": "встреть",
+          "label": "Новые дизайны",
+          "label_at": "дизайнами"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "photo": "vtirka/vtirka-16",
+          "sfx": "swish",
+          "stats": [
+            {
+              "big": "11",
+              "small": "техник",
+              "at": "одиннадцать"
+            },
+            {
+              "big": "30",
+              "small": "дней доступа",
+              "at": "тридцать"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r04/s10-end",
+    "from": "line:4",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

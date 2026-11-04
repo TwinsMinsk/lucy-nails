@@ -1,0 +1,121 @@
+{
+  "reel": "r28",
+  "title": "3 мифа",
+  "headline": [
+    {
+      "text": "3 мифа, которые мешают",
+      "at": "start"
+    },
+    {
+      "text": "тебе расти",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "aerografiya/aerografiya-13",
+    "akvarium/akvarium-03",
+    "folga/folga-17",
+    "french/french-05",
+    "gradient/gradient-06",
+    "pigmenty/pigmenty-02",
+    "slaidery/slaidery-02",
+    "stemping/stemping-07",
+    "strazy/strazy-03",
+    "tekstury/tekstury-07",
+    "vtirka/vtirka-12"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r17/g05-marble-gold"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "photo": "gradient/gradient-01",
+          "tone": "mono",
+          "stats": [
+            {
+              "big": "1",
+              "small": "«это долго»",
+              "at": "Первый"
+            }
+          ]
+        },
+        {
+          "photo": "gradient/gradient-06",
+          "from": "Многие",
+          "sfx": "shimmer"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "french/french-10",
+          "tone": "mono",
+          "stats": [
+            {
+              "big": "2",
+              "small": "«не нужно»",
+              "at": "Второй"
+            }
+          ]
+        },
+        {
+          "photo": "aerografiya/aerografiya-03",
+          "from": "Нужно",
+          "sfx": "shimmer"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "clip": "r09/s04-top",
+          "tone": "mono",
+          "stats": [
+            {
+              "big": "3",
+              "small": "«для новичков»",
+              "at": "Третий"
+            }
+          ]
+        },
+        {
+          "clip": "r17/g06-neon-lines",
+          "from": "Новые",
+          "sfx": "shimmer"
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r10/s01-end",
+    "from": "line:4:Курс",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

@@ -1,0 +1,116 @@
+{
+  "reel": "r34",
+  "title": "Мастера, которые растут",
+  "headline": [
+    {
+      "text": "Что делают мастера,",
+      "at": "start"
+    },
+    {
+      "text": "которые растут",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "aerografiya/aerografiya-13",
+    "akvarium/akvarium-03",
+    "folga/folga-17",
+    "french/french-05",
+    "gradient/gradient-06",
+    "pigmenty/pigmenty-02",
+    "slaidery/slaidery-02",
+    "stemping/stemping-07",
+    "strazy/strazy-03",
+    "tekstury/tekstury-07",
+    "vtirka/vtirka-12"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r04/s10-end"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "photo": "tekstury/tekstury-03",
+          "sfx": "swish",
+          "stats": [
+            {
+              "big": "1",
+              "small": "учатся",
+              "at": "Первое"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "vtirka/vtirka-03",
+          "sfx": "swish",
+          "stats": [
+            {
+              "big": "2",
+              "small": "показывают",
+              "at": "Второе"
+            }
+          ]
+        },
+        {
+          "clip": "r02/s10-gold",
+          "frame": "phone",
+          "from": "сторис"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "photo": "aerografiya/aerografiya-02",
+          "sfx": "swish",
+          "stats": [
+            {
+              "big": "3",
+              "small": "удивляют",
+              "at": "Третье"
+            }
+          ]
+        },
+        {
+          "clip": "r17/g06-neon-lines",
+          "from": "Клиентки",
+          "sfx": "shimmer"
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r06/s10-end",
+    "from": "line:4:Курс",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

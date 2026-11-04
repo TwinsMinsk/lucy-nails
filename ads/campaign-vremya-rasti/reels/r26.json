@@ -1,0 +1,104 @@
+{
+  "reel": "r26",
+  "title": "Ради этой секунды",
+  "headline": [
+    {
+      "text": "Ради этой секунды",
+      "at": "start"
+    },
+    {
+      "text": "стоит учиться",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "folga/folga-09",
+    "akvarium/akvarium-02",
+    "vtirka/vtirka-13",
+    "slaidery/slaidery-12",
+    "french/french-04",
+    "pigmenty/pigmenty-06",
+    "stemping/stemping-05",
+    "strazy/strazy-05",
+    "tekstury/tekstury-02",
+    "gradient/gradient-03",
+    "aerografiya/aerografiya-16"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r06/s09-reveal"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "clip": "r02/s10-gold",
+          "sfx": "swish"
+        },
+        {
+          "clip": "r17/g02-airbrush-pink",
+          "from": "Вау",
+          "sfx": "shimmer",
+          "label": "«Вау»"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "clip": "r07/s08-reveal",
+          "frame": "phone",
+          "sfx": "swish"
+        },
+        {
+          "photo": "akvarium/akvarium-08",
+          "from": "подругам"
+        },
+        {
+          "photo": "folga/folga-19",
+          "from": "записывается"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "clip": "r05/s07-veil",
+          "sfx": "swish"
+        },
+        {
+          "clip": "r17/g04-texture-set",
+          "from": "влюбляешься"
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r01/e1-set",
+    "from": "line:4:курсе",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

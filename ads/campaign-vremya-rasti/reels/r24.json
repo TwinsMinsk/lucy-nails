@@ -1,0 +1,146 @@
+{
+  "reel": "r24",
+  "title": "Открой свой прайс",
+  "headline": [
+    {
+      "text": "Открой свой прайс",
+      "at": "start"
+    },
+    {
+      "text": "прямо сейчас",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "folga/folga-09",
+    "akvarium/akvarium-02",
+    "vtirka/vtirka-13",
+    "slaidery/slaidery-12",
+    "french/french-04",
+    "pigmenty/pigmenty-06",
+    "stemping/stemping-05",
+    "strazy/strazy-05",
+    "tekstury/tekstury-02",
+    "gradient/gradient-03",
+    "aerografiya/aerografiya-16"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "card": "calc",
+          "steps": [
+            {
+              "text": "Мой прайс",
+              "style": "small"
+            },
+            {
+              "text": "Маникюр",
+              "style": "mid",
+              "at": "line:1:Маникюр"
+            },
+            {
+              "text": "Покрытие",
+              "style": "mid",
+              "at": "line:1:покрытие"
+            },
+            {
+              "text": "Снятие",
+              "style": "mid",
+              "at": "line:1:снятие"
+            },
+            {
+              "text": "Укрепление",
+              "style": "mid",
+              "at": "line:1:укрепление"
+            },
+            {
+              "text": "Дизайн?",
+              "style": "result",
+              "at": "line:1:дизайн",
+              "sfx": "thump"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "gradient/gradient-01",
+          "tone": "mono",
+          "label": "«По договорённости»",
+          "label_at": "строчка"
+        },
+        {
+          "photo": "aerografiya/aerografiya-07",
+          "tone": "mono",
+          "from": "интересное"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "card": "calc",
+          "steps": [
+            {
+              "text": "Новые строки",
+              "style": "small"
+            },
+            {
+              "text": "+ Фольга",
+              "style": "mid",
+              "at": "фольга"
+            },
+            {
+              "text": "+ Втирка",
+              "style": "mid",
+              "at": "втирка"
+            },
+            {
+              "text": "+ Стемпинг",
+              "style": "mid",
+              "at": "стемпинг"
+            },
+            {
+              "text": "+ Аквариум",
+              "style": "mid",
+              "at": "аквариум"
+            },
+            {
+              "text": "+ ещё 7",
+              "style": "result",
+              "at": "семь",
+              "sfx": "shimmer"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r05/s09-end",
+    "from": "line:4:курсе",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

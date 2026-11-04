@@ -17,6 +17,7 @@
 | [`scripts/load/`](scripts/load/) | Staging-only k6 launch gate |
 | [`ops/`](ops/) | Backup image и init test database |
 | [`scripts/promo/`](scripts/promo/) | Пайплайн промо (Whisper, нарезка, upload/sync); метаданные — [`program.json`](scripts/promo/program.json) |
+| [`ads/`](ads/) | Reels-кампания курса «За дизайн доплачивают»: сценарии, раскладки кадров, сборка роликов в HyperFrames; инструкция — [`ads/README.md`](ads/README.md). Клипы из уроков и готовые ролики в Git не попадают |
 | `promo-clips/`, `video-lessons/` | Локальные тяжёлые mp4-артефакты; исключены из Git |
 | [`Docs/`](Docs/) | PRD, архитектура, фазы, задачи, ops |
 
