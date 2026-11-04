@@ -98,6 +98,7 @@ def measure(host: str, path: str, probes: int) -> list[dict]:
 
 def cert_days_left(host: str) -> int:
     context = ssl.create_default_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     with socket.create_connection((host, 443), timeout=15) as sock:
         with context.wrap_socket(sock, server_hostname=host) as tls:
             not_after = tls.getpeercert()["notAfter"]
