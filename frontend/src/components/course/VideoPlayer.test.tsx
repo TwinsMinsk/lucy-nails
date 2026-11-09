@@ -18,6 +18,26 @@ it("renews the signed URL after five minutes idle before resume", async () => {
     expect(screen.getByTitle("Lesson")).toHaveAttribute("src", response("renewed").video_url)
 })
 
+it("keeps the player once the student has clicked into it", async () => {
+    vi.mocked(getLessonPlayUrl).mockResolvedValue(response("first"))
+    render(<VideoPlayer lessonId="lesson-1" title="Lesson" />)
+    await act(async () => {})
+    const iframe = screen.getByTitle("Lesson")
+    await act(async () => {
+        iframe.focus()
+        window.dispatchEvent(new Event("blur"))
+        vi.advanceTimersByTime(1)
+    })
+    await act(async () => {
+        vi.advanceTimersByTime(301000)
+        window.dispatchEvent(new Event("focus"))
+        document.dispatchEvent(new Event("visibilitychange"))
+        fireEvent.pointerEnter(iframe.parentElement!)
+    })
+    expect(getLessonPlayUrl).toHaveBeenCalledTimes(1)
+    expect(screen.getByTitle("Lesson")).toBe(iframe)
+})
+
 it("removes stale playback on revoked access and does not retry on every focus", async () => {
     vi.mocked(getLessonPlayUrl).mockResolvedValueOnce(response("first")).mockRejectedValueOnce(new ApiError(403, "Access revoked", "Forbidden"))
     render(<VideoPlayer lessonId="lesson-1" title="Lesson" />)

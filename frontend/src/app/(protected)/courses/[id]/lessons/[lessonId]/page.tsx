@@ -371,18 +371,20 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
                         <Separator className="my-8" />
 
                         {/* Lesson Navigation */}
-                        <div className="flex justify-between items-center pt-4">
+                        {/* On phones the buttons do not fit in one row: the main
+                            action goes first and full width, the previous lesson below. */}
+                        <div className="flex flex-col-reverse gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
                             {prevLessonId ? (
-                                <Button variant="ghost" asChild className="gap-2 text-muted-foreground hover:text-primary pl-0">
+                                <Button variant="ghost" asChild className="gap-2 self-start text-muted-foreground hover:text-primary pl-0 sm:self-auto">
                                     <Link href={`/courses/${id}/lessons/${prevLessonId}`}>
                                         <ChevronLeft className="w-4 h-4" /> Предыдущий урок
                                     </Link>
                                 </Button>
                             ) : (
-                                <div /> // spacer
+                                <div className="hidden sm:block" /> // spacer
                             )}
 
-                            <div className="flex items-center gap-4">
+                            <div className="flex flex-col items-stretch gap-2 *:w-full sm:flex-row sm:items-center sm:gap-4 sm:*:w-auto">
                                 {!canTrackProgress ? <p className="text-sm text-muted-foreground">Предпросмотр: прогресс курса недоступен без доступа</p> : !isLessonCompleted ? (
                                     <Button
                                         size="lg"
@@ -398,7 +400,7 @@ export default function LessonPage({ params }: { params: Promise<{ id: string, l
                                             variant="ghost"
                                             size="sm"
                                             onClick={handleToggleComplete}
-                                            className="text-xs text-muted-foreground hover:text-destructive hidden sm:flex"
+                                            className="order-last text-xs text-muted-foreground hover:text-destructive sm:order-none"
                                             title="Снять отметку"
                                         >
                                             <Check className="w-3 h-3 mr-1" /> Отменить

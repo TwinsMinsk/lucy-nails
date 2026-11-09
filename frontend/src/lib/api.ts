@@ -111,8 +111,18 @@ async function requestTokenRefresh(): Promise<string | null> {
     });
 
     if (!response.ok) {
-        clearTokens();
-        return null;
+        // Only a rejected token ends the session. A rate limit or a server
+        // error (for example while a new version deploys) is temporary: keep
+        // the tokens and let the page show a retryable error.
+        if (response.status === 401 || response.status === 403) {
+            clearTokens();
+            return null;
+        }
+        throw new ApiError(
+            response.status,
+            "Сервер временно недоступен. Повторите попытку через минуту.",
+            `HTTP ${response.status}`,
+        );
     }
 
     const tokens = await response.json() as TokenResponse;

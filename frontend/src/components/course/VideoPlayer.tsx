@@ -20,16 +20,19 @@ export function VideoPlayer({ lessonId, title, className }: VideoPlayerProps) {
     const [denied, setDenied] = useState(false);
     const [retry, setRetry] = useState(0);
     const resumeRef = useRef<() => void>(() => {});
+    const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
     useEffect(() => {
         let cancelled = false;
         let pending = false;
         let ready = false;
+        let engaged = false;
         let expiresAt = 0;
         const fetchVideoUrl = async () => {
             if (pending || cancelled) return;
             pending = true;
             ready = false;
+            engaged = false;
             setState("loading");
             setVideoData(null);
             setError(null);
@@ -50,12 +53,26 @@ export function VideoPlayer({ lessonId, title, className }: VideoPlayerProps) {
                 setState("error");
             } finally { pending = false; }
         };
+        // The DRM token is only checked when playback starts. Until the student
+        // clicks into the player, an expired token is replaced by reloading the
+        // iframe; after that a reload would restart the lesson, so it stops.
         const resume = () => {
+            if (engaged) return;
             if (ready && Date.now() >= expiresAt && document.visibilityState !== "hidden") void fetchVideoUrl();
+        };
+        // Clicking inside the cross-origin player moves focus into its iframe,
+        // which the page only sees as a window blur.
+        const markEngaged = () => {
+            window.setTimeout(() => {
+                if (ready && !pending && iframeRef.current && document.activeElement === iframeRef.current) {
+                    engaged = true;
+                }
+            }, 0);
         };
         resumeRef.current = resume;
         window.addEventListener("focus", resume);
         window.addEventListener("pageshow", resume);
+        window.addEventListener("blur", markEngaged);
         document.addEventListener("visibilitychange", resume);
         void fetchVideoUrl();
         return () => {
@@ -63,6 +80,7 @@ export function VideoPlayer({ lessonId, title, className }: VideoPlayerProps) {
             resumeRef.current = () => {};
             window.removeEventListener("focus", resume);
             window.removeEventListener("pageshow", resume);
+            window.removeEventListener("blur", markEngaged);
             document.removeEventListener("visibilitychange", resume);
         };
     }, [lessonId, retry]);
@@ -137,6 +155,7 @@ export function VideoPlayer({ lessonId, title, className }: VideoPlayerProps) {
         return (
             <div className={cn("w-full aspect-video bg-black", className)} onPointerEnter={() => resumeRef.current()} onTouchStart={() => resumeRef.current()}>
                 <iframe
+                    ref={iframeRef}
                     onFocus={() => resumeRef.current()}
                     src={videoData.video_url}
                     title={videoData.title || title}

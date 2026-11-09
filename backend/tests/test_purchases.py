@@ -1671,6 +1671,69 @@ async def test_successful_webhook_queues_single_owner_payment_alert(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("form_email", "form_phone"),
+    [("Other-Typed@Example.com", "+7 (999) 123-45-67"), ("", "call me +7999")],
+)
+async def test_paid_order_grants_access_to_checkout_email_whatever_the_payform_sent(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    form_email: str,
+    form_phone: str,
+):
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", 555000111)
+    course = await _published_course(db, "Payform Email Course")
+    checkout = await client.post(
+        "/api/payments/guest-link",
+        json={
+            "course_id": str(course.id),
+            "tariff": "self",
+            "customer_email": "checkout-buyer@example.com",
+            "offer_accepted": True,
+            "personal_data_consent": True,
+        },
+    )
+    assert checkout.status_code == 200, checkout.text
+    order_reference = checkout.json()["order_id"]
+    notification = {
+        "order_id": "300888",
+        "order_num": order_reference,
+        "customer_email": form_email,
+        "customer_phone": form_phone,
+        "sum": "5000.00",
+        "currency": "rub",
+        "payment_status": "success",
+    }
+
+    webhook = await client.post(
+        "/api/payments/webhook", json=notification, headers=_signed_payload(notification)[1]
+    )
+
+    assert webhook.status_code == 200, webhook.text
+    buyer = await db.scalar(select(User).where(User.email == "checkout-buyer@example.com"))
+    assert buyer is not None
+    assert await db.scalar(select(User).where(User.email == "other-typed@example.com")) is None
+    purchase = await db.scalar(select(Purchase).where(Purchase.user_id == buyer.id))
+    assert purchase is not None and purchase.payment_status == "success"
+    entitlement = await db.scalar(select(Entitlement).where(Entitlement.user_id == buyer.id))
+    assert entitlement is not None
+    activation = await db.scalar(
+        select(OutboxMessage).where(OutboxMessage.kind == "account_activation")
+    )
+    assert activation is not None and activation.recipient == "checkout-buyer@example.com"
+    alerts = await _owner_messages(db, "owner_payment_alert")
+    assert len(alerts) == 1
+    if form_email:
+        assert "Email в форме оплаты другой: other-typed@example.com" in alerts[0].payload["text"]
+        assert purchase.customer_phone == "+7 (999) 123-45-67"
+    else:
+        assert "Email в форме оплаты" not in alerts[0].payload["text"]
+        assert purchase.customer_phone is None
+
+
+@pytest.mark.asyncio
 async def test_successful_webhook_without_owner_chat_queues_no_owner_alert(
     client: AsyncClient,
     db: AsyncSession,

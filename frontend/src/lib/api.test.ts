@@ -121,4 +121,26 @@ describe("apiFetch", () => {
             expect(isAuthError((outcome as PromiseRejectedResult).reason)).toBe(true)
         }
     })
+
+    it.each([429, 502, 503])("keeps the session when the refresh answers %i", async (status) => {
+        const storage = new Map<string, string>([["access_token", "old"], ["refresh_token", "refresh"]])
+        vi.stubGlobal("localStorage", {
+            getItem: vi.fn((key: string) => storage.get(key) ?? null),
+            removeItem: vi.fn((key: string) => storage.delete(key)),
+            setItem: vi.fn((key: string, value: string) => storage.set(key, value)),
+        })
+        vi.spyOn(console, "error").mockImplementation(() => undefined)
+        vi.stubGlobal("fetch", vi.fn(async (url: string) => (
+            url.endsWith("/auth/refresh")
+                ? { ok: false, status, json: async () => ({ detail: "Bad gateway" }) }
+                : { ok: false, status: 401, json: async () => ({ detail: "Not authenticated" }) }
+        )))
+
+        const error = await apiFetch("/auth/me").catch((caught) => caught)
+
+        expect(isAuthError(error)).toBe(false)
+        expect(error).toBeInstanceOf(ApiError)
+        expect(error).toMatchObject({ status })
+        expect(storage.get("refresh_token")).toBe("refresh")
+    })
 })
