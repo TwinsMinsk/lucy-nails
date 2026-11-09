@@ -9,7 +9,14 @@ import { Button } from "@/components/ui/button";
 import { getPublicApiUrl } from "@/lib/env";
 import { sendYandexGoal } from "@/lib/analytics-client";
 
-type PaymentState = "checking" | "pending" | "paid" | "help";
+type PaymentState = "checking" | "pending" | "slow" | "paid" | "help";
+
+// Prodamus confirms SBP and bank payments with a delay and retries its
+// webhook, so the page keeps checking for a while before it gives up.
+const FAST_ATTEMPTS = 20;
+const FAST_INTERVAL_MS = 3_000;
+const SLOW_INTERVAL_MS = 10_000;
+export const POLL_DEADLINE_MS = 10 * 60_000;
 
 const stateCopy: Record<PaymentState, { title: string; description: string }> = {
   checking: {
@@ -19,6 +26,11 @@ const stateCopy: Record<PaymentState, { title: string; description: string }> = 
   pending: {
     title: "Ожидаем подтверждение",
     description: "Платёжная система ещё не прислала подтверждение. Обычно это занимает меньше минуты.",
+  },
+  slow: {
+    title: "Платёж ещё обрабатывается",
+    description:
+      "Подтверждение задерживается. Если деньги списаны, доступ откроется автоматически, а письмо придёт на email, указанный при оплате. Не оплачивайте повторно.",
   },
   paid: {
     title: "Оплата подтверждена",
@@ -30,6 +42,12 @@ const stateCopy: Record<PaymentState, { title: string; description: string }> = 
   },
 };
 
+// Rate limits and server errors (for example during a deploy) are temporary;
+// any other error means the link itself is wrong.
+function isTransientStatus(status: number) {
+  return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
 export function PaymentStatus() {
   const searchParams = useSearchParams();
   const [{ orderId, token }] = useState(() => ({
@@ -37,6 +55,7 @@ export function PaymentStatus() {
     token: searchParams.get("token"),
   }));
   const [state, setState] = useState<PaymentState>("checking");
+  const [round, setRound] = useState(0);
 
   useEffect(() => {
     if (!orderId || !token) {
@@ -47,14 +66,20 @@ export function PaymentStatus() {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     let attempts = 0;
+    const deadline = Date.now() + POLL_DEADLINE_MS;
 
     const poll = async () => {
       attempts += 1;
       try {
         const endpoint = `${getPublicApiUrl()}/payments/orders/${encodeURIComponent(orderId)}/status?token=${encodeURIComponent(token)}`;
         const response = await fetch(endpoint, { signal: controller.signal, cache: "no-store" });
-        if (!response.ok) {
+        if (!response.ok && !isTransientStatus(response.status)) {
           setState("help");
+          return;
+        }
+        if (!response.ok) {
+          setState((current) => (current === "checking" ? "pending" : current));
+          scheduleNext();
           return;
         }
         const result = (await response.json()) as {
@@ -85,20 +110,23 @@ export function PaymentStatus() {
         if ((error as Error).name === "AbortError") return;
         setState("pending");
       }
+      scheduleNext();
+    };
 
-      if (attempts >= 20) {
-        setState("help");
+    function scheduleNext() {
+      if (Date.now() >= deadline) {
+        setState("slow");
         return;
       }
-      timer = setTimeout(poll, 3000);
-    };
+      timer = setTimeout(poll, attempts < FAST_ATTEMPTS ? FAST_INTERVAL_MS : SLOW_INTERVAL_MS);
+    }
 
     void poll();
     return () => {
       controller.abort();
       if (timer) clearTimeout(timer);
     };
-  }, [orderId, token]);
+  }, [orderId, token, round]);
 
   const copy = stateCopy[state];
   const Icon = state === "paid" ? CheckCircle : state === "help" ? AlertCircle : Clock3;
@@ -154,6 +182,11 @@ export function PaymentStatus() {
             <p className="text-sm text-text-secondary">
               Напишите нам в Telegram и укажите email, на который оформляли оплату, — проверим платёж вручную.
             </p>
+          ) : state === "slow" ? (
+            <p className="text-sm text-text-secondary">
+              Проверьте почту чуть позже или нажмите «Проверить ещё раз». Если письма нет больше часа, напишите нам
+              в Telegram и укажите email, на который оформляли оплату.
+            </p>
           ) : (
             <p className="text-sm text-text-secondary">
               Страница обновляет статус автоматически. Не закрывайте её и не создавайте повторный платёж.
@@ -167,6 +200,17 @@ export function PaymentStatus() {
               <Link href="/auth/login">
                 Войти в кабинет <ArrowRight className="ml-2 w-4 h-4" />
               </Link>
+            </Button>
+          )}
+          {state === "slow" && (
+            <Button
+              className="rounded-full px-8 h-12"
+              onClick={() => {
+                setState("checking");
+                setRound((value) => value + 1);
+              }}
+            >
+              Проверить ещё раз
             </Button>
           )}
           <Button asChild variant="outline" className="rounded-full px-8 h-12">

@@ -60,13 +60,15 @@ function clearMetrikaCookies() {
     }
 }
 
-function stopMetrika(counterId: number) {
+// Leaving the public pages only ends the counter. Metrika's cookies identify
+// the visitor across visits, so they are removed only when consent is withdrawn.
+function stopMetrika(counterId: number, { clearCookies }: { clearCookies: boolean }) {
     startGeneration += 1
     setMetrikaDisabled(counterId, true)
     window.__lucyMetrika?.destruct()
     delete window.__lucyMetrika
     document.getElementById(METRIKA_SCRIPT_ID)?.remove()
-    clearMetrikaCookies()
+    if (clearCookies) clearMetrikaCookies()
 }
 
 async function loadMetrikaLibrary(counterId: number): Promise<void> {
@@ -120,6 +122,14 @@ async function startMetrika(counterId: number): Promise<MetrikaCounter | undefin
     return window.__lucyMetrika
 }
 
+// The success URL carries the checkout reference `order|<uuid>`; Metrika needs
+// a stable order id for e-commerce, and only the UUID is safe to keep.
+const ORDER_UUID = /(?:^|\|)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i
+
+function purchaseOrderId(reference: string | undefined): string | undefined {
+    return reference ? ORDER_UUID.exec(reference)?.[1]?.toLowerCase() : undefined
+}
+
 function reportPurchase(counter: MetrikaCounter, orderId: string | undefined, purchase: YandexPurchase) {
     counter.reachGoal("purchase", { order_price: purchase.amount, currency: purchase.currency })
     window.dataLayer = window.dataLayer || []
@@ -143,8 +153,11 @@ function reportPurchase(counter: MetrikaCounter, orderId: string | undefined, pu
 export function AnalyticsBootstrap() {
     const pathname = usePathname()
     const trackedPath = useRef<string | null>(null)
-    const [analyticsAllowed, setAnalyticsAllowed] = useState(false)
-    const tracking = analyticsAllowed && isTrackedPublicPage(pathname)
+    // null until the stored consent is read: the first render must not stop
+    // Metrika, because stopping also deletes the visitor's _ym_uid cookie.
+    const [analyticsAllowed, setAnalyticsAllowed] = useState<boolean | null>(null)
+    const tracking = analyticsAllowed === true && isTrackedPublicPage(pathname)
+    const consentKnown = analyticsAllowed !== null
 
     useEffect(() => {
         const syncConsent = () => setAnalyticsAllowed(Boolean(readConsent()?.analytics))
@@ -166,12 +179,11 @@ export function AnalyticsBootstrap() {
             if (goal !== "purchase" && !PUBLIC_PAGE_GOALS.has(goal)) return
             void startMetrika(counterId).then((counter) => {
                 if (!counter || !readConsent()?.analytics || window.__lucyMetrika !== counter || !isSafeMetrikaLocation()) return
-                const dedupeKey = event.detail?.dedupeKey
-                const storageKey = goal === "purchase" && dedupeKey && /^[0-9a-f-]{36}$/i.test(dedupeKey)
-                    ? `lucy-metrika-purchase:${dedupeKey}` : undefined
+                const orderId = goal === "purchase" ? purchaseOrderId(event.detail?.dedupeKey) : undefined
+                const storageKey = orderId ? `lucy-metrika-purchase:${orderId}` : undefined
                 if (storageKey && sessionStorage.getItem(storageKey)) return
                 const purchase = goal === "purchase" ? event.detail?.purchase : undefined
-                if (purchase) reportPurchase(counter, storageKey ? dedupeKey : undefined, purchase)
+                if (purchase) reportPurchase(counter, orderId, purchase)
                 else counter.reachGoal(goal)
                 if (storageKey) sessionStorage.setItem(storageKey, "1")
             }).catch(() => undefined)
@@ -184,14 +196,22 @@ export function AnalyticsBootstrap() {
     // session is not split at every client-side navigation.
     useEffect(() => {
         const counterId = Number(process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID)
-        if (!counterId) return
+        if (!counterId || !consentKnown) return
         if (!tracking) {
-            stopMetrika(counterId)
+            stopMetrika(counterId, { clearCookies: analyticsAllowed === false })
             return
         }
         void startMetrika(counterId)
-        return () => stopMetrika(counterId)
-    }, [tracking])
+        return () => stopMetrika(counterId, { clearCookies: false })
+    }, [tracking, consentKnown, analyticsAllowed])
+
+    // The success page starts the counter for the purchase goal; it must not
+    // keep recording once the buyer moves on to the login page or the cabinet.
+    useEffect(() => {
+        const counterId = Number(process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID)
+        if (!counterId || tracking || pathname === "/payment-success" || !window.__lucyMetrika) return
+        stopMetrika(counterId, { clearCookies: false })
+    }, [pathname, tracking])
 
     useEffect(() => {
         if (!tracking) {

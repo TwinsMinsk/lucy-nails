@@ -9,6 +9,9 @@ vi.mock("@/lib/analytics-client", () => ({ trackPublicEvent: state.track }))
 
 beforeEach(() => {
     cleanup()
+    // A purchase test starts the counter outside the tracked pages; a real
+    // page load would not carry it over.
+    delete window.__lucyMetrika
     window.localStorage.clear()
     state.track.mockClear()
     state.pathname = "/courses/course-1"
@@ -157,6 +160,48 @@ it("reports purchase revenue as goal params and an e-commerce purchase", async (
     delete window.Ya
     delete window.dataLayer
     window.history.replaceState({}, "", "/")
+})
+
+it("uses the order UUID from the checkout reference as the e-commerce id", async () => {
+    vi.stubEnv("NEXT_PUBLIC_YANDEX_METRIKA_ID", "12345")
+    window.history.replaceState({}, "", "/payment-success")
+    state.pathname = "/payment-success"
+    const reachGoal = vi.fn()
+    window.Ya = { Metrika2: vi.fn(function () { return { destruct: vi.fn(), hit: vi.fn(), reachGoal } }) }
+    window.dataLayer = []
+    window.sessionStorage.clear()
+    saveConsent(true)
+    render(<AnalyticsBootstrap />)
+    const purchase = { amount: 5900, currency: "RUB", courseId: "course-1", courseTitle: "Маникюр", tariff: "self" }
+    const detail = { goal: "purchase", dedupeKey: "order|7D9A5B2C-1E3F-4A6B-8C7D-9E0F1A2B3C4D", purchase }
+    act(() => window.dispatchEvent(new CustomEvent("lucy-metrika-goal", { detail })))
+    await waitFor(() => expect(reachGoal).toHaveBeenCalledTimes(1))
+    act(() => window.dispatchEvent(new CustomEvent("lucy-metrika-goal", { detail })))
+    await act(async () => { await Promise.resolve() })
+    expect(reachGoal).toHaveBeenCalledTimes(1)
+    expect(window.dataLayer).toHaveLength(1)
+    expect(window.dataLayer?.[0]).toMatchObject({
+        ecommerce: { purchase: { actionField: { id: "7d9a5b2c-1e3f-4a6b-8c7d-9e0f1a2b3c4d", revenue: 5900 } } },
+    })
+    delete window.Ya
+    delete window.dataLayer
+    window.history.replaceState({}, "", "/")
+})
+
+it("keeps the visitor's Metrika cookie when a consenting visitor loads a page", async () => {
+    vi.stubEnv("NEXT_PUBLIC_YANDEX_METRIKA_ID", "12345")
+    window.history.replaceState({}, "", "/")
+    state.pathname = "/"
+    const constructor = vi.fn(function () { return { destruct: vi.fn(), hit: vi.fn(), reachGoal: vi.fn() } })
+    window.Ya = { Metrika2: constructor }
+    saveConsent(true)
+    document.cookie = "_ym_uid=1700000000123456789; Path=/"
+    render(<AnalyticsBootstrap />)
+    await waitFor(() => expect(constructor).toHaveBeenCalledTimes(1))
+    expect(document.cookie).toContain("_ym_uid=1700000000123456789")
+    act(() => saveConsent(false))
+    expect(document.cookie).not.toContain("_ym_uid")
+    delete window.Ya
 })
 
 it("accepts funnel goals on public pages but not in the cabinet", async () => {

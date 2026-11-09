@@ -98,6 +98,23 @@ def _normalize_email(raw: Any) -> str:
         raise HTTPException(status_code=422, detail="Invalid customer_email")
 
 
+def _webhook_email_or_none(raw: Any) -> str | None:
+    """The buyer can edit the email on the Prodamus form; an order keeps its own."""
+    try:
+        return _normalize_email(raw)
+    except HTTPException:
+        return None
+
+
+def _webhook_phone_or_none(raw: Any) -> str | None:
+    # A payment must not be rejected because the form sent an unusual phone.
+    try:
+        return _normalize_phone(raw)
+    except HTTPException:
+        logger.warning("Prodamus webhook: unusual customer phone dropped")
+        return None
+
+
 def parse_checkout_order_id(order_id_raw: str) -> tuple[UUID, str] | None:
     """
     Формат: course|<course_uuid>|self|support|<nonce_hex>
@@ -353,7 +370,7 @@ async def _record_purchase_once(
     The purchase and its notification are committed atomically. External
     delivery is handled later by the outbox worker.
     """
-    webhook_email = _normalize_email(payload.get("customer_email"))
+    webhook_email = _webhook_email_or_none(payload.get("customer_email"))
     async with async_session_maker() as db:
         existing_event = await db.scalar(
             select(PaymentEvent).where(PaymentEvent.event_hash == event_data.event_hash)
@@ -361,7 +378,7 @@ async def _record_purchase_once(
         if existing_event is not None:
             if existing_event.processing_status not in {"processed", "duplicate", "financial_incident"}:
                 raise HTTPException(status_code=422, detail=existing_event.error_detail or "Payment was rejected")
-            return webhook_email
+            return webhook_email or ""
 
         payment_event = new_payment_event(event_data, order_id=order_uuid)
         db.add(payment_event)
@@ -373,9 +390,10 @@ async def _record_purchase_once(
             payment_event.processing_status = "duplicate"
             payment_event.processed_at = datetime.utcnow()
             await db.commit()
-            return webhook_email
+            return webhook_email or ""
 
         order: Order | None = None
+        email_differs = False
         if order_uuid is not None:
             order_result = await db.execute(
                 select(Order).where(Order.id == order_uuid).with_for_update()
@@ -383,9 +401,6 @@ async def _record_purchase_once(
             order = order_result.scalar_one_or_none()
             if order is None:
                 raise HTTPException(status_code=422, detail="Order not found")
-            # Orders created before email normalization may keep mixed case.
-            if webhook_email != order.customer_email.strip().lower():
-                raise HTTPException(status_code=422, detail="Order customer mismatch")
             course_id_uuid = order.course_id
             tariff = order.tariff
 
@@ -397,9 +412,18 @@ async def _record_purchase_once(
             logger.error("Prodamus webhook: legacy reference for unsellable tariff=%s", tariff)
             raise HTTPException(status_code=422, detail="Tariff not sellable")
 
-        customer_email = webhook_email
+        if order is not None:
+            # The signed payment belongs to the order, so access goes to the email
+            # given at checkout even if the buyer typed another one on the payform.
+            # Orders created before email normalization may keep mixed case.
+            customer_email = order.customer_email.strip().lower()
+            email_differs = webhook_email is not None and webhook_email != customer_email
+        elif webhook_email is None:
+            raise HTTPException(status_code=422, detail="customer_email is required")
+        else:
+            customer_email = webhook_email
 
-        customer_phone = _normalize_phone(payload.get("customer_phone"))
+        customer_phone = _webhook_phone_or_none(payload.get("customer_phone"))
 
         course_result = await db.execute(select(Course).where(Course.id == course_id_uuid))
         course = course_result.scalars().first()
@@ -439,7 +463,7 @@ async def _record_purchase_once(
                     payment_event.processing_status = "duplicate"
                     payment_event.processed_at = datetime.utcnow()
                     await db.commit()
-                    return webhook_email
+                    return customer_email
                 incident = await db.scalar(select(PaymentEvent.id).where(
                     PaymentEvent.provider == "prodamus",
                     PaymentEvent.external_event_id == event_data.external_event_id,
@@ -460,7 +484,7 @@ async def _record_purchase_once(
                         dedupe_key=f"payment:{incident_key}:incident",
                     )
                 await db.commit()
-                return webhook_email
+                return customer_email
 
         user, is_new_user = await _get_or_create_user(db, customer_email, customer_phone)
         if is_new_user and order is not None:
@@ -558,7 +582,12 @@ async def _record_purchase_once(
                 f"Курс: {course.title}\n"
                 f"Тариф: {TARIFF_LABELS.get(tariff, tariff)}\n"
                 f"Email: {customer_email}\n"
-                f"Заказ: {order_reference or '—'}"
+                + (
+                    f"Email в форме оплаты другой: {webhook_email}. Доступ выдан на email заказа.\n"
+                    if email_differs
+                    else ""
+                )
+                + f"Заказ: {order_reference or '—'}"
             ),
             dedupe_key=f"payment:{dedupe_hash}:owner",
         )
@@ -759,7 +788,10 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
         merchant_reference_raw,
     )
     try:
-        _normalize_email(payload.get("customer_email"))
+        # A persisted order already knows its buyer; only a legacy reference
+        # takes the email from the payform.
+        if order_uuid is None:
+            _normalize_email(payload.get("customer_email"))
     except HTTPException as exc:
         await _record_rejected_webhook(
             event_data,
