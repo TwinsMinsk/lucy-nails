@@ -50,7 +50,7 @@ Attempts to create native snapshots through the authenticated Railway API return
 
 ## Access from Russia
 
-Since November 2026 Railway's network is unreachable from Russia, including home and mobile ISPs: TCP connects, TLS stalls. `lucysmirnova.ru`, `www` and `api` therefore point at a Caddy reverse proxy on a VPS in Minsk, which forwards to Railway with the original `Host` header. Backend `FORWARDED_ALLOW_IPS` includes the proxy address so client IPs survive. Setup, checks and rollback: [`ops/proxy/README.md`](../../ops/proxy/README.md). Provider webhooks keep going through [`ops/webhook-relay`](../../ops/webhook-relay/).
+On 3 November 2026 Railway's former network (`69.46.46.x`) did not complete TLS from Russia, including home and mobile ISPs, so the three hosts briefly pointed at a Caddy reverse proxy in Minsk. The unpaid proxy server stopped on 4 November and the site was down for everyone until DNS was rolled back on 9 November. Railway now serves the domains from `153.52.255.x`, which Russian home, mobile and data-centre networks reach directly; DNS is CNAME to Railway again. The proxy config, incident notes, provider terms and switch-over steps are kept in [`ops/proxy/README.md`](../../ops/proxy/README.md) for a future block. Provider webhooks keep going through [`ops/webhook-relay`](../../ops/webhook-relay/).
 
 ## Monitoring
 
@@ -59,7 +59,7 @@ Configure an external uptime monitor every 30 seconds, alert after two consecuti
 1. Frontend `/` and API `/health`: HTTP 200.
 2. API `/health/operations`: HTTP 200, header `X-Monitoring-Token` from a separate random `MONITORING_TOKEN` of at least 32 characters.
 3. Operational probe exposes only counts. HTTP 503 means worker heartbeat missing (120s TTL), notification pending for >120s, dead letters, or DB/Redis unavailable. API and worker must share the environment's Redis; environments must not share Redis.
-4. Reachability from Russia: the hourly [`reachability.yml`](../../.github/workflows/reachability.yml) workflow loads `/` and `/health` from Russian home/mobile probes and checks proxy certificate expiry; a failed run emails the repository owner. A US/EU uptime monitor cannot see a Russian block, see [`ops/proxy/README.md`](../../ops/proxy/README.md#мониторинг).
+4. Reachability from Russia: the hourly [`reachability.yml`](../../.github/workflows/reachability.yml) workflow loads `/` and `/health` from Russian home/mobile probes and checks certificate expiry; a failed run emails the repository owner only if their GitHub Actions notifications are on (a silent 17-run failure streak in November proved this). A US/EU uptime monitor cannot see a Russian block, see [`ops/proxy/README.md`](../../ops/proxy/README.md#мониторинг).
 5. Monitor external backup freshness independently: a complete archive and checksum younger than 24 hours. Healthy API does not prove fresh backups. Alerting belongs outside the app's Railway failure domain.
 
 Heartbeat proves loop liveness; queue age and delivery ledger prove notifications. A dead letter needs operator resolution, not falsely marking it sent.

@@ -1,9 +1,8 @@
 """Check that the site opens from Russian home and mobile networks.
 
-Railway is unreachable from Russia, so the site goes through a proxy (ops/proxy). A monitor
-in the US or EU cannot see a Russian block of the proxy address, so this script asks
-Globalping probes on Russian eyeball networks to load the site and the API, and checks
-that the proxy certificates are not about to expire.
+Russian ISPs have blocked Railway's network before (see ops/proxy). A monitor in the US or EU
+cannot see such a block, so this script asks Globalping probes on Russian eyeball networks to
+load the site and the API, and checks that the site certificates are not about to expire.
 
 Exit code 1 means visitors in Russia are likely affected. A Globalping outage or rate limit
 is reported as a warning and exits 0, so it does not raise a false alarm.

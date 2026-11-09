@@ -91,7 +91,7 @@ python scripts/ops/redact_telegram_tokens.py --apply
 python scripts/ops/check_russia_reachability.py
 ```
 
-Просит 10 проб Globalping в российских домашних и мобильных сетях открыть `https://lucysmirnova.ru/` и `https://api.lucysmirnova.ru/health` и проверяет срок сертификатов прокси. Код возврата 1 — меньше 70% успешных проб или сертификату меньше 14 дней. Только stdlib, ничего не меняет. Тот же скрипт раз в час запускает workflow `reachability.yml`, см. [`ops/proxy/README.md`](../../ops/proxy/README.md#мониторинг).
+Просит 10 проб Globalping в российских домашних и мобильных сетях открыть `https://lucysmirnova.ru/` и `https://api.lucysmirnova.ru/health` и проверяет срок сертификатов сайта. Код возврата 1 — меньше 70% успешных проб или сертификату меньше 14 дней. Только stdlib, ничего не меняет. Тот же скрипт раз в час запускает workflow `reachability.yml`, см. [`ops/proxy/README.md`](../../ops/proxy/README.md#мониторинг).
 
 ---
 
