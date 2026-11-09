@@ -1,0 +1,120 @@
+{
+  "reel": "r16",
+  "title": "Нет времени на курсы",
+  "headline": [
+    {
+      "text": "Нет времени",
+      "at": "start"
+    },
+    {
+      "text": "на курсы?",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "aerografiya/aerografiya-08",
+    "akvarium/akvarium-07",
+    "vtirka/vtirka-05",
+    "slaidery/slaidery-12",
+    "french/french-04",
+    "pigmenty/pigmenty-03",
+    "stemping/stemping-05",
+    "strazy/strazy-07",
+    "tekstury/tekstury-12",
+    "gradient/gradient-11",
+    "folga/folga-15"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r09/s04-top"
+        },
+        {
+          "photo": "vtirka/vtirka-06",
+          "from": "нужно",
+          "sfx": "swish"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "clip": "r02/s10-gold",
+          "frame": "phone",
+          "label": "Уроки в телефоне",
+          "label_at": "телефоне",
+          "sfx": "swish"
+        },
+        {
+          "clip": "r05/s07-veil",
+          "frame": "phone",
+          "from": "вечером"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "french/french-13",
+          "sfx": "swish",
+          "label": "1 техника — 1 урок",
+          "label_at": "техника"
+        },
+        {
+          "photo": "stemping/stemping-08",
+          "from": "Смотришь"
+        },
+        {
+          "photo": "gradient/gradient-09",
+          "from": "пробуешь"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "photo": "tekstury/tekstury-12",
+          "sfx": "swish",
+          "stats": [
+            {
+              "big": "~5 ч",
+              "small": "практики",
+              "at": "пять"
+            },
+            {
+              "big": "30",
+              "small": "дней доступа",
+              "at": "тридцать"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r09/s05-end",
+    "from": "line:4:Курс",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

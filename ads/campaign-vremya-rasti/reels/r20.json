@@ -1,0 +1,126 @@
+{
+  "reel": "r20",
+  "title": "Пара вечеров",
+  "headline": [
+    {
+      "text": "Что можно успеть",
+      "at": "start"
+    },
+    {
+      "text": "за пару вечеров?",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "folga/folga-09",
+    "akvarium/akvarium-02",
+    "vtirka/vtirka-13",
+    "slaidery/slaidery-12",
+    "french/french-04",
+    "pigmenty/pigmenty-06",
+    "stemping/stemping-05",
+    "strazy/strazy-05",
+    "tekstury/tekstury-02",
+    "gradient/gradient-03",
+    "aerografiya/aerografiya-16"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "card": "calc",
+          "steps": [
+            {
+              "text": "~5 часов",
+              "style": "big"
+            },
+            {
+              "text": "= 2 длинных фильма",
+              "style": "mid",
+              "at": "фильма"
+            },
+            {
+              "text": "= 2 вечера",
+              "style": "result",
+              "at": "вечеров",
+              "sfx": "shimmer"
+            },
+            {
+              "text": "все уроки курса",
+              "style": "small",
+              "at": "line:1:Столько"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "pigmenty/pigmenty-05",
+          "sfx": "swish"
+        },
+        {
+          "clip": "r05/s08-smooth",
+          "frame": "phone",
+          "from": "Смотришь",
+          "label": "С любой техники",
+          "label_at": "любой"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "photo": "tekstury/tekstury-05",
+          "sfx": "swish"
+        },
+        {
+          "photo": "folga/folga-14",
+          "from": "новые",
+          "label": "Новые услуги",
+          "label_at": "услуги"
+        },
+        {
+          "clip": "r17/g03-airbrush-violet",
+          "from": "уверенность"
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "photo": "gradient/gradient-12",
+          "sfx": "swish",
+          "stats": [
+            {
+              "big": "11",
+              "small": "техник",
+              "at": "А"
+            },
+            {
+              "big": "30",
+              "small": "дней доступа",
+              "at": "тридцати"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r09/s05-end",
+    "from": "line:4:Ссылка",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

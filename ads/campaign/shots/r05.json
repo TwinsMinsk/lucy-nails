@@ -1,0 +1,93 @@
+{
+  "reel": "r05",
+  "size": 600,
+  "shots": [
+    {
+      "id": "s01-hook",
+      "slug": "slaidery",
+      "start": 275.9,
+      "end": 278.4,
+      "cx": 340,
+      "cy": 350,
+      "size": 560,
+      "note": "line 0 hook: wet Venus film just slid off its backing, edges still creased and lifted, hand turning the nail"
+    },
+    {
+      "id": "s02-lift",
+      "slug": "slaidery",
+      "start": 718.6,
+      "end": 721.6,
+      "cx": 580,
+      "cy": 331,
+      "note": "line 0 'Three causes': tweezers lift a lips slider off the wet backing and set it on a lilac butterfly nail"
+    },
+    {
+      "id": "s03-air",
+      "slug": "slaidery",
+      "start": 610.0,
+      "end": 613.5,
+      "cx": 560,
+      "cy": 361,
+      "size": 540,
+      "note": "line 1 cause 1: silicone tool presses air out from under the butterfly sliders"
+    },
+    {
+      "id": "s04-gap",
+      "slug": "slaidery",
+      "start": 289.0,
+      "end": 292.3,
+      "cx": 620,
+      "cy": 391,
+      "size": 480,
+      "note": "line 2 cause 2: Venus slider stops short of the cuticle and the tip (white gaps), scissors tidy the edge"
+    },
+    {
+      "id": "s05-base",
+      "slug": "slaidery",
+      "start": 241.0,
+      "end": 245.0,
+      "cx": 570,
+      "cy": 361,
+      "size": 540,
+      "note": "line 3 cause 3: base gel brushed over the white nail before the slider goes on"
+    },
+    {
+      "id": "s06-cuts",
+      "slug": "slaidery",
+      "start": 210.8,
+      "end": 213.6,
+      "cx": 1010,
+      "cy": 391,
+      "size": 480,
+      "note": "line 4: scissors snip small cuts into the edge of the Venus slider before soaking"
+    },
+    {
+      "id": "s07-veil",
+      "slug": "slaidery",
+      "start": 787.8,
+      "end": 791.8,
+      "cx": 450,
+      "cy": 361,
+      "size": 540,
+      "note": "line 5: butterfly + lips sliders under a milky gradient, 'as if under a veil'"
+    },
+    {
+      "id": "s08-smooth",
+      "slug": "slaidery",
+      "start": 350.0,
+      "end": 353.5,
+      "cx": 610,
+      "cy": 331,
+      "note": "line 5 (or payoff after line 1): Venus slider close-up, film smooth and flat after the silicone tool, hand turning the nail"
+    },
+    {
+      "id": "s09-end",
+      "slug": "slaidery",
+      "start": 1229.2,
+      "end": 1235.9,
+      "cx": 700,
+      "cy": 331,
+      "note": "END: finished set on one hand (veil butterfly, Venus with gold, blue butterflies), calm; crop above the band, scene cut at 1236.05"
+    }
+  ]
+}

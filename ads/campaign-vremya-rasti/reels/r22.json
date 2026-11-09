@@ -1,0 +1,116 @@
+{
+  "reel": "r22",
+  "title": "Лучшая реклама",
+  "headline": [
+    {
+      "text": "Лучшая реклама мастера —",
+      "at": "start"
+    },
+    {
+      "text": "не таргет",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "folga/folga-09",
+    "akvarium/akvarium-02",
+    "vtirka/vtirka-13",
+    "slaidery/slaidery-12",
+    "french/french-04",
+    "pigmenty/pigmenty-06",
+    "stemping/stemping-05",
+    "strazy/strazy-05",
+    "tekstury/tekstury-02",
+    "gradient/gradient-03",
+    "aerografiya/aerografiya-16"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r03/s09-red"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "clip": "r07/s08-reveal",
+          "frame": "phone",
+          "sfx": "swish",
+          "label": "Сторис клиентки",
+          "label_at": "сторис"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "gradient/gradient-01",
+          "tone": "mono",
+          "label": "Однотонка"
+        },
+        {
+          "photo": "aerografiya/aerografiya-05",
+          "from": "такое",
+          "sfx": "shimmer"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "photo": "akvarium/akvarium-10",
+          "label": "«Где делала?»",
+          "label_at": "Где"
+        },
+        {
+          "clip": "r17/g02-airbrush-pink",
+          "frame": "phone",
+          "from": "пишут"
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "photo": "tekstury/tekstury-08",
+          "sfx": "swish",
+          "stats": [
+            {
+              "big": "3",
+              "small": "недели рекламы",
+              "at": "три"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "line": 5,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r04/s10-end",
+    "from": "line:5:курса",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

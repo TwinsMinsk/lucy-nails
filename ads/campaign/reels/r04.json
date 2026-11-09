@@ -1,0 +1,35 @@
+{
+  "reel": "r04",
+  "title": "Втирка с проплешинами",
+  "headline": [
+    {"text": "Втирка с проплешинами?", "at": "start"},
+    {"text": "Протрите топ", "at": "start", "accent": true}
+  ],
+  "speaker": "Люся Смирнова",
+  "beats": [
+    {"line": 0, "clips": [
+      {"clip": "s01-hook"},
+      {"clip": "s02-top", "from": "неподходящий", "label": "Неподходящий топ", "sfx": "swish"},
+      {"clip": "s03-powder", "from": "мало", "label": "Мало втирки"},
+      {"clip": "s04-surface", "from": "неровная", "label": "Неровная поверхность"}
+    ]},
+    {"line": 1, "clips": [
+      {"clip": "s07-rose", "label": "Лайфхак", "label_at": "лайфхак", "sfx": "swish"},
+      {"clip": "s05-wipe", "from": "протрите", "label": "Протереть топ"},
+      {"clip": "s11-pink", "from": "дайте"},
+      {"clip": "s06-even", "from": "После", "label": "Втирается любая", "label_at": "втирается", "sfx": "shimmer"}
+    ]},
+    {"line": 2, "clips": [
+      {"clip": "s08-primer", "label": "Праймер на кончик", "label_at": "бескислотный", "sfx": "swish"},
+      {"clip": "s09-toptip", "from": "топ", "label": "Топ в 2 слоя"}
+    ]}
+  ],
+  "end": {
+    "clip": "s10-end",
+    "from": "line:3:уроке",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "11 техник, за которые доплачивают",
+    "cta": "Ссылка в профиле"
+  }
+}

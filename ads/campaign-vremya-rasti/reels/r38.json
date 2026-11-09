@@ -1,0 +1,126 @@
+{
+  "reel": "r38",
+  "title": "Выбери первую технику",
+  "headline": [
+    {
+      "text": "Какую технику",
+      "at": "start"
+    },
+    {
+      "text": "ты освоишь первой?",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "aerografiya/aerografiya-13",
+    "akvarium/akvarium-03",
+    "folga/folga-17",
+    "french/french-05",
+    "gradient/gradient-06",
+    "pigmenty/pigmenty-02",
+    "slaidery/slaidery-02",
+    "stemping/stemping-07",
+    "strazy/strazy-03",
+    "tekstury/tekstury-07",
+    "vtirka/vtirka-12"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r04/s11-pink"
+        },
+        {
+          "photo": "vtirka/vtirka-10",
+          "from": "что"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "clip": "r02/s02-glass",
+          "sfx": "swish",
+          "stats": [
+            {
+              "big": "1",
+              "small": "под стеклом",
+              "at": "Номер"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "clip": "r17/g01-gradient-set",
+          "sfx": "swish",
+          "stats": [
+            {
+              "big": "2",
+              "small": "неон",
+              "at": "Номер"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "photo": "vtirka/vtirka-13",
+          "sfx": "swish",
+          "stats": [
+            {
+              "big": "3",
+              "small": "хром",
+              "at": "Номер"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "clip": "r07/s01-hook",
+          "sfx": "swish",
+          "stats": [
+            {
+              "big": "4",
+              "small": "кристаллы",
+              "at": "Номер"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "line": 5,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r03/s11-set",
+    "from": "line:5:курсе",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

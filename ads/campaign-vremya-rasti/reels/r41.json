@@ -1,0 +1,128 @@
+{
+  "reel": "r41",
+  "title": "Записываются к тебе",
+  "headline": [
+    {
+      "text": "Представь: записываются",
+      "at": "start"
+    },
+    {
+      "text": "именно к тебе",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "aerografiya/aerografiya-13",
+    "akvarium/akvarium-03",
+    "folga/folga-17",
+    "french/french-05",
+    "gradient/gradient-06",
+    "pigmenty/pigmenty-02",
+    "slaidery/slaidery-02",
+    "stemping/stemping-07",
+    "strazy/strazy-03",
+    "tekstury/tekstury-07",
+    "vtirka/vtirka-12"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "photo": "aerografiya/aerografiya-03"
+        },
+        {
+          "photo": "french/french-01",
+          "tone": "mono",
+          "from": "есть",
+          "label": "Свободное окно"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "clip": "r02/s09-blue",
+          "sfx": "shimmer",
+          "label": "Твой дизайн",
+          "label_at": "твой"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "clip": "r08/s06-end",
+          "frame": "phone",
+          "sfx": "swish",
+          "label": "«Хочу как у Лены»",
+          "label_at": "Хочу"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "photo": "slaidery/slaidery-02",
+          "sfx": "swish"
+        },
+        {
+          "photo": "gradient/gradient-02",
+          "from": "находят"
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r07/s09-end",
+    "from": "line:4:Курс",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  },
+  "hooks": {
+    "b": {
+      "headline": [
+        {
+          "text": "Записываются не в окно,",
+          "at": "start"
+        },
+        {
+          "text": "а к тебе",
+          "at": "start",
+          "accent": true
+        }
+      ]
+    },
+    "c": {
+      "headline": [
+        {
+          "text": "Что, если клиентки",
+          "at": "start"
+        },
+        {
+          "text": "будут искать тебя сами?",
+          "at": "start",
+          "accent": true
+        }
+      ]
+    }
+  }
+}

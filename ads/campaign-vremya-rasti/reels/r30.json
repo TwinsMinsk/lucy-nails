@@ -1,0 +1,99 @@
+{
+  "reel": "r30",
+  "title": "Сделай на свой вкус",
+  "headline": [
+    {
+      "text": "Клиентка:",
+      "at": "start"
+    },
+    {
+      "text": "«Сделай на свой вкус»",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "aerografiya/aerografiya-13",
+    "akvarium/akvarium-03",
+    "folga/folga-17",
+    "french/french-05",
+    "gradient/gradient-06",
+    "pigmenty/pigmenty-02",
+    "slaidery/slaidery-02",
+    "stemping/stemping-07",
+    "strazy/strazy-03",
+    "tekstury/tekstury-07",
+    "vtirka/vtirka-12"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r02/s01-hook"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "photo": "french/french-09",
+          "tone": "mono",
+          "label": "Паника",
+          "label_at": "паника"
+        },
+        {
+          "clip": "r17/g02-airbrush-pink",
+          "from": "другого",
+          "sfx": "shimmer",
+          "label": "Лучший момент дня",
+          "label_at": "лучший"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "vtirka/vtirka-02",
+          "sfx": "swish"
+        },
+        {
+          "photo": "pigmenty/pigmenty-02",
+          "from": "идей"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "photo": "strazy/strazy-03",
+          "label": "Сочетания",
+          "label_at": "сочетать"
+        },
+        {
+          "photo": "tekstury/tekstury-01",
+          "from": "Вариантов"
+        },
+        {
+          "grid": true,
+          "intro": true,
+          "from": "любой",
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r08/s06-end",
+    "from": "line:4",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

@@ -1,0 +1,112 @@
+{
+  "reel": "r27",
+  "title": "Декабрь близко",
+  "headline": [
+    {
+      "text": "До Нового года месяц.",
+      "at": "start"
+    },
+    {
+      "text": "Твой прайс готов?",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "min_shot": 0.6,
+  "grid": [
+    "aerografiya/aerografiya-13",
+    "akvarium/akvarium-03",
+    "folga/folga-17",
+    "french/french-05",
+    "gradient/gradient-06",
+    "pigmenty/pigmenty-02",
+    "slaidery/slaidery-02",
+    "stemping/stemping-07",
+    "strazy/strazy-03",
+    "tekstury/tekstury-07",
+    "vtirka/vtirka-12"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r07/s01-hook"
+        },
+        {
+          "photo": "french/french-10",
+          "tone": "mono",
+          "from": "прайс"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "photo": "folga/folga-05",
+          "sfx": "shimmer",
+          "label": "Праздничный дизайн",
+          "label_at": "праздничный"
+        },
+        {
+          "photo": "vtirka/vtirka-14",
+          "from": "блеск"
+        },
+        {
+          "photo": "folga/folga-02",
+          "from": "фольгу"
+        },
+        {
+          "clip": "r01/e1-set",
+          "from": "кристаллы"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "clip": "r06/s09-reveal",
+          "sfx": "swish"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "photo": "aerografiya/aerografiya-13",
+          "sfx": "swish",
+          "stats": [
+            {
+              "big": "~5 ч",
+              "small": "все уроки",
+              "at": "пять"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r03/s11-set",
+    "from": "line:4:встреть",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}
