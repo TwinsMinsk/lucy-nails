@@ -1,0 +1,16 @@
+{
+  "reel": "r10",
+  "size": 600,
+  "shots": [
+    {
+      "id": "s01-end",
+      "slug": "pigmenty",
+      "start": 772.4,
+      "end": 778.6,
+      "cx": 640,
+      "cy": 360,
+      "size": 720,
+      "note": "finished neon pigment set on the hand (flame, leopard stamp, pigment stripes); no subtitles on screen"
+    }
+  ]
+}

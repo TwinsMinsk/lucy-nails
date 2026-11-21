@@ -1,0 +1,101 @@
+{
+  "reel": "r39",
+  "title": "Хватит оправдываться за цену",
+  "headline": [
+    {
+      "text": "Хватит оправдываться",
+      "at": "start"
+    },
+    {
+      "text": "за цену",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "aerografiya/aerografiya-13",
+    "akvarium/akvarium-03",
+    "folga/folga-17",
+    "french/french-05",
+    "gradient/gradient-06",
+    "pigmenty/pigmenty-02",
+    "slaidery/slaidery-02",
+    "stemping/stemping-07",
+    "strazy/strazy-03",
+    "tekstury/tekstury-07",
+    "vtirka/vtirka-12"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r03/s09-red"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "photo": "vtirka/vtirka-01",
+          "tone": "mono"
+        },
+        {
+          "photo": "french/french-01",
+          "tone": "mono",
+          "from": "разговор",
+          "label": "«А у соседнего дешевле»",
+          "label_at": "соседнего"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "tekstury/tekstury-07",
+          "sfx": "shimmer"
+        },
+        {
+          "clip": "r17/g06-neon-lines",
+          "from": "Хочу",
+          "label": "«Хочу вот так»"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "photo": "gradient/gradient-10",
+          "sfx": "swish"
+        },
+        {
+          "photo": "folga/folga-06",
+          "from": "клиентка"
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r09/s05-end",
+    "from": "line:4:курса",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

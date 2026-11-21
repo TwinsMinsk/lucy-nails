@@ -1,0 +1,143 @@
+{
+  "reel": "r33",
+  "title": "11 техник — не 11 дизайнов",
+  "headline": [
+    {
+      "text": "11 техник —",
+      "at": "start"
+    },
+    {
+      "text": "это не 11 дизайнов",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "aerografiya/aerografiya-13",
+    "akvarium/akvarium-03",
+    "folga/folga-17",
+    "french/french-05",
+    "gradient/gradient-06",
+    "pigmenty/pigmenty-02",
+    "slaidery/slaidery-02",
+    "stemping/stemping-07",
+    "strazy/strazy-03",
+    "tekstury/tekstury-07",
+    "vtirka/vtirka-12"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "grid": true,
+          "sfx": "swish"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "photo": "folga/folga-11",
+          "sfx": "swish",
+          "label": "Фольга + френч"
+        },
+        {
+          "photo": "strazy/strazy-04",
+          "from": "Втирка",
+          "label": "Втирка + стразы"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "card": "calc",
+          "steps": [
+            {
+              "text": "11 техник",
+              "style": "big"
+            },
+            {
+              "text": "× цвет",
+              "style": "mid",
+              "at": "цвет"
+            },
+            {
+              "text": "× форма",
+              "style": "mid",
+              "at": "форму"
+            },
+            {
+              "text": "× настроение",
+              "style": "mid",
+              "at": "настроение"
+            },
+            {
+              "text": "= сотни",
+              "style": "result",
+              "at": "сотни",
+              "sfx": "shimmer"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "clip": "r10/s01-end",
+          "frame": "phone",
+          "sfx": "swish"
+        },
+        {
+          "clip": "r17/g05-marble-gold",
+          "from": "они",
+          "sfx": "shimmer",
+          "label": "Идеи у тебя в руках"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r05/s09-end",
+    "from": "line:4",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  },
+  "hooks": {
+    "b": {
+      "headline": [
+        {
+          "text": "Сколько дизайнов",
+          "at": "start"
+        },
+        {
+          "text": "в 11 техниках?",
+          "at": "start",
+          "accent": true
+        }
+      ]
+    },
+    "c": {
+      "headline": [
+        {
+          "text": "Идеи",
+          "at": "start"
+        },
+        {
+          "text": "закончились?",
+          "at": "start",
+          "accent": true
+        }
+      ]
+    }
+  }
+}

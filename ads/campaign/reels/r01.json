@@ -1,0 +1,167 @@
+{
+  "reel": "r01",
+  "title": "11 дизайнов",
+  "headline": [
+    {
+      "text": "11 дизайнов,",
+      "at": "start"
+    },
+    {
+      "text": "за которые доплачивают",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "min_shot": 0.6,
+  "captions_skip_lines": [
+    1
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "grid": true
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "photo": "folga/folga-14",
+          "count": 1,
+          "name": "Фольга"
+        },
+        {
+          "photo": "akvarium/akvarium-01",
+          "from": "Аквариум",
+          "count": 2,
+          "name": "Аквариум"
+        },
+        {
+          "photo": "vtirka/vtirka-13",
+          "from": "Втирка",
+          "count": 3,
+          "name": "Втирка"
+        },
+        {
+          "photo": "slaidery/slaidery-12",
+          "from": "Слайдеры",
+          "count": 4,
+          "name": "Слайдеры"
+        },
+        {
+          "photo": "french/french-04",
+          "from": "Френч",
+          "count": 5,
+          "name": "Френч"
+        },
+        {
+          "photo": "pigmenty/pigmenty-07",
+          "from": "Пигменты",
+          "count": 6,
+          "name": "Пигменты"
+        },
+        {
+          "photo": "stemping/stemping-04",
+          "from": "Стемпинг",
+          "count": 7,
+          "name": "Стемпинг"
+        },
+        {
+          "photo": "strazy/strazy-05",
+          "from": "Стразы",
+          "count": 8,
+          "name": "Стразы"
+        },
+        {
+          "photo": "tekstury/tekstury-09",
+          "from": "Текстуры",
+          "count": 9,
+          "name": "Текстуры"
+        },
+        {
+          "photo": "gradient/gradient-03",
+          "from": "Градиент",
+          "count": 10,
+          "name": "Градиент"
+        },
+        {
+          "photo": "aerografiya/aerografiya-09",
+          "from": "Аэрография",
+          "count": 11,
+          "name": "Аэрография"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "clip": "p1-step",
+          "label": "По шагам",
+          "label_at": "шагам",
+          "sfx": "swish"
+        },
+        {
+          "clip": "p2-mat",
+          "from": "материалами",
+          "label": "Материалы"
+        },
+        {
+          "clip": "p3-stamp",
+          "from": "ошибками",
+          "label": "Ошибки"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "e1-set",
+    "from": "line:3:курсе",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "11 техник, за которые доплачивают",
+    "cta": "Ссылка в профиле"
+  },
+  "hooks": {
+    "b": {
+      "headline": [
+        {
+          "text": "Сколько из этих",
+          "at": "start"
+        },
+        {
+          "text": "11 техник вы умеете?",
+          "at": "start",
+          "accent": true
+        }
+      ]
+    },
+    "c": {
+      "headline": [
+        {
+          "text": "Сохраните:",
+          "at": "start"
+        },
+        {
+          "text": "11 дизайнов в прайс",
+          "at": "start",
+          "accent": true
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "reel": "r08",
+  "size": 600,
+  "shots": [
+    {
+      "id": "s01-plain",
+      "slug": "gradient",
+      "start": 375.4,
+      "end": 378.9,
+      "cx": 430,
+      "cy": 290,
+      "size": 520,
+      "note": "plain white gel polish brushed over the whole nail (hook, shown desaturated); red gradient nail kept out of frame"
+    },
+    {
+      "id": "s02-spray",
+      "slug": "aerografiya",
+      "start": 432.5,
+      "end": 436.0,
+      "cx": 600,
+      "cy": 330,
+      "size": 540,
+      "note": "airbrush sprays a bright pink centre onto the nail"
+    },
+    {
+      "id": "s03-blend",
+      "slug": "gradient",
+      "start": 62.4,
+      "end": 66.4,
+      "cx": 520,
+      "cy": 344,
+      "size": 540,
+      "note": "wide brush blends red, pink and orange stripes into a neon gradient"
+    },
+    {
+      "id": "s04-stamp",
+      "slug": "stemping",
+      "start": 610.3,
+      "end": 613.4,
+      "cx": 620,
+      "cy": 326,
+      "note": "clear stamp rolls a neon rainbow print onto the nail, lifts off to reveal it"
+    },
+    {
+      "id": "s05-pigment",
+      "slug": "pigmenty",
+      "start": 49.6,
+      "end": 53.2,
+      "cx": 660,
+      "cy": 327,
+      "note": "neon pink and yellow pigment rubbed onto a white nail with the applicator"
+    },
+    {
+      "id": "s06-end",
+      "slug": "tekstury",
+      "start": 1462.5,
+      "end": 1467.9,
+      "cx": 740,
+      "cy": 360,
+      "size": 720,
+      "speed": 0.8,
+      "note": "finished set in a loose fist: marble, galaxy, blue cat-eye, purple; no subtitles on screen, slowed to 0.8 for 6.75 s"
+    }
+  ]
+}

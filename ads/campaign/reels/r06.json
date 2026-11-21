@@ -1,0 +1,52 @@
+{
+  "reel": "r06",
+  "title": "Ровный френч",
+  "headline": [
+    {"text": "Ровный френч", "at": "start"},
+    {"text": "начинается со схемы", "at": "start", "accent": true}
+  ],
+  "speaker": "Люся Смирнова",
+  "beats": [
+    {"line": 0, "clips": [
+      {"clip": "s01-hook"},
+      {"clip": "s02-scheme", "from": "нужна", "label": "Схема", "sfx": "swish"}
+    ]},
+    {"line": 1, "clips": [
+      {"clip": "s03-dots", "label": "Высота усов", "label_at": "высоты", "sfx": "swish"},
+      {"clip": "s04-centre", "from": "центр", "label": "Центр края"},
+      {"clip": "s05-moustache", "from": "Каждую", "label": "Половинки пополам"}
+    ]},
+    {"line": 2, "clips": [
+      {"clip": "s06-width", "label": "Ширина", "sfx": "swish"},
+      {"clip": "s07-round", "from": "скругляем", "label": "Скругляем углы"}
+    ]},
+    {"line": 3, "clips": [{"clip": "s08-almond", "label": "Миндаль: к центру", "sfx": "swish"}]},
+    {"line": 4, "clips": [{"clip": "s09-reveal", "sfx": "shimmer"}]}
+  ],
+  "scheme": {
+    "from": "line:1",
+    "to": "line:3",
+    "base": "<path class=\"nail\" d=\"M75 362 L75 118 C75 62 110 34 150 34 C190 34 225 62 225 118 L225 362 Q225 368 219 368 L81 368 Q75 368 75 362 Z\" />",
+    "marks": [
+      {"type": "dot", "x": 75, "y": 214, "at": "line:1:точки"},
+      {"type": "dot", "x": 225, "y": 214, "at": "line:1:точки"},
+      {"type": "dot", "x": 150, "y": 368, "at": "line:1:центр"},
+      {"type": "dot", "x": 112.5, "y": 368, "at": "line:1:пополам"},
+      {"type": "dot", "x": 187.5, "y": 368, "at": "line:1:пополам"},
+      {"type": "guide", "d": "M75 214 L112.5 368 M225 214 L187.5 368", "at": "line:1:точкам"},
+      {"type": "line", "d": "M75 214 L94.5 294", "at": "line:1:ведём"},
+      {"type": "line", "d": "M225 214 L205.5 294", "at": "line:1:ведём"},
+      {"type": "line", "d": "M94.5 294 L205.5 294", "at": "line:2:Горизонтальной"},
+      {"type": "fill", "d": "M75 214 L91 280 Q94.5 294 109 294 L191 294 Q205.5 294 209 280 L225 214 L225 362 Q225 368 219 368 L81 368 Q75 368 75 362 Z", "at": "line:2:скругляем"},
+      {"type": "guide", "d": "M150 34 L150 368", "at": "line:2:Симметрию"}
+    ]
+  },
+  "end": {
+    "clip": "s10-end",
+    "from": "line:4:Курс",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "11 техник, за которые доплачивают",
+    "cta": "Ссылка в профиле"
+  }
+}

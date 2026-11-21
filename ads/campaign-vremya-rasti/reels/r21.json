@@ -1,0 +1,103 @@
+{
+  "reel": "r21",
+  "title": "Хочу как на фото",
+  "headline": [
+    {
+      "text": "Клиентка показывает фото:",
+      "at": "start"
+    },
+    {
+      "text": "«Хочу вот так»",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "folga/folga-09",
+    "akvarium/akvarium-02",
+    "vtirka/vtirka-13",
+    "slaidery/slaidery-12",
+    "french/french-04",
+    "pigmenty/pigmenty-06",
+    "stemping/stemping-05",
+    "strazy/strazy-05",
+    "tekstury/tekstury-02",
+    "gradient/gradient-03",
+    "aerografiya/aerografiya-16"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r02/s09-blue",
+          "frame": "phone"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "photo": "french/french-09",
+          "tone": "mono",
+          "sfx": "thump"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "aerografiya/aerografiya-10",
+          "sfx": "swish"
+        },
+        {
+          "clip": "r17/g04-texture-set",
+          "from": "спокойно",
+          "sfx": "shimmer",
+          "label": "«Сделаем»",
+          "label_at": "Сделаем"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "clip": "r05/s07-veil",
+          "sfx": "swish"
+        },
+        {
+          "photo": "aerografiya/aerografiya-12",
+          "from": "навык",
+          "label": "Это навык"
+        },
+        {
+          "photo": "stemping/stemping-05",
+          "from": "натренировать"
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r06/s10-end",
+    "from": "line:4:курсе",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "reel": "r03",
+  "title": "Фольга не отпечатывается",
+  "headline": [
+    {
+      "text": "Фольга не отпечатывается?",
+      "at": "start"
+    },
+    {
+      "text": "Дело не в фольге",
+      "at": "line:1",
+      "accent": true,
+      "sfx": "thump"
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "s01-tear"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "clip": "s02-holo",
+          "sfx": "swish"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "clip": "s03-sticky",
+          "label": "Липкий слой",
+          "label_at": "гель-лак"
+        },
+        {
+          "clip": "s04-base",
+          "from": "базу",
+          "label": "База"
+        },
+        {
+          "clip": "s05-primer",
+          "from": "бескислотный",
+          "label": "Праймер"
+        },
+        {
+          "clip": "s06-glue",
+          "from": "клей",
+          "label": "Клей"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "clip": "s07-base-brush",
+          "label": "Сохнет по-своему",
+          "sfx": "swish"
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "clip": "s08-clean",
+          "label": "Чистый отпечаток",
+          "sfx": "shimmer"
+        }
+      ]
+    },
+    {
+      "line": 5,
+      "clips": [
+        {
+          "clip": "s09-red",
+          "sfx": "swish"
+        },
+        {
+          "clip": "s10-gold",
+          "from": "уроке"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "s11-set",
+    "from": "line:5:Курс",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "11 техник, за которые доплачивают",
+    "cta": "Ссылка в профиле"
+  },
+  "hooks": {
+    "b": {
+      "headline": [
+        {
+          "text": "Стоп.",
+          "at": "start"
+        },
+        {
+          "text": "Не покупайте новую фольгу",
+          "at": "start",
+          "accent": true
+        }
+      ]
+    },
+    "c": {
+      "headline": [
+        {
+          "text": "4 поверхности,",
+          "at": "start"
+        },
+        {
+          "text": "на которые ложится фольга",
+          "at": "start",
+          "accent": true
+        }
+      ],
+      "first": {
+        "photo": "folga/folga-14"
+      }
+    }
+  }
+}

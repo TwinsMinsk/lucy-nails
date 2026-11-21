@@ -1,0 +1,104 @@
+{
+  "reel": "r32",
+  "title": "Фразы, ради которых стоит работать",
+  "headline": [
+    {
+      "text": "Фразы, которые хочет",
+      "at": "start"
+    },
+    {
+      "text": "услышать каждый мастер",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "aerografiya/aerografiya-13",
+    "akvarium/akvarium-03",
+    "folga/folga-17",
+    "french/french-05",
+    "gradient/gradient-06",
+    "pigmenty/pigmenty-02",
+    "slaidery/slaidery-02",
+    "stemping/stemping-07",
+    "strazy/strazy-03",
+    "tekstury/tekstury-07",
+    "vtirka/vtirka-12"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r06/s09-reveal"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "clip": "r02/s02-glass",
+          "sfx": "shimmer",
+          "label": "«А что, так можно было?»"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "clip": "r17/g04-texture-set",
+          "sfx": "swish",
+          "label": "«Подруга спросила, где я делала»"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "clip": "r07/s08-reveal",
+          "sfx": "swish",
+          "label": "«Запиши сразу на следующий раз»"
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "clip": "r17/g06-neon-lines",
+          "frame": "phone",
+          "sfx": "swish",
+          "label": "«На заставку поставила»"
+        }
+      ]
+    },
+    {
+      "line": 5,
+      "clips": [
+        {
+          "photo": "aerografiya/aerografiya-14",
+          "sfx": "swish"
+        },
+        {
+          "grid": true,
+          "intro": true,
+          "from": "Одиннадцать",
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r07/s09-end",
+    "from": "line:5:курсе",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "reel": "r05",
+  "title": "Слайдер отслоился",
+  "headline": [
+    {"text": "Слайдер отслоился?", "at": "start"},
+    {"text": "3 причины", "at": "start", "accent": true}
+  ],
+  "speaker": "Люся Смирнова",
+  "beats": [
+    {"line": 0, "clips": [
+      {"clip": "s01-hook"},
+      {"clip": "s02-lift", "from": "Три", "label": "Три причины", "sfx": "swish"}
+    ]},
+    {"line": 1, "clips": [
+      {"clip": "s03-air", "label": "1 · Воздух", "sfx": "swish"},
+      {"clip": "s08-smooth", "from": "силиконовым"}
+    ]},
+    {"line": 2, "clips": [{"clip": "s04-gap", "label": "2 · Кутикула", "sfx": "swish"}]},
+    {"line": 3, "clips": [{"clip": "s05-base", "label": "3 · Кислотная база", "sfx": "swish"}]},
+    {"line": 4, "clips": [{"clip": "s06-cuts", "label": "Надрезы по краю", "sfx": "swish"}]},
+    {"line": 5, "clips": [{"clip": "s07-veil", "sfx": "shimmer"}]}
+  ],
+  "end": {
+    "clip": "s09-end",
+    "from": "line:5:курсе",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "11 техник, за которые доплачивают",
+    "cta": "Ссылка в профиле"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "reel": "r02",
+  "title": "Аквариум",
+  "headline": [
+    {"text": "Эффект стекла:", "at": "start"},
+    {"text": "куда прятать декор", "at": "start", "accent": true}
+  ],
+  "speaker": "Люся Смирнова",
+  "beats": [
+    {"line": 0, "clips": [
+      {"clip": "s01-hook"},
+      {"clip": "s02-glass", "from": "Это", "label": "Аквариум", "label_at": "аквариум", "sfx": "shimmer"}
+    ]},
+    {"line": 1, "clips": [
+      {"clip": "s03-decor", "label": "Декор в базу", "sfx": "swish"},
+      {"clip": "s04-base", "from": "сверху", "label": "Слой базы"},
+      {"clip": "s05-clear-gel", "from": "потом", "label": "Прозрачный гель"}
+    ]},
+    {"line": 2, "clips": [
+      {"clip": "s06-milky", "label": "Молочный гель", "sfx": "swish"},
+      {"clip": "s07-file", "from": "опилом", "label": "Опил на нет"}
+    ]},
+    {"line": 3, "clips": [{"clip": "s08-calm-brush", "label": "Без резких движений", "sfx": "swish"}]},
+    {"line": 4, "clips": [
+      {"clip": "s09-blue", "sfx": "shimmer"},
+      {"clip": "s10-gold", "from": "красота"}
+    ]}
+  ],
+  "end": {
+    "clip": "s11-end",
+    "from": "line:5",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "11 техник, за которые доплачивают",
+    "cta": "Ссылка в профиле"
+  }
+}

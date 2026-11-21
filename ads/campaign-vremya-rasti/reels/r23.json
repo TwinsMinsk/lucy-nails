@@ -1,0 +1,152 @@
+{
+  "reel": "r23",
+  "title": "3 признака",
+  "headline": [
+    {
+      "text": "3 признака,",
+      "at": "start"
+    },
+    {
+      "text": "что тебе пора расти",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "folga/folga-09",
+    "akvarium/akvarium-02",
+    "vtirka/vtirka-13",
+    "slaidery/slaidery-12",
+    "french/french-04",
+    "pigmenty/pigmenty-06",
+    "stemping/stemping-05",
+    "strazy/strazy-05",
+    "tekstury/tekstury-02",
+    "gradient/gradient-03",
+    "aerografiya/aerografiya-16"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "clip": "r17/g03-airbrush-violet"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "clip": "r09/s02-prep",
+          "tone": "mono",
+          "stats": [
+            {
+              "big": "1",
+              "small": "на автомате",
+              "at": "Первый"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "french/french-01",
+          "tone": "mono",
+          "stats": [
+            {
+              "big": "2",
+              "small": "«попроще»",
+              "at": "Второй"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "photo": "tekstury/tekstury-04",
+          "stats": [
+            {
+              "big": "3",
+              "small": "чужая лента",
+              "at": "Третий"
+            }
+          ]
+        },
+        {
+          "clip": "r06/s01-hook",
+          "frame": "phone",
+          "from": "чужими"
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "clip": "r04/s11-pink",
+          "sfx": "shimmer"
+        },
+        {
+          "photo": "slaidery/slaidery-13",
+          "from": "время",
+          "label": "Время пришло"
+        }
+      ]
+    },
+    {
+      "line": 5,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r07/s09-end",
+    "from": "line:5:курса",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  },
+  "hooks": {
+    "b": {
+      "headline": [
+        {
+          "text": "Пора расти?",
+          "at": "start"
+        },
+        {
+          "text": "Проверь за 30 секунд",
+          "at": "start",
+          "accent": true
+        }
+      ]
+    },
+    "c": {
+      "headline": [
+        {
+          "text": "Узнаёшь себя",
+          "at": "start"
+        },
+        {
+          "text": "хотя бы в одном?",
+          "at": "start",
+          "accent": true
+        }
+      ]
+    }
+  }
+}

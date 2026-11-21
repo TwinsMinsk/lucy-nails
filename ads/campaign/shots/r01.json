@@ -1,0 +1,43 @@
+{
+  "reel": "r01",
+  "size": 600,
+  "shots": [
+    {
+      "id": "p1-step",
+      "slug": "vtirka",
+      "start": 1351.5,
+      "end": 1356.0,
+      "cx": 770,
+      "cy": 308,
+      "note": "chrome powder rubbed in with the applicator, blue holo shift"
+    },
+    {
+      "id": "p2-mat",
+      "slug": "strazy",
+      "start": 51.0,
+      "end": 55.0,
+      "cx": 680,
+      "cy": 309,
+      "note": "Flexi base dropped on the agate palette"
+    },
+    {
+      "id": "p3-stamp",
+      "slug": "stemping",
+      "start": 114.0,
+      "end": 117.0,
+      "cx": 640,
+      "cy": 326,
+      "note": "stamp with the picked-up print held up (Lucy explains transfer problems)"
+    },
+    {
+      "id": "e1-set",
+      "slug": "strazy",
+      "start": 2767.0,
+      "end": 2776.0,
+      "cx": 600,
+      "cy": 360,
+      "size": 720,
+      "note": "finished crystal set, no subtitles on screen"
+    }
+  ]
+}

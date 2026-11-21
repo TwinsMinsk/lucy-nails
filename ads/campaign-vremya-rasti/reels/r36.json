@@ -1,0 +1,140 @@
+{
+  "reel": "r36",
+  "title": "Стоимость часа",
+  "headline": [
+    {
+      "text": "Сколько стоит",
+      "at": "start"
+    },
+    {
+      "text": "твой час?",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "aerografiya/aerografiya-13",
+    "akvarium/akvarium-03",
+    "folga/folga-17",
+    "french/french-05",
+    "gradient/gradient-06",
+    "pigmenty/pigmenty-02",
+    "slaidery/slaidery-02",
+    "stemping/stemping-07",
+    "strazy/strazy-03",
+    "tekstury/tekstury-07",
+    "vtirka/vtirka-12"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "photo": "gradient/gradient-08",
+          "stats": [
+            {
+              "big": "1 час",
+              "small": "сколько стоит?",
+              "at": "стоит"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "clip": "r09/s02-prep",
+          "tone": "mono",
+          "label": "Больше клиенток?",
+          "label_at": "клиенток"
+        },
+        {
+          "photo": "french/french-10",
+          "tone": "mono",
+          "from": "часов",
+          "label": "Часов не прибавится"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "gradient/gradient-04",
+          "sfx": "shimmer",
+          "label": "Час дороже",
+          "label_at": "дороже"
+        },
+        {
+          "clip": "r17/g05-marble-gold",
+          "from": "Тот"
+        },
+        {
+          "photo": "folga/folga-01",
+          "from": "доплачивает"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "photo": "aerografiya/aerografiya-11",
+          "sfx": "swish",
+          "label": "Без лишних записей",
+          "label_at": "без"
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r01/e1-set",
+    "from": "line:4:курсе",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  },
+  "hooks": {
+    "b": {
+      "headline": [
+        {
+          "text": "Больше клиенток —",
+          "at": "start"
+        },
+        {
+          "text": "не единственный путь",
+          "at": "start",
+          "accent": true
+        }
+      ]
+    },
+    "c": {
+      "headline": [
+        {
+          "text": "Как зарабатывать больше",
+          "at": "start"
+        },
+        {
+          "text": "без новых записей",
+          "at": "start",
+          "accent": true
+        }
+      ]
+    }
+  }
+}

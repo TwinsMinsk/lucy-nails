@@ -1,0 +1,174 @@
+{
+  "reel": "r18",
+  "title": "Два мастера",
+  "headline": [
+    {
+      "text": "Два мастера.",
+      "at": "start"
+    },
+    {
+      "text": "Одна разница",
+      "at": "start",
+      "accent": true
+    }
+  ],
+  "speaker": "Люся Смирнова",
+  "tagline": "Время расти",
+  "grid": [
+    "folga/folga-09",
+    "akvarium/akvarium-02",
+    "vtirka/vtirka-13",
+    "slaidery/slaidery-12",
+    "french/french-04",
+    "pigmenty/pigmenty-06",
+    "stemping/stemping-05",
+    "strazy/strazy-05",
+    "tekstury/tekstury-02",
+    "gradient/gradient-03",
+    "aerografiya/aerografiya-16"
+  ],
+  "beats": [
+    {
+      "line": 0,
+      "clips": [
+        {
+          "photo": "french/french-04"
+        },
+        {
+          "photo": "french/french-10",
+          "tone": "mono",
+          "from": "одной"
+        }
+      ]
+    },
+    {
+      "line": 1,
+      "clips": [
+        {
+          "clip": "r09/s04-top",
+          "sfx": "swish"
+        },
+        {
+          "clip": "r09/s01-materials",
+          "from": "материалы"
+        }
+      ]
+    },
+    {
+      "line": 2,
+      "clips": [
+        {
+          "photo": "strazy/strazy-04",
+          "label": "Мастер 1 · запись на месяц",
+          "label_at": "запись"
+        },
+        {
+          "photo": "gradient/gradient-01",
+          "tone": "mono",
+          "from": "второй",
+          "label": "Мастер 2 · окна"
+        }
+      ]
+    },
+    {
+      "line": 3,
+      "clips": [
+        {
+          "photo": "vtirka/vtirka-01",
+          "tone": "mono"
+        }
+      ]
+    },
+    {
+      "line": 4,
+      "clips": [
+        {
+          "clip": "r10/s01-end",
+          "frame": "phone",
+          "sfx": "swish"
+        },
+        {
+          "clip": "r17/g03-airbrush-violet",
+          "from": "слышит",
+          "sfx": "shimmer",
+          "label": "«Сделаем»",
+          "label_at": "Сделаем"
+        }
+      ]
+    },
+    {
+      "line": 5,
+      "clips": [
+        {
+          "photo": "french/french-01",
+          "tone": "mono",
+          "label": "«Я так не делаю»",
+          "from": "отвечает"
+        }
+      ]
+    },
+    {
+      "line": 6,
+      "clips": [
+        {
+          "clip": "r03/s09-red",
+          "sfx": "swish"
+        },
+        {
+          "photo": "folga/folga-12",
+          "from": "уходят"
+        },
+        {
+          "photo": "akvarium/akvarium-09",
+          "from": "сделаем"
+        }
+      ]
+    },
+    {
+      "line": 7,
+      "clips": [
+        {
+          "grid": true,
+          "intro": true,
+          "sfx": "swish"
+        }
+      ]
+    }
+  ],
+  "end": {
+    "clip": "r03/s11-set",
+    "from": "line:7:курсе",
+    "tail": 1.4,
+    "title": "Nail Design PRO",
+    "sub": "Время расти",
+    "cta": "Ссылка в профиле"
+  },
+  "hooks": {
+    "b": {
+      "headline": [
+        {
+          "text": "Почему к одной запись на месяц,",
+          "at": "start"
+        },
+        {
+          "text": "а у другой окна?",
+          "at": "start",
+          "accent": true
+        }
+      ]
+    },
+    "c": {
+      "headline": [
+        {
+          "text": "«Я так не делаю»",
+          "at": "start"
+        },
+        {
+          "text": "стоит тебе клиенток",
+          "at": "start",
+          "accent": true
+        }
+      ]
+    }
+  }
+}
