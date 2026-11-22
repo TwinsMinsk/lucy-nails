@@ -133,9 +133,13 @@ HOOK_SECONDS = 4.5  # variants differ only in their opening
 
 
 def ffmpeg(src: Path, dst: Path, *args: str) -> None:
-    if dst.exists() and dst.stat().st_mtime >= src.stat().st_mtime:
+    """Make dst from src unless dst is newer and was made from this same src (a draft may be swapped for a final)."""
+    stamp = dst.with_name(f".{dst.name}.src")
+    same_src = stamp.exists() and stamp.read_text(encoding="utf-8") == src.name
+    if same_src and dst.exists() and dst.stat().st_mtime >= src.stat().st_mtime:
         return
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), *args, str(dst)], check=True)
+    stamp.write_text(src.name, encoding="utf-8")
 
 
 def render_base(reel: str) -> Path:
