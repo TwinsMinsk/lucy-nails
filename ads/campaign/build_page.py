@@ -138,17 +138,23 @@ def ffmpeg(src: Path, dst: Path, *args: str) -> None:
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), *args, str(dst)], check=True)
 
 
+def render_base(reel: str) -> Path:
+    """The final render of a reel (without extension), or its draft while there is no final yet."""
+    final = ADS / "out" / reel / reel
+    return final if final.with_suffix(".mp4").exists() else final.with_name(f"{reel}-draft")
+
+
 def media(data: dict) -> None:
     out = OUT / "media"
     out.mkdir(parents=True, exist_ok=True)
     for reel in REELS:
-        draft = ADS / "out" / reel / f"{reel}-draft"
-        ffmpeg(draft.with_suffix(".mp4"), out / f"{reel}.mp4", "-vf", "scale=720:1280:flags=lanczos", "-c:v", "libx264",
+        base = render_base(reel)
+        ffmpeg(base.with_suffix(".mp4"), out / f"{reel}.mp4", "-vf", "scale=720:1280:flags=lanczos", "-c:v", "libx264",
                "-preset", "slow", "-crf", "27", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart")
-        ffmpeg(Path(f"{draft}-cover.jpg"), out / f"{reel}.jpg", "-vf", "scale=720:-2", "-q:v", "4")
+        ffmpeg(Path(f"{base}-cover.jpg"), out / f"{reel}.jpg", "-vf", "scale=720:-2", "-q:v", "4")
     for reel in HOOK_REELS:
         for h in data[reel]["hooks"]:
-            name = f"{reel}-draft" if h["id"] == "a" else f"{reel}-hook-{h['id']}"
+            name = render_base(reel).name if h["id"] == "a" else f"{reel}-hook-{h['id']}"
             ffmpeg(ADS / "out" / reel / f"{name}.mp4", out / f"{reel}-hook-{h['id']}.mp4", "-t", str(HOOK_SECONDS), "-an",
                    "-vf", "scale=360:640:flags=lanczos", "-c:v", "libx264", "-preset", "slow", "-crf", "28",
                    "-pix_fmt", "yuv420p", "-movflags", "+faststart")
