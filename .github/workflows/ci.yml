@@ -79,6 +79,11 @@ jobs:
           PYTHONPATH: backend
         run: python -m pytest backend/tests -v --tb=short
 
+      # Last on purpose: a new advisory in test or CI tooling fails the job
+      # without skipping the tests above.
+      - name: Audit dev and CI tooling dependencies
+        run: pip-audit --strict --no-deps --disable-pip -r backend/requirements-dev.lock -r backend/requirements-tooling.lock
+
   frontend:
     name: Frontend (lint + build)
     runs-on: ubuntu-latest
