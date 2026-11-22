@@ -159,7 +159,7 @@ npm run test:e2e
 Set-Location ..
 ```
 
-В CI эти переменные задаются в workflow автоматически. Runtime dependency audits выполняются командами `pip-audit --strict -r backend/requirements.lock` и `npm audit --omit=dev --audit-level=high`; security workflow запускает CodeQL и Gitleaks.
+В CI эти переменные задаются в workflow автоматически. Runtime dependency audits выполняются командами `pip-audit --strict -r backend/requirements.lock` и `npm audit --omit=dev --audit-level=high`. Последний шаг backend-джобы, уже после pytest, проверяет dev- и tooling-зависимости: `pip-audit --strict --no-deps --disable-pip -r backend/requirements-dev.lock -r backend/requirements-tooling.lock`. Security workflow запускает CodeQL и Gitleaks.
 
 ## Railway: миграции и два сервиса
 
