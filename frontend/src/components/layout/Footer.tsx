@@ -35,10 +35,9 @@ export function Footer() {
                         <p>ИНН: 784217026925</p>
                         <p>ОГРНИП: 326784700145379</p>
                     </div>
-                    <div className="flex flex-wrap justify-center md:justify-start gap-x-4 gap-y-1">
-                        <p>Email: <a href="mailto:Luci4ek@gmail.com" className="hover:text-foreground hover:underline underline-offset-4">Luci4ek@gmail.com</a></p>
-                        <p>Тел.: <a href="tel:+79312122091" className="whitespace-nowrap hover:text-foreground hover:underline underline-offset-4">+7 (931) 212-20-91</a></p>
-                    </div>
+                    <p className="text-center md:text-left">
+                        Email: <a href="mailto:Luci4ek@gmail.com" className="inline-block py-1 hover:text-foreground hover:underline underline-offset-4">Luci4ek@gmail.com</a>
+                    </p>
                 </div>
             </div>
         </footer>

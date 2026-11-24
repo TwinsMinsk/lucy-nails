@@ -51,10 +51,9 @@ export function buildHomeJsonLd({ siteUrl, course, title, description, imageUrl 
             "@id": organizationId,
             name: ORGANIZATION_NAME,
             url: siteUrl,
-            // Google reads an Organization with a phone as a local business and asks for an image.
+            // Organization image for rich results; the phone is deliberately not published here.
             image: new URL(SOCIAL_IMAGE.url, siteUrl).toString(),
             email: "Luci4ek@gmail.com",
-            telephone: "+7 931 212-20-91",
             founder: { "@id": authorId },
         },
         {

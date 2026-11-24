@@ -39,80 +39,106 @@ export function NailsGallery({ items }: NailsGalleryProps) {
     }, [emblaApi, onSelect]);
 
     return (
-        <div className="relative w-full max-w-6xl mx-auto px-4 py-8 group">
-            {/* Container for Embla */}
-            <div className="overflow-hidden" ref={emblaRef}>
-                <div className="flex">
-                    {items.map((item, index) => {
-                        const isActive = selectedIndex === index;
+        <div className="relative w-full max-w-6xl mx-auto px-4 pb-8 group">
+            {/* Slides plus arrows; the dots sit below and outside this box */}
+            <div className="relative">
+                {/* Container for Embla */}
+                <div className="overflow-hidden" ref={emblaRef}>
+                    <div className="flex">
+                        {items.map((item, index) => {
+                            const isActive = selectedIndex === index;
+                            const caption = item.caption.trim();
+                            const transition = reduceMotion ? { duration: 0 } : {
+                                type: "spring" as const,
+                                stiffness: 300,
+                                damping: 30,
+                            };
 
-                        return (
-                            <div
-                                key={index}
-                                className="flex-[0_0_70%] sm:flex-[0_0_50%] md:flex-[0_0_40%] lg:flex-[0_0_33.333%] min-w-0 pl-1 py-10"
-                            >
-                                <motion.div
-                                    initial={false}
-                                    animate={{
-                                        scale: isActive ? 1.1 : 0.85,
-                                        opacity: isActive ? 1 : 0.6,
-                                        zIndex: isActive ? 10 : 0,
-                                    }}
-                                    transition={reduceMotion ? { duration: 0 } : {
-                                        type: "spring",
-                                        stiffness: 300,
-                                        damping: 30,
-                                    }}
-                                    className="relative aspect-[3/4] rounded-3xl overflow-hidden shadow-2xl bg-[#EBC8C8]"
+                            return (
+                                <div
+                                    key={index}
+                                    className="flex-[0_0_70%] sm:flex-[0_0_50%] md:flex-[0_0_40%] lg:flex-[0_0_33.333%] min-w-0 pl-1 pt-[10vw] sm:pt-16 pb-2"
                                 >
-                                    <Image
-                                        src={item.src}
-                                        alt={item.alt}
-                                        fill
-                                        sizes="(max-width: 640px) 70vw, (max-width: 1024px) 40vw, 33vw"
-                                        className="object-cover select-none"
-                                    />
-                                    {/* Compact caption: the work itself is the point of the slide */}
-                                    <div className="absolute inset-x-3 bottom-3 rounded-2xl bg-white/90 px-3 py-2.5 border border-white/70">
-                                        <Badge variant="secondary" className="mb-1 bg-[#fff1f4] text-text-primary border border-primary/20">
-                                            {item.technique}
-                                        </Badge>
-                                        <p className="text-sm leading-snug text-text-secondary">
-                                            {item.caption}
-                                        </p>
-                                    </div>
-                                </motion.div>
-                            </div>
-                        );
-                    })}
+                                    {/* Inactive slides fade; only the photo scales, the text never does */}
+                                    <motion.figure
+                                        initial={false}
+                                        animate={{ opacity: isActive ? 1 : 0.6 }}
+                                        transition={transition}
+                                        className="m-0"
+                                    >
+                                        {/* Scales from its bottom edge, so it grows into the top padding (10vw on phones,
+                                            4rem from sm: each covers 10% of the widest photo at that breakpoint) and never reaches the caption below */}
+                                        <motion.div
+                                            initial={false}
+                                            animate={{
+                                                scale: isActive ? 1.1 : 0.85,
+                                                zIndex: isActive ? 10 : 0,
+                                            }}
+                                            transition={transition}
+                                            style={{ transformOrigin: "50% 100%" }}
+                                            className="relative aspect-[3/4] rounded-3xl overflow-hidden shadow-2xl bg-[#EBC8C8]"
+                                        >
+                                            <Image
+                                                src={item.src}
+                                                alt={item.alt}
+                                                fill
+                                                sizes="(max-width: 639px) 78vw, (max-width: 767px) 55vw, (max-width: 1023px) 44vw, 420px"
+                                                className="object-cover select-none"
+                                            />
+                                        </motion.div>
+                                        {/* Fixed height (tag + two lines) so captions of any length never shift the layout.
+                                            Only the active caption is shown: cut-off neighbour text must not compete with it */}
+                                        <motion.figcaption
+                                            initial={false}
+                                            animate={{ opacity: isActive ? 1 : 0 }}
+                                            transition={transition}
+                                            className="mt-4 flex h-[4.5rem] flex-col items-center gap-1.5 px-2 text-center">
+                                            {item.technique && (
+                                                <Badge variant="secondary" className="block max-w-full truncate bg-[#fff1f4] text-text-primary border border-primary/20">
+                                                    {item.technique}
+                                                </Badge>
+                                            )}
+                                            {caption && (
+                                                <p className="line-clamp-2 text-sm leading-5 text-text-secondary">
+                                                    {caption}
+                                                </p>
+                                            )}
+                                        </motion.figcaption>
+                                    </motion.figure>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
-            </div>
 
-            {/* Navigation Arrows */}
-            <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 gap-4 flex justify-between items-center px-4 md:px-0 pointer-events-none z-20">
-                <Button
-                    onClick={scrollPrev}
-                    variant="outline"
-                    size="icon"
-                    aria-label="Предыдущая работа"
-                    className="pointer-events-auto rounded-full w-14 h-14 bg-white/95 backdrop-blur-sm border border-black/5 shadow-2xl hover:bg-white text-text-primary -ml-4 md:-ml-7 transition-all hover:scale-110 active:scale-90"
-                >
-                    <ChevronLeft className="w-8 h-8" />
-                </Button>
-                <Button
-                    onClick={scrollNext}
-                    variant="outline"
-                    size="icon"
-                    aria-label="Следующая работа"
-                    className="pointer-events-auto rounded-full w-14 h-14 bg-white/95 backdrop-blur-sm border border-black/5 shadow-2xl hover:bg-white text-text-primary -mr-4 md:-mr-7 transition-all hover:scale-110 active:scale-90"
-                >
-                    <ChevronRight className="w-8 h-8" />
-                </Button>
+                {/* Navigation Arrows: centred on the photo row (slide top padding to the caption block,
+                    bottom-24 = pb-2 + mt-4 + caption h-[4.5rem]). The active photo grows upward from its bottom edge
+                    by 10%, so -5% moves the arrows to its visual centre; -inset-x-4 keeps the old horizontal position */}
+                <div className="absolute top-[10vw] sm:top-16 bottom-24 -left-4 -right-4 -translate-y-[5%] gap-4 flex justify-between items-center px-4 md:px-0 pointer-events-none z-20">
+                    <Button
+                        onClick={scrollPrev}
+                        variant="outline"
+                        size="icon"
+                        aria-label="Предыдущая работа"
+                        className="pointer-events-auto rounded-full size-11 md:size-14 bg-white/95 backdrop-blur-sm border border-black/5 shadow-2xl hover:bg-white text-text-primary -ml-4 md:-ml-7 transition-all hover:scale-110 active:scale-90"
+                    >
+                        <ChevronLeft className="size-6 md:size-8" />
+                    </Button>
+                    <Button
+                        onClick={scrollNext}
+                        variant="outline"
+                        size="icon"
+                        aria-label="Следующая работа"
+                        className="pointer-events-auto rounded-full size-11 md:size-14 bg-white/95 backdrop-blur-sm border border-black/5 shadow-2xl hover:bg-white text-text-primary -mr-4 md:-mr-7 transition-all hover:scale-110 active:scale-90"
+                    >
+                        <ChevronRight className="size-6 md:size-8" />
+                    </Button>
+                </div>
             </div>
 
             {/* Dots / Indicators */}
             {/* 24px tall hit area around a 10px dot (WCAG 2.5.8) */}
-            <div className="flex justify-center gap-1 mt-12">
+            <div className="flex justify-center gap-1 mt-6">
                 {items.map((_, index) => (
                     <button
                         key={index}
