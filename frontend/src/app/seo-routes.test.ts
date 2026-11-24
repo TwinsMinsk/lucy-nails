@@ -5,7 +5,7 @@ import sitemap from "@/app/sitemap"
 import CoursePage, { generateMetadata } from "@/app/(public)/courses/[id]/page"
 import { ApiError, getPublicCourse, getPublicCourseModules, getPublishedCourses } from "@/lib/api"
 import { getLandingCourseId, LandingUnavailableError } from "@/lib/landing/loader"
-import { LEGAL_UPDATED_AT } from "@/lib/seo"
+import { LEGAL_UPDATED_AT, SOCIAL_IMAGE } from "@/lib/seo"
 
 vi.mock("@/lib/api", async (importOriginal) => ({
     ApiError: (await importOriginal<typeof import("@/lib/api")>()).ApiError,
@@ -64,6 +64,8 @@ describe("course page", () => {
         expect(metadata.title).toBe("Nail Design PRO")
         expect(metadata.alternates?.canonical).toBe("/")
         expect(metadata.robots).toBeUndefined()
+        expect(metadata.openGraph?.images).toEqual([SOCIAL_IMAGE])
+        expect(metadata.twitter?.images).toEqual([SOCIAL_IMAGE])
         render(await CoursePage(params(LANDING_ID)))
         expect(screen.getByRole("heading", { level: 1, name: "Nail Design PRO" })).toBeInTheDocument()
         expect(screen.getByText(/Модуль 1: Фольга/)).toBeInTheDocument()
@@ -77,6 +79,7 @@ describe("course page", () => {
         vi.mocked(getLandingCourseId).mockResolvedValue(LANDING_ID)
         const metadata = await generateMetadata(params(OTHER_ID))
         expect(metadata.alternates?.canonical).toBe(`/courses/${OTHER_ID}`)
+        expect(metadata.openGraph?.images).toEqual(["https://api.example/cover.png"])
     })
 
     it("answers 404 only when the course request itself returns 404", async () => {

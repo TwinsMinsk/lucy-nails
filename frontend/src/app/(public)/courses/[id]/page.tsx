@@ -38,9 +38,11 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     // never flips the canonical of the landing course to its own URL.
     const [course, landingCourseId] = await Promise.all([loadCourse(id), getLandingCourseId()]);
     const description = course.description || "Онлайн-курс Люси Смирновой по дизайну ногтей.";
-    const images = course.cover_image_url ? [course.cover_image_url] : baseOpenGraph.images;
+    const isLandingCourse = landingCourseId === id;
     // The landing page sells this course with fuller content, so it is the page to index.
-    const canonical = landingCourseId === id ? "/" : `/courses/${id}`;
+    const canonical = isLandingCourse ? "/" : `/courses/${id}`;
+    // One offer, one link preview: the landing course shares the prepared 1200x630 image of "/".
+    const images = !isLandingCourse && course.cover_image_url ? [course.cover_image_url] : baseOpenGraph.images;
     return {
         title: course.title,
         description,
