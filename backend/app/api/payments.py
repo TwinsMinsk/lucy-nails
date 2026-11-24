@@ -761,18 +761,19 @@ async def _record_purchase_once(
                     payment_event.processed_at = datetime.utcnow()
                     await db.commit()
                     return customer_email
-                incident = await db.scalar(select(PaymentEvent.id).where(
-                    PaymentEvent.provider == "prodamus",
-                    PaymentEvent.external_event_id == event_data.external_event_id,
-                    PaymentEvent.order_id == order.id,
-                    PaymentEvent.processing_status == "financial_incident",
-                ).limit(1))
+                # The binding read under the provider payment lock tells the
+                # first incident from its repeat: it resolves the payment id
+                # under either field order, where the raw order_id may be the
+                # order reference shared by every payment for this order.
+                repeated_incident = binding.status == "same"
                 payment_event.purchase_id = original_purchase.id
-                payment_event.processing_status = "duplicate" if incident else "financial_incident"
+                payment_event.processing_status = (
+                    "duplicate" if repeated_incident else "financial_incident"
+                )
                 payment_event.error_code = "duplicate_order_payment"
                 payment_event.error_detail = "Additional payment for an already paid order; reconcile with provider"
                 payment_event.processed_at = datetime.utcnow()
-                if incident is None:
+                if not repeated_incident:
                     incident_key = hashlib.sha256(payment_key.encode("utf-8")).hexdigest()
                     await enqueue_owner_telegram_alert(
                         db,
@@ -928,11 +929,14 @@ async def _record_rejected_webhook(
     error_code: str,
     error_detail: str,
     order_id: UUID | None = None,
+    payment_key: str | None = None,
 ) -> None:
     """Record a signed webhook that was not processed and alert the owner once.
 
-    The alert is keyed by the provider order id (not the event hash, which
-    changes with Prodamus' ``attempt`` counter), so retries do not spam.
+    The alert is keyed by the normalised provider payment id when the
+    notification has one (not the event hash, which changes with Prodamus'
+    ``attempt`` counter, and not the raw order_id, which holds the order
+    reference in the old field order), so retries do not spam.
     """
     try:
         await record_terminal_payment_event(
@@ -945,7 +949,7 @@ async def _record_rejected_webhook(
     except IntegrityError:
         # A concurrent delivery of the same notification recorded it first.
         logger.info("Prodamus webhook: rejected event already recorded")
-    identity = event_data.external_event_id or event_data.order_reference
+    identity = payment_key or event_data.external_event_id or event_data.order_reference
     if not identity:
         # Without ids, key on the body minus the per-delivery retry counter.
         stable_payload = {key: value for key, value in payload.items() if key != "attempt"}
@@ -1031,6 +1035,15 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     event_data = build_payment_event_data(payload)
+    provider_order_id_raw = str(payload.get("order_id", "")).strip()
+    merchant_reference_raw = str(payload.get("order_num", "")).strip()
+    # The normalised provider payment id keys the owner's rejection alert: the
+    # same payment shares one key under either field order.
+    alert_payment_key = (
+        _resolve_payment_key(provider_order_id_raw, merchant_reference_raw)
+        if provider_order_id_raw
+        else None
+    )
     if _is_demo_payment_payload(payload) and not ProdamusService.demo_payments_allowed():
         # Prodamus signs demo webhooks with the regular secret (observed
         # 2026-10-31), so the signature alone cannot stop a test payment from
@@ -1041,6 +1054,7 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
             processing_status="rejected",
             error_code="demo_payment",
             error_detail="Demo payment webhook while demo payments are disabled",
+            payment_key=alert_payment_key,
         )
         logger.warning("Prodamus webhook: demo payment rejected")
         raise HTTPException(status_code=422, detail="Demo payment")
@@ -1054,6 +1068,7 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
             processing_status="rejected",
             error_code="contradictory_payment_status",
             error_detail="Signed webhook carried contradictory payment status fields",
+            payment_key=alert_payment_key,
         )
         logger.error("Prodamus webhook: contradictory payment status fields")
         raise HTTPException(status_code=422, detail="Contradictory payment status")
@@ -1064,12 +1079,11 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
             processing_status="ignored",
             error_code="payment_not_successful",
             error_detail="Signed webhook did not contain a successful payment status",
+            payment_key=alert_payment_key,
         )
         logger.warning("Prodamus webhook: non-success payment payload")
         raise HTTPException(status_code=422, detail="Payment is not successful")
 
-    provider_order_id_raw = str(payload.get("order_id", "")).strip()
-    merchant_reference_raw = str(payload.get("order_num", "")).strip()
     if not provider_order_id_raw:
         await _record_rejected_webhook(
             event_data,
@@ -1101,6 +1115,7 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
             processing_status="rejected",
             error_code="invalid_order_reference",
             error_detail="Order reference has an unsupported format",
+            payment_key=alert_payment_key,
         )
         logger.error("Prodamus webhook: invalid merchant order reference")
         raise HTTPException(status_code=422, detail="Invalid order reference")
@@ -1123,6 +1138,7 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
             error_code="invalid_customer_email",
             error_detail=str(exc.detail),
             order_id=order_uuid,
+            payment_key=payment_key,
         )
         raise
 
@@ -1154,6 +1170,7 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
                 error_code=error_code,
                 error_detail=str(exc.detail),
                 order_id=order_uuid,
+                payment_key=payment_key,
             )
             raise
         except DBAPIError as exc:

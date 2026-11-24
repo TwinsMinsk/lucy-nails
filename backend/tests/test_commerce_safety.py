@@ -1,14 +1,20 @@
 import hashlib
 import json
 import logging
+import os
+import subprocess
+import sys
 import uuid
 from datetime import datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import create_engine, func, select, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError, IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 from starlette.requests import Request as StarletteRequest
 
 import app.api.payments as payments_module
@@ -1876,3 +1882,213 @@ async def test_one_provider_payment_naming_two_orders_at_once_is_bound_once(
     assert bound_as_purchase + bound_as_incident == 1
     assert await _rejection_alerts(db) == 1
     assert len(purchase_attempts) == 2
+
+
+# --- Schema built by the migrations, as production builds it ---
+
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(scope="module")
+def alembic_database_url() -> str:
+    """A database built by `alembic upgrade head`, not by `create_all`.
+
+    conftest builds the test schema from the ORM models, so a constraint that
+    only the migrations create is invisible there. This database is created
+    next to the test database and dropped afterwards.
+    """
+    url = make_url(settings.DATABASE_URL)
+    name = f"{url.database}_alembic"
+    admin = create_engine(
+        url.set(drivername="postgresql", database="postgres"),
+        isolation_level="AUTOCOMMIT",
+        poolclass=NullPool,
+    )
+    with admin.connect() as connection:
+        connection.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+        connection.execute(text(f'CREATE DATABASE "{name}"'))
+    target = url.set(database=name).render_as_string(hide_password=False)
+    upgrade = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=BACKEND_DIR,
+        env={**os.environ, "DATABASE_URL": target, "PYTHONPATH": str(BACKEND_DIR)},
+        capture_output=True,
+        text=True,
+    )
+    assert upgrade.returncode == 0, upgrade.stderr[-2000:]
+    yield target
+    with admin.connect() as connection:
+        connection.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+    admin.dispose()
+
+
+@pytest.mark.asyncio
+async def test_second_payment_is_an_incident_on_a_migrated_database(
+    client, db, monkeypatch, owner_chat, alembic_database_url
+):
+    engine = create_async_engine(alembic_database_url, poolclass=NullPool)
+    options = {key: value for key, value in app_session_maker.kw.items() if key != "bind"}
+    migrated = async_sessionmaker(bind=engine, class_=app_session_maker.class_, **options)
+    monkeypatch.setattr(payments_module, "async_session_maker", migrated)
+    monkeypatch.setattr(payment_event_module, "async_session_maker", migrated)
+
+    async def count(column, *conditions) -> int:
+        async with migrated() as session:
+            return await session.scalar(select(func.count(column)).where(*conditions))
+
+    try:
+        async with migrated() as session:
+            check = await session.scalar(
+                text(
+                    "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                    "WHERE conname = 'ck_payment_events_processing_status'"
+                )
+            )
+            course = Course(
+                title="Migrated", price_self=5900, price_support=11900, is_published=True
+            )
+            session.add(course)
+            await session.flush()
+            order = Order(
+                course_id=course.id,
+                course_title=course.title,
+                tariff="self",
+                customer_email="migrated@example.com",
+                amount_kopecks=590000,
+                currency="RUB",
+                access_days=30,
+                status="pending",
+                status_token_hash="0" * 64,
+            )
+            session.add(order)
+            await session.commit()
+        assert "financial_incident" in check
+
+        paid = await _deliver(client, _notification(order, "migrated-first"))
+        assert paid.status_code == 200, paid.text
+        extra = _notification(order, "migrated-second", attempt="1")
+
+        second = await _deliver(client, extra)
+
+        assert second.status_code == 200, second.text
+        incidents = (PaymentEvent.id, PaymentEvent.processing_status == "financial_incident")
+        incident_alerts = (OutboxMessage.id, OutboxMessage.kind == "owner_payment_incident")
+        assert await count(*incidents) == 1
+        assert await count(*incident_alerts) == 1
+        events_after_incident = await count(PaymentEvent.id)
+
+        replay = await _deliver(client, extra)
+
+        assert replay.status_code == 200, replay.text
+        assert await count(PaymentEvent.id) == events_after_incident
+        assert await count(*incident_alerts) == 1
+
+        next_attempt = await _deliver(client, {**extra, "attempt": "2"})
+
+        assert next_attempt.status_code == 200, next_attempt.text
+        assert await count(PaymentEvent.id) == events_after_incident + 1
+        assert await count(
+            PaymentEvent.id,
+            PaymentEvent.processing_status == "duplicate",
+            PaymentEvent.external_event_id == "migrated-second",
+        ) == 1
+        assert await count(*incidents) == 1
+        assert await count(*incident_alerts) == 1
+        assert await count(Purchase.id) == 1
+        assert await count(Entitlement.id) == 1
+    finally:
+        await engine.dispose()
+
+
+# --- The old field order: the order reference in order_id ---
+
+
+def _in_old_field_order(payload: dict) -> dict:
+    """Callbacks of the old field mapping swapped order_id and order_num."""
+    return {**payload, "order_id": payload["order_num"], "order_num": payload["order_id"]}
+
+
+async def _incident_count(db) -> int:
+    return await _count(
+        db, PaymentEvent.id, PaymentEvent.processing_status == "financial_incident"
+    )
+
+
+async def _incident_alerts(db) -> int:
+    return await _count(db, OutboxMessage.id, OutboxMessage.kind == "owner_payment_incident")
+
+
+@pytest.mark.asyncio
+async def test_extra_payments_in_the_old_field_order_are_separate_incidents(
+    client, db, owner_chat
+):
+    order = await _paid_order(client, db, "old-order@example.com", "first-payment")
+    first_extra = _in_old_field_order(_notification(order, "extra-one", attempt="1"))
+    second_extra = _in_old_field_order(_notification(order, "extra-two", attempt="1"))
+
+    responses = [await _deliver(client, first_extra), await _deliver(client, second_extra)]
+
+    assert [response.status_code for response in responses] == [200, 200]
+    assert await _incident_count(db) == 2
+    assert await _incident_alerts(db) == 2
+    events_after_incidents = await _count(db, PaymentEvent.id)
+
+    replay = await _deliver(client, second_extra)
+
+    assert replay.status_code == 200, replay.text
+    assert await _count(db, PaymentEvent.id) == events_after_incidents
+
+    swapped = await _deliver(client, _notification(order, "extra-one", attempt="2"))
+
+    assert swapped.status_code == 200, swapped.text
+    duplicate = (
+        await db.scalars(select(PaymentEvent).where(PaymentEvent.processing_status == "duplicate"))
+    ).one()
+    assert duplicate.external_event_id == "extra-one"
+    assert await _incident_count(db) == 2
+    assert await _incident_alerts(db) == 2
+    assert await _rejection_alerts(db) == 0
+    assert await _count(db, Purchase.id) == 1
+
+
+@pytest.mark.asyncio
+async def test_incident_redelivered_in_the_old_field_order_adds_no_second_incident(
+    client, db, owner_chat
+):
+    order = await _paid_order(client, db, "swapped@example.com", "first-payment")
+    extra = _notification(order, "extra-payment", attempt="1")
+    assert (await _deliver(client, extra)).status_code == 200
+
+    swapped = await _deliver(client, _in_old_field_order({**extra, "attempt": "2"}))
+
+    assert swapped.status_code == 200, swapped.text
+    assert await _incident_count(db) == 1
+    assert await _incident_alerts(db) == 1
+    assert await _count(db, PaymentEvent.id, PaymentEvent.processing_status == "duplicate") == 1
+    assert await _rejection_alerts(db) == 0
+
+
+@pytest.mark.asyncio
+async def test_rejection_alerts_are_keyed_by_the_normalised_payment_id(
+    client, db, owner_chat
+):
+    course = await _course_for_sale(db)
+    order = await _pending_order(db, course, "underpaid@example.com")
+    underpaid_one = _notification(order, "underpaid-one", sum="1.00", attempt="1")
+    underpaid_two = _notification(order, "underpaid-two", sum="1.00", attempt="1")
+
+    responses = [
+        await _deliver(client, _in_old_field_order(underpaid_one)),
+        await _deliver(client, _in_old_field_order(underpaid_two)),
+    ]
+
+    # Two different payments with one order and one reason: two alerts.
+    assert [response.status_code for response in responses] == [422, 422]
+    assert await _rejection_alerts(db) == 2
+
+    swapped = await _deliver(client, {**underpaid_one, "attempt": "2"})
+
+    # One payment redelivered with the fields swapped: still its own alert.
+    assert swapped.status_code == 422
+    assert await _rejection_alerts(db) == 2
