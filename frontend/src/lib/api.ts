@@ -769,6 +769,8 @@ export interface AdminPurchaseResponse {
     entitlement_id?: string | null;
     access_status: "active" | "suspended" | "revoked" | "expired" | "missing";
     access_expires_at?: string | null;
+    /** "paid" for a real payment, "manual" for a manual grant. */
+    kind?: "paid" | "manual";
 }
 
 // --- Course CRUD ---
@@ -919,8 +921,16 @@ export const adminGetAnalytics = async (): Promise<AnalyticsResponse> => {
     return apiFetch<AnalyticsResponse>("/admin/analytics");
 };
 
-export const adminGetPurchases = async (): Promise<AdminPurchaseResponse[]> => {
-    return apiFetch<AdminPurchaseResponse[]>("/admin/purchases");
+export type AdminPurchaseKind = "paid" | "manual" | "all";
+
+export const adminGetPurchases = async (
+    params: { kind?: AdminPurchaseKind; limit?: number; offset?: number } = {},
+): Promise<PageResponse<AdminPurchaseResponse>> => {
+    const query = new URLSearchParams();
+    if (params.kind) query.set("kind", params.kind);
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.offset) query.set("offset", String(params.offset));
+    return apiFetch<PageResponse<AdminPurchaseResponse>>(`/admin/purchases${query.size ? `?${query}` : ""}`);
 };
 
 export const adminCheckVideoHealth = async (courseId?: string): Promise<VideoHealthResponse> => {

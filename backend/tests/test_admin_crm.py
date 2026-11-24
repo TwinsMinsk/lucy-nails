@@ -334,7 +334,7 @@ async def test_analyst_order_access_masks_personal_data(
         headers={"Authorization": f"Bearer {login.json()['access_token']}"},
     )
     assert legacy.status_code == 200, legacy.text
-    legacy_item = legacy.json()[0]
+    legacy_item = legacy.json()["items"][0]
     assert legacy_item["user_email"] == "p***@example.com"
     assert legacy_item["customer_phone"] == "***4567"
 

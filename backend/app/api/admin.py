@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -257,6 +257,15 @@ class AdminPurchaseResponse(BaseModel):
     entitlement_id: Optional[UUID] = None
     access_status: str
     access_expires_at: Optional[datetime] = None
+    # "paid" for real payments, "manual" for manual grants (see paid_financial_filter).
+    kind: str = "paid"
+
+
+class AdminPurchasePage(BaseModel):
+    items: list[AdminPurchaseResponse]
+    total: int
+    limit: int
+    offset: int
 
 
 # Commercial terms of a course: content.manage alone must not change them,
@@ -827,24 +836,38 @@ async def delete_lesson(
 
 # === Analytics ===
 
-@router.get("/purchases", response_model=list[AdminPurchaseResponse])
+@router.get("/purchases", response_model=AdminPurchasePage)
 async def get_all_purchases(
+    kind: Literal["paid", "manual", "all"] = Query(default="paid"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("commerce.read")),
 ):
-    """Получить последние покупки для админ-панели."""
+    """Покупки для админ-панели: по умолчанию только реальные оплаты."""
+    is_paid = paid_financial_filter()
+    conditions = []
+    if kind == "paid":
+        conditions.append(is_paid)
+    elif kind == "manual":
+        conditions.append(~is_paid)
+    total = await db.scalar(select(func.count(Purchase.id)).where(*conditions))
     query = (
-        select(Purchase)
+        select(Purchase, is_paid.label("is_paid"))
+        .where(*conditions)
         .options(
             selectinload(Purchase.user),
             selectinload(Purchase.course),
             selectinload(Purchase.entitlement),
         )
-        .order_by(Purchase.created_at.desc())
-        .limit(200)
+        .order_by(Purchase.created_at.desc(), Purchase.id.desc())
+        .offset(offset)
+        .limit(limit)
     )
     result = await db.execute(query)
-    purchases = result.scalars().all()
+    rows = result.all()
+    paid_ids = {purchase.id for purchase, paid in rows if paid}
+    purchases = [purchase for purchase, _ in rows]
     can_read_pii = await user_has_permission(db, admin, "pii.read")
     now = datetime.utcnow()
 
@@ -856,7 +879,7 @@ async def get_all_purchases(
             return "expired"
         return entitlement.status
 
-    return [
+    items = [
         AdminPurchaseResponse(
             id=purchase.id,
             payment_id=purchase.payment_id,
@@ -882,9 +905,11 @@ async def get_all_purchases(
             access_expires_at=(
                 purchase.entitlement.expires_at if purchase.entitlement else None
             ),
+            kind="paid" if purchase.id in paid_ids else "manual",
         )
         for purchase in purchases
     ]
+    return AdminPurchasePage(items=items, total=int(total or 0), limit=limit, offset=offset)
 
 
 @router.get("/analytics", response_model=AnalyticsResponse)
