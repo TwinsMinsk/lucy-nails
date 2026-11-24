@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 
 import pytest
 from fastapi import HTTPException
@@ -220,3 +221,91 @@ async def test_concurrent_owner_removal_preserves_one_owner(
         .where(Role.name == "owner")
     )
     assert remaining == 1
+
+
+async def _verified_legacy_admin(db: AsyncSession, email: str) -> User:
+    user = User(
+        email=email,
+        password_hash=get_password_hash("legacypass1"),
+        role="admin",
+        email_verified_at=datetime.utcnow(),
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("roles", [["curator"], []])
+async def test_only_legacy_admin_cannot_drop_their_team_management(
+    client: AsyncClient, db: AsyncSession, roles: list[str]
+):
+    legacy = await _verified_legacy_admin(db, "only-manager@example.com")
+    db.add(Role(name="curator", description="Curator", is_system=True))
+    await db.commit()
+    token = AuthService.create_tokens(legacy.id, legacy.token_version).access_token
+
+    response = await client.put(
+        f"/api/admin/team/users/{legacy.id}/roles",
+        json={"roles": roles, "reason": "Trying a narrower role"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"] == "Cannot remove team management from the last account that has it"
+    db.expunge_all()
+    stored = await db.get(User, legacy.id)
+    assert stored.role == "admin"
+    assert stored.token_version == 0
+    assignment = await db.scalar(
+        select(UserRoleAssignment.id).where(UserRoleAssignment.user_id == legacy.id)
+    )
+    assert assignment is None
+
+
+@pytest.mark.asyncio
+async def test_dropping_legacy_admin_role_revokes_sessions_when_another_manager_exists(
+    client: AsyncClient, db: AsyncSession
+):
+    owner = await _staff_user(
+        db, email="owner@example.com", role_name="owner", permissions=["system.manage_roles"]
+    )
+    legacy = await _verified_legacy_admin(db, "legacy@example.com")
+    token = AuthService.create_tokens(owner.id, owner.token_version).access_token
+
+    response = await client.put(
+        f"/api/admin/team/users/{legacy.id}/roles",
+        json={"roles": [], "reason": "Legacy admin leaves the team"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200, response.text
+    db.expunge_all()
+    stored = await db.get(User, legacy.id)
+    assert stored.role == "student"
+    assert stored.token_version == 1
+    audit = await db.scalar(select(AuditLog).where(AuditLog.action == "team.roles.update"))
+    assert audit.new_value["reauthentication_required"] is True
+
+
+@pytest.mark.asyncio
+async def test_manager_keeping_team_management_can_change_own_roles(
+    client: AsyncClient, db: AsyncSession
+):
+    owner = await _staff_user(
+        db, email="owner@example.com", role_name="owner", permissions=["system.manage_roles"]
+    )
+    await _verified_legacy_admin(db, "legacy@example.com")
+    db.add(Role(name="curator", description="Curator", is_system=True))
+    await db.commit()
+    owner.email_verified_at = datetime.utcnow()
+    await db.commit()
+    token = AuthService.create_tokens(owner.id, owner.token_version).access_token
+
+    response = await client.put(
+        f"/api/admin/team/users/{owner.id}/roles",
+        json={"roles": ["owner", "curator"], "reason": "Owner also curates"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200, response.text
