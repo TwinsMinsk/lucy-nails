@@ -3,14 +3,33 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
+# Every status the application writes: "received" while an event is being
+# processed, then one terminal status. Kept equal to migration a3b4c5d6e7f8.
+PAYMENT_EVENT_STATUSES = (
+    "received",
+    "processed",
+    "duplicate",
+    "ignored",
+    "rejected",
+    "financial_incident",
+)
+
 
 class PaymentEvent(Base):
     __tablename__ = "payment_events"
+    __table_args__ = (
+        CheckConstraint(
+            "processing_status IN ("
+            + ", ".join(f"'{status}'" for status in PAYMENT_EVENT_STATUSES)
+            + ")",
+            name="ck_payment_events_processing_status",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     provider: Mapped[str] = mapped_column(String(32), nullable=False, default="prodamus")

@@ -8,6 +8,7 @@ produced a signature Prodamus always rejected ("Ошибка подписи пе
 """
 
 import io
+import logging
 import urllib.parse
 
 from starlette.datastructures import UploadFile
@@ -181,6 +182,34 @@ def test_verify_signature_rejects_unverifiable_input_without_raising():
     assert ProdamusService.verify_signature(deep, "deadbeef") is False
     # Starlette decodes headers as latin-1, so a Sign header may be non-ASCII.
     assert ProdamusService.verify_signature(_WEBHOOK_PAYLOAD, "ÿ" * 64) is False
+
+
+def _signature_fragments(signature: str, width: int = 6) -> set[str]:
+    return {signature[start : start + width] for start in range(len(signature) - width + 1)}
+
+
+def test_signature_mismatch_log_carries_no_part_of_either_signature(caplog, monkeypatch):
+    monkeypatch.setattr(settings, "PRODAMUS_DEMO_MODE", True)
+    expected = _make_signature(_WEBHOOK_PAYLOAD, settings.PRODAMUS_SECRET_KEY)
+    expected_demo = _make_signature(_WEBHOOK_PAYLOAD, settings.PRODAMUS_SECRET_KEY + "demo")
+    received = "0123456789abcdef" * 4
+
+    with caplog.at_level(logging.DEBUG, logger="app.services.prodamus_service"):
+        verified = ProdamusService.verify_signature(
+            _WEBHOOK_PAYLOAD, received, correlation_id="corr-webhook-1"
+        )
+
+    assert verified is False
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(
+        "signature mismatch" in message and "corr-webhook-1" in message
+        for message in messages
+    ), messages
+    for signature in (expected, expected_demo, received):
+        fragments = _signature_fragments(signature)
+        assert not any(
+            fragment in message for fragment in fragments for message in messages
+        ), messages
 
 
 def test_nest_form_fields_drops_keys_deeper_than_php_nesting_limit():

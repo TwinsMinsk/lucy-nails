@@ -1,10 +1,11 @@
 """Canonical course-access operations."""
 
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import Integer, and_, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -41,6 +42,19 @@ class ExpiredCourseAccess:
 NATURALLY_ENDED_STATUSES = ("active", "expired")
 
 
+def course_access_lock_keys(user_id: UUID, course_id: UUID) -> tuple[int, int]:
+    """Return the two signed int4 keys of the per-(user, course) access lock.
+
+    PostgreSQL keeps two-key advisory locks apart from single bigint keys, so
+    this lock never shares a key with the support-membership lock.
+    """
+    digest = hashlib.sha256(user_id.bytes + course_id.bytes).digest()
+    return (
+        int.from_bytes(digest[:4], byteorder="big", signed=True),
+        int.from_bytes(digest[4:8], byteorder="big", signed=True),
+    )
+
+
 class AccessService:
     """Use entitlements as the source of truth, with a temporary legacy fallback."""
 
@@ -59,6 +73,24 @@ class AccessService:
             if purchase is not None and await AccessService.is_purchase_fully_refunded(db, purchase):
                 raise ValueError("Fully refunded access cannot be restored or extended")
         await db.refresh(entitlement, with_for_update=True)
+
+    @staticmethod
+    async def lock_course_access(db: AsyncSession, user_id: UUID, course_id: UUID) -> None:
+        """Serialize "read the current access, then add a period" per user and course.
+
+        Without it two payments or grants committed at the same moment both
+        read the same current expiry and one paid period is lost. Take it
+        before reading the current access and before reading the clock. The
+        lock is transaction-scoped: the caller's commit or rollback releases it.
+        """
+        key_high, key_low = course_access_lock_keys(user_id, course_id)
+        await db.execute(
+            select(
+                func.pg_advisory_xact_lock(
+                    literal(key_high, Integer), literal(key_low, Integer)
+                )
+            )
+        )
 
     @staticmethod
     async def get_active_entitlement(
@@ -227,6 +259,7 @@ class AccessService:
         granted_by_id: UUID,
         reason: str,
     ) -> Entitlement:
+        await AccessService.lock_course_access(db, user_id, course_id)
         now = datetime.utcnow()
         current = await AccessService.get_active_entitlement(db, user_id, course_id, now=now)
         extension_base = max(now, current.expires_at) if current else now
@@ -271,6 +304,9 @@ class AccessService:
         days: int,
         reason: str,
     ) -> None:
+        # Same order as a manual grant: the (user, course) lock first, so an
+        # extension and a payment renewal for the same access never interleave.
+        await AccessService.lock_course_access(db, entitlement.user_id, entitlement.course_id)
         await AccessService._lock_for_access_change(db, entitlement)
         if entitlement.status == "revoked":
             raise ValueError("Revoked access cannot be extended")

@@ -4,13 +4,42 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal, DecimalException
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
 
 from app.core.database import async_session_maker
+from app.models.order import Order
 from app.models.payment_event import PaymentEvent
+
+# Kopecks are stored in PostgreSQL integer columns.
+MAX_AMOUNT_KOPECKS = 2**31 - 1
+_MAX_AMOUNT_ROUBLES = Decimal(MAX_AMOUNT_KOPECKS).scaleb(-2)
+
+
+def parse_amount_kopecks(raw: Any) -> int | None:
+    """Parse a Prodamus ``sum`` into kopecks with decimal arithmetic.
+
+    A dot or a comma separates the kopecks. A missing, malformed, non-finite,
+    negative or out-of-range value gives None. A fraction of a kopeck, which
+    Prodamus does not send, is rounded half up.
+    """
+    if raw is None:
+        return None
+    try:
+        amount = Decimal(str(raw).strip().replace(",", "."))
+        # Compare in roubles before any arithmetic: multiplying a value whose
+        # exponent is beyond the context limits would overflow.
+        if not amount.is_finite() or amount < 0 or amount > _MAX_AMOUNT_ROUBLES:
+            return None
+        kopecks = (amount * 100).quantize(Decimal(1), rounding=ROUND_HALF_UP)
+    except DecimalException:
+        # No decimal signal may escape: a bad sum rejects the payment, it must
+        # not crash the webhook.
+        return None
+    return int(kopecks)
 
 
 @dataclass(frozen=True)
@@ -45,11 +74,7 @@ def build_payment_event_data(payload: dict[str, Any]) -> PaymentEventData:
         or clean("result", 64)
         or "unknown"
     ).lower()
-    amount_kopecks: int | None = None
-    try:
-        amount_kopecks = int(round(float(str(payload.get("sum", "")).replace(",", ".")) * 100))
-    except (TypeError, ValueError, OverflowError):
-        pass
+    amount_kopecks = parse_amount_kopecks(payload.get("sum"))
     currency = clean("currency", 8)
     sanitized_payload = {
         key: value
@@ -110,6 +135,13 @@ async def record_terminal_payment_event(
         )
         if existing is not None:
             return
+        if order_id is not None and await db.scalar(
+            select(Order.id).where(Order.id == order_id)
+        ) is None:
+            # A signed reference can name an order this database does not
+            # have; order_reference keeps it for reconciliation instead of a
+            # foreign key that cannot be stored.
+            order_id = None
         db.add(
             new_payment_event(
                 data,
