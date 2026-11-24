@@ -2,6 +2,10 @@
 
 Usage:
   ADMIN_EMAIL=owner@example.com ADMIN_PASSWORD='long-random-password' python scripts/create_admin.py
+
+For an existing account the password is replaced, the token version is bumped
+and every session is revoked in the same transaction, so earlier logins of that
+account stop working.
 """
 
 import asyncio
