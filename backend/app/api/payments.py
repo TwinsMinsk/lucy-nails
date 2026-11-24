@@ -24,7 +24,7 @@ from pydantic import (
     field_validator,
 )
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
@@ -34,6 +34,7 @@ from app.core.dependencies import get_current_user
 from app.core.legal import CONSENT_VERSION, require_consent
 from app.core.rate_limit import limiter
 from app.core.security import create_account_activation_token, get_password_hash
+from app.models.analytics_event import AnalyticsEvent
 from app.models.course import Course
 from app.models.order import Order
 from app.models.purchase import Purchase
@@ -52,6 +53,7 @@ from app.services.payment_event_service import (
     PaymentEventData,
     build_payment_event_data,
     new_payment_event,
+    parse_amount_kopecks,
     record_terminal_payment_event,
 )
 from app.services.analytics_service import AnalyticsService
@@ -65,6 +67,23 @@ router = APIRouter()
 # checkouts, but historical orders and webhooks may still reference it.
 SELLABLE_TARIFFS = ("self",)
 TARIFF_LABELS = {"self": "Самостоятельный", "support": "С поддержкой"}
+
+# A Prodamus notification is a few kilobytes; the relay in front of the API
+# caps bodies at the same size.
+MAX_WEBHOOK_BODY_BYTES = 64 * 1024
+
+# PostgreSQL aborts one side of a deadlock (40P01) or of a serialization
+# conflict (40001); the aborted transaction can safely run again.
+RETRYABLE_SQLSTATES = frozenset({"40P01", "40001"})
+
+_SUCCESS_STATUS_VALUES = frozenset(
+    {"success", "paid", "ok", "completed", "succeeded", "1", "true"}
+)
+# payment_status is the field of the Prodamus notification contract; status
+# and result come from older callback shapes.
+_STATUS_FIELDS = ("payment_status", "status", "result")
+
+_ANALYTICS_EVENT_ID_LENGTH = AnalyticsEvent.__table__.c.event_id.type.length
 
 
 # ---------------------------------------------------------------------------
@@ -286,18 +305,50 @@ def _resolve_payment_key(provider_order_id_raw: Any, merchant_reference_raw: Any
     return f"order_id:{provider_order_id}"
 
 
-def _is_success_payment_payload(payload: dict[str, Any]) -> bool:
-    """Require an explicit success marker; an empty/absent status is NOT success."""
-    status_markers = [
-        payload.get("payment_status"),
-        payload.get("status"),
-        payload.get("result"),
+def _payment_status_verdict(payload: dict[str, Any]) -> str:
+    """Classify the status markers: "success", "not_successful" or "contradictory".
+
+    An empty or absent status is NOT success. payment_status is authoritative
+    when present: the other fields can never turn it into a success, only veto
+    one. Without it, status and result decide. Markers that disagree about
+    success never grant access: the notification is contradictory.
+    """
+    markers = [
+        str(value).strip().lower()
+        for field in _STATUS_FIELDS
+        if (value := payload.get(field)) not in (None, "") and str(value).strip()
     ]
-    normalized = {str(value).strip().lower() for value in status_markers if value not in (None, "")}
-    if not normalized:
-        return False
-    success_values = {"success", "paid", "ok", "completed", "succeeded", "1", "true"}
-    return any(value in success_values for value in normalized)
+    successes = sum(marker in _SUCCESS_STATUS_VALUES for marker in markers)
+    if successes == 0:
+        return "not_successful"
+    if successes < len(markers):
+        return "contradictory"
+    return "success"
+
+
+def _purchase_confirmed_event_id(payment_key: str) -> str:
+    """analytics_events.event_id is shorter than a provider payment id may be."""
+    event_id = f"purchase_confirmed:{payment_key}"
+    if len(event_id) <= _ANALYTICS_EVENT_ID_LENGTH:
+        return event_id
+    digest = hashlib.sha256(payment_key.encode("utf-8")).hexdigest()
+    return f"purchase_confirmed:sha256:{digest}"
+
+
+def _is_retryable_database_error(error: DBAPIError) -> bool:
+    sqlstate = getattr(error.orig, "sqlstate", None) or getattr(error.orig, "pgcode", None)
+    return sqlstate in RETRYABLE_SQLSTATES
+
+
+async def _read_webhook_body(request: Request) -> bytes:
+    """Read the body, counting the bytes received rather than Content-Length."""
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > MAX_WEBHOOK_BODY_BYTES:
+            logger.warning("Prodamus webhook: body over %s bytes", MAX_WEBHOOK_BODY_BYTES)
+            raise HTTPException(status_code=413, detail="Payload too large")
+    return bytes(body)
 
 
 def _is_demo_payment_payload(payload: dict[str, Any]) -> bool:
@@ -380,12 +431,13 @@ async def _record_purchase_once(
                 raise HTTPException(status_code=422, detail=existing_event.error_detail or "Payment was rejected")
             return webhook_email or ""
 
-        payment_event = new_payment_event(event_data, order_id=order_uuid)
-        db.add(payment_event)
-
         existing_pay = await db.execute(select(Purchase).where(Purchase.payment_id == payment_key))
         existing_purchase = existing_pay.scalars().first()
         if existing_purchase:
+            # Nothing else is written or locked in this transaction, so the
+            # event's foreign key cannot join a lock cycle.
+            payment_event = new_payment_event(event_data, order_id=order_uuid)
+            db.add(payment_event)
             payment_event.purchase_id = existing_purchase.id
             payment_event.processing_status = "duplicate"
             payment_event.processed_at = datetime.utcnow()
@@ -395,6 +447,11 @@ async def _record_purchase_once(
         order: Order | None = None
         email_differs = False
         if order_uuid is not None:
+            # Lock the order before anything that references it is written.
+            # Inserting the payment event takes FOR KEY SHARE on the order row
+            # through its foreign key; two deliveries holding that lock would
+            # deadlock on FOR UPDATE. Locked first, they queue. A missing order
+            # is rejected before a dangling foreign key is ever flushed.
             order_result = await db.execute(
                 select(Order).where(Order.id == order_uuid).with_for_update()
             )
@@ -403,6 +460,9 @@ async def _record_purchase_once(
                 raise HTTPException(status_code=422, detail="Order not found")
             course_id_uuid = order.course_id
             tariff = order.tariff
+
+        payment_event = new_payment_event(event_data, order_id=order_uuid)
+        db.add(payment_event)
 
         if course_id_uuid is None or tariff is None:
             raise HTTPException(status_code=422, detail="Invalid order_id")
@@ -424,6 +484,9 @@ async def _record_purchase_once(
             customer_email = webhook_email
 
         customer_phone = _webhook_phone_or_none(payload.get("customer_phone"))
+        if customer_phone is None and order is not None:
+            # The payform sent no usable phone: keep the one typed at checkout.
+            customer_phone = order.customer_phone
 
         course_result = await db.execute(select(Course).where(Course.id == course_id_uuid))
         course = course_result.scalars().first()
@@ -431,18 +494,14 @@ async def _record_purchase_once(
             logger.error("Prodamus webhook: course unavailable %s", course_id_uuid)
             raise HTTPException(status_code=422, detail="Course not found")
 
-        amount_str: str = str(payload.get("sum", "0")).replace(",", ".")
-        try:
-            paid_kopecks = int(round(float(amount_str) * 100))
-        except (ValueError, OverflowError):
-            paid_kopecks = 0
+        paid_kopecks = parse_amount_kopecks(payload.get("sum"))
 
         expected_kopecks = (
             order.amount_kopecks
             if order is not None
             else int(course.price_self if tariff == "self" else course.price_support) * 100
         )
-        if abs(paid_kopecks - expected_kopecks) > 2:
+        if paid_kopecks is None or abs(paid_kopecks - expected_kopecks) > 2:
             logger.error(
                 "Prodamus webhook: amount mismatch expected_kop=%s got_kop=%s",
                 expected_kopecks,
@@ -486,6 +545,8 @@ async def _record_purchase_once(
                 await db.commit()
                 return customer_email
 
+        # A signed payment proves who paid, not who owns an existing account:
+        # only an account created by this payment takes the phone.
         user, is_new_user = await _get_or_create_user(db, customer_email, customer_phone)
         if is_new_user and order is not None:
             # The account is born from this guest checkout: keep its consent proof.
@@ -493,9 +554,11 @@ async def _record_purchase_once(
             user.personal_data_consent_at = order.personal_data_consent_at
             user.consent_version = order.consent_version
 
-        if customer_phone and not user.phone:
-            user.phone = customer_phone
-
+        # Two orders of one buyer for one course can be confirmed at the same
+        # moment; without this lock both read the same current expiry and one
+        # paid period is lost. The clock is read after the lock, so the access
+        # granted by the transaction we waited for is already current.
+        await AccessService.lock_course_access(db, user.id, course.id)
         paid_at = datetime.utcnow()
         access_days = order.access_days if order is not None else settings.COURSE_ACCESS_DAYS
         # An early renewal adds the paid days on top of access that is still running,
@@ -594,9 +657,12 @@ async def _record_purchase_once(
         if order is not None:
             order.status = "paid"
             order.paid_at = paid_at
+            if order.user_id is None:
+                # A guest checkout: link the order to the account that got access.
+                order.user_id = user.id
         await AnalyticsService.record_event(
             db,
-            event_id=f"purchase_confirmed:{payment_key}",
+            event_id=_purchase_confirmed_event_id(payment_key),
             event_name="purchase_confirmed",
             source="server",
             anonymous_id=None,
@@ -703,20 +769,26 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
         logger.warning("Prodamus webhook: no Sign header")
         raise HTTPException(status_code=400, detail="Missing signature")
 
+    # The body is parsed before the signature can be checked, so cap its size.
+    body = await _read_webhook_body(request)
     content_type = request.headers.get("content-type", "")
     if "application/json" in content_type:
         try:
-            payload = await request.json()
+            payload = json.loads(body)
         except (ValueError, RecursionError):
             logger.warning("Prodamus webhook: unparseable JSON body")
             raise HTTPException(status_code=400, detail="Invalid payload")
     else:
         # Prodamus posts multipart/form-data with bracket keys and signs the
         # nested PHP-style structure, not the flat field names.
-        form = await request.form()
+        async def receive_read_body() -> dict[str, Any]:
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        form = await Request(request.scope, receive_read_body).form()
         payload = nest_form_fields(form.multi_items())
 
-    if not ProdamusService.verify_signature(payload, signature):
+    correlation_id = getattr(request.state, "correlation_id", None)
+    if not ProdamusService.verify_signature(payload, signature, correlation_id=correlation_id):
         logger.warning("Prodamus webhook: invalid signature")
         raise HTTPException(status_code=400, detail="Invalid signature")
 
@@ -734,7 +806,20 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
         )
         logger.warning("Prodamus webhook: demo payment rejected")
         raise HTTPException(status_code=422, detail="Demo payment")
-    if not _is_success_payment_payload(payload):
+    status_verdict = _payment_status_verdict(payload)
+    if status_verdict == "contradictory":
+        # Money may or may not have been taken: never grant access, let the
+        # owner reconcile with the provider.
+        await _record_rejected_webhook(
+            event_data,
+            payload,
+            processing_status="rejected",
+            error_code="contradictory_payment_status",
+            error_detail="Signed webhook carried contradictory payment status fields",
+        )
+        logger.error("Prodamus webhook: contradictory payment status fields")
+        raise HTTPException(status_code=422, detail="Contradictory payment status")
+    if status_verdict != "success":
         await _record_rejected_webhook(
             event_data,
             payload,
@@ -807,7 +892,9 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
     # users.email unique collision (two payments, same brand-new email): the racing
     # request commits the user, and the retry then finds it and inserts only the
     # Purchase — so a distinct second payment is never silently dropped. A genuine
-    # duplicate payment_id short-circuits at the existing-purchase check.
+    # duplicate payment_id short-circuits at the existing-purchase check. A
+    # deadlock or serialization failure aborted the whole transaction in favour
+    # of a concurrent one and is retried the same way.
     for attempt in range(2):
         try:
             await _record_purchase_once(
@@ -831,7 +918,9 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
                 order_id=order_uuid,
             )
             raise
-        except IntegrityError:
+        except DBAPIError as exc:
+            if not isinstance(exc, IntegrityError) and not _is_retryable_database_error(exc):
+                raise
             if attempt == 0:
                 continue
             async with async_session_maker() as db:
@@ -839,7 +928,7 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
                 if done.scalars().first():
                     logger.info("Prodamus webhook duplicate payment_key=%s", payment_key)
                     return {"status": "ok"}
-            logger.error("Prodamus webhook: unresolved integrity error payment_key=%s", payment_key)
+            logger.error("Prodamus webhook: unresolved database error payment_key=%s", payment_key)
             raise
 
     logger.info(

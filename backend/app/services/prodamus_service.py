@@ -245,11 +245,14 @@ class ProdamusService:
         return settings.PRODAMUS_DEMO_MODE or settings.ENVIRONMENT.lower() != "production"
 
     @staticmethod
-    def verify_signature(payload: dict, signature: str) -> bool:
+    def verify_signature(
+        payload: dict, signature: str, *, correlation_id: str | None = None
+    ) -> bool:
         """
         Проверяет HMAC-подпись вебхука от Prodamus.
 
-        payload  — тело запроса (dict), signature — значение заголовка 'Sign'.
+        payload  — тело запроса (dict), signature — значение заголовка 'Sign',
+        correlation_id — id запроса для лога при несовпадении подписи.
         """
         secret = settings.PRODAMUS_SECRET_KEY
         if not secret:
@@ -282,10 +285,11 @@ class ProdamusService:
                 logger.info("Matched demo signature for Prodamus webhook")
                 return True
 
+        # No part of either digest is logged: a prefix of the expected HMAC
+        # helps nobody debug and narrows a forgery.
         logger.warning(
-            "Prodamus signature mismatch. Expected normal=%s, Got=%s (demo_allowed=%s)",
-            expected[:16] + "...",
-            signature[:16] + "...",
+            "Prodamus signature mismatch (demo_allowed=%s, correlation_id=%s)",
             demo_allowed,
+            correlation_id or "-",
         )
         return False
