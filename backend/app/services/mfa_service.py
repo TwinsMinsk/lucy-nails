@@ -60,20 +60,15 @@ class MfaService:
     async def session_satisfies_mfa(db: AsyncSession, user: User, auth_session) -> bool:
         """Whether this session may act for the account under the MFA policy.
 
-        A session that passed MFA is fine. For an account that requires MFA, a
-        session issued without it is refused; one issued before the state was
-        recorded (NULL) is refused only when the account has no enabled MFA
-        credential, i.e. it can never have passed MFA (a legacy administrator
-        signed in with a password alone).
+        For an account that requires MFA only a session that passed MFA
+        (mfa_verified true) is accepted. NULL (issued before the state was
+        recorded) and false are refused: whether an old session passed MFA
+        cannot be reconstructed, so every administrator signs in once more.
+        Other accounts are served whatever the flag says.
         """
         if auth_session.mfa_verified:
             return True
-        if not await MfaService.requires_mfa(db, user.id):
-            return True
-        if auth_session.mfa_verified is None:
-            credential = await MfaService.get_credential(db, user.id)
-            return credential is not None and credential.enabled_at is not None
-        return False
+        return not await MfaService.requires_mfa(db, user.id)
 
     @staticmethod
     async def get_credential(

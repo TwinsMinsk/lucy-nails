@@ -199,9 +199,60 @@ async def test_old_password_only_legacy_admin_session_is_refused(
 
 
 @pytest.mark.asyncio
-async def test_old_session_of_owner_with_mfa_keeps_working(client: AsyncClient, db: AsyncSession):
-    owner, _ = await _owner_with_totp(db)
-    _, access, refresh = await _pre_deploy_session(db, owner)
+async def test_old_session_of_owner_with_mfa_is_refused_until_a_fresh_mfa_login(
+    client: AsyncClient, db: AsyncSession
+):
+    owner, secret = await _owner_with_totp(db)
+    auth_session, access, refresh = await _pre_deploy_session(db, owner)
+
+    # An enabled credential does not prove this old session passed MFA.
+    me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {access}"})
+    assert me.status_code == 401
+    refreshed = await client.post("/api/auth/refresh", json={"refresh_token": refresh})
+    assert refreshed.status_code == 401
+    await db.refresh(auth_session)
+    assert auth_session.revoked_at is not None
+
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": owner.email, "password": "StrongOwnerPass1!", "mfa_code": pyotp.TOTP(secret).now()},
+    )
+    assert login.status_code == 200, login.text
+    client.cookies.clear()
+    fresh = await client.get(
+        "/api/auth/me", headers={"Authorization": f"Bearer {login.json()['access_token']}"}
+    )
+    assert fresh.status_code == 200, fresh.text
+
+
+@pytest.mark.asyncio
+async def test_old_password_only_session_of_legacy_admin_with_credential_is_refused(
+    client: AsyncClient, db: AsyncSession
+):
+    legacy = User(email="legacy-cred@example.com", password_hash="x", role="admin")
+    db.add(legacy)
+    await db.flush()
+    credential, _, _ = await MfaService.get_or_create_setup(db, legacy)
+    credential.enabled_at = datetime.utcnow()
+    await db.commit()
+    _, access, refresh = await _pre_deploy_session(db, legacy)
+
+    me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {access}"})
+    assert me.status_code == 401
+    refreshed = await client.post("/api/auth/refresh", json={"refresh_token": refresh})
+    assert refreshed.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_old_session_of_non_privileged_staff_is_served(client: AsyncClient, db: AsyncSession):
+    analyst = User(email="analyst-old@example.com", password_hash="x", role="student")
+    role = Role(name="analyst", description="Analyst", is_system=True)
+    role.permissions = [Permission(name="analytics.read", description="analytics")]
+    db.add_all([analyst, role])
+    await db.flush()
+    db.add(UserRoleAssignment(user_id=analyst.id, role_id=role.id))
+    await db.commit()
+    _, access, refresh = await _pre_deploy_session(db, analyst)
 
     me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {access}"})
     assert me.status_code == 200, me.text
