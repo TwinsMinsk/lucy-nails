@@ -26,9 +26,12 @@ class SessionService:
         db: AsyncSession,
         user: User,
         request: Request,
+        *,
+        mfa_verified: bool = False,
     ) -> tuple[Token, AuthSession]:
         session = AuthSession(
             user_id=user.id,
+            mfa_verified=mfa_verified,
             refresh_token_hash="pending",
             ip_address=request.client.host if request.client else None,
             user_agent=(request.headers.get("user-agent") or "")[:512] or None,

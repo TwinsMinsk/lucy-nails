@@ -198,7 +198,8 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if await MfaService.requires_mfa(db, user.id):
+    mfa_required = await MfaService.requires_mfa(db, user.id)
+    if mfa_required:
         credential = await MfaService.get_credential(db, user.id, for_update=True)
         if credential is None or credential.enabled_at is None:
             raise HTTPException(
@@ -219,7 +220,8 @@ async def login(
                 detail={"code": "mfa_code_invalid"},
             )
 
-    tokens, _ = await SessionService.issue(db, user, request)
+    # Reaching here with mfa_required means the code was checked above.
+    tokens, _ = await SessionService.issue(db, user, request, mfa_verified=mfa_required)
     await db.commit()
     _set_auth_cookies(response, tokens)
     return tokens
@@ -293,6 +295,15 @@ async def refresh_token_endpoint(
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid refresh token",
+            )
+        if not await MfaService.session_satisfies_mfa(db, user, auth_session):
+            # A password-only session of an account that now requires MFA
+            # (legacy administrator) ends here; the next login enrols MFA.
+            auth_session.revoked_at = datetime.utcnow()
+            await db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="MFA reauthentication required",
             )
         tokens = await SessionService.rotate(db, auth_session, user, refresh_token)
         if tokens is None:
@@ -385,10 +396,13 @@ async def change_password(
             detail="Current password is incorrect",
         )
     await SessionService.revoke_all(db, current_user.id)
+    # get_current_user only serves a privileged account from a session that
+    # passed MFA, so the replacement session inherits that state.
+    mfa_verified = await MfaService.requires_mfa(db, current_user.id)
     # The bumped token_version invalidated every prior session (incl. this one),
     # so re-issue fresh cookies to keep the current device logged in while other
     # devices are logged out.
-    tokens, _ = await SessionService.issue(db, current_user, request)
+    tokens, _ = await SessionService.issue(db, current_user, request, mfa_verified=mfa_verified)
     await db.commit()
     _set_auth_cookies(response, tokens)
     return {"message": "Password changed"}
@@ -567,7 +581,7 @@ async def confirm_mfa(
         )
     user.token_version = (user.token_version or 0) + 1
     await SessionService.revoke_all(db, user.id)
-    tokens, _ = await SessionService.issue(db, user, request)
+    tokens, _ = await SessionService.issue(db, user, request, mfa_verified=True)
     await db.commit()
     _set_auth_cookies(response, tokens)
     return MfaConfirmResponse(**tokens.model_dump(), backup_codes=backup_codes)

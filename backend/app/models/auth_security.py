@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, ForeignKey, JSON, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, ForeignKey, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -44,5 +44,8 @@ class AuthSession(Base):
     last_seen_at: Mapped[datetime] = mapped_column(nullable=False, default=datetime.utcnow)
     expires_at: Mapped[datetime] = mapped_column(nullable=False, index=True)
     revoked_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+    # True: issued after a passed MFA check; False: issued without one (the
+    # account did not require MFA then); NULL: issued before this was recorded.
+    mfa_verified: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="auth_sessions")

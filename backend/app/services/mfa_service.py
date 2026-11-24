@@ -56,6 +56,25 @@ class MfaService:
         return legacy_role == "admin"
 
     @staticmethod
+    async def session_satisfies_mfa(db: AsyncSession, user: User, auth_session) -> bool:
+        """Whether this session may act for the account under the MFA policy.
+
+        A session that passed MFA is fine. For an account that requires MFA, a
+        session issued without it is refused; one issued before the state was
+        recorded (NULL) is refused only when the account has no enabled MFA
+        credential, i.e. it can never have passed MFA (a legacy administrator
+        signed in with a password alone).
+        """
+        if auth_session.mfa_verified:
+            return True
+        if not await MfaService.requires_mfa(db, user.id):
+            return True
+        if auth_session.mfa_verified is None:
+            credential = await MfaService.get_credential(db, user.id)
+            return credential is not None and credential.enabled_at is not None
+        return False
+
+    @staticmethod
     async def get_credential(
         db: AsyncSession,
         user_id: UUID,

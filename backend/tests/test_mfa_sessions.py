@@ -165,6 +165,108 @@ async def test_legacy_admin_without_rbac_must_setup_and_use_mfa(
     assert capabilities.json()["permissions"] == ["*"]
 
 
+async def _pre_deploy_session(db: AsyncSession, user: User) -> tuple[AuthSession, str, str]:
+    """A session issued before sessions recorded their MFA state (NULL)."""
+    auth_session = AuthSession(
+        user_id=user.id,
+        refresh_token_hash="pending",
+        expires_at=datetime.utcnow() + timedelta(days=7),
+    )
+    db.add(auth_session)
+    await db.flush()
+    tokens = AuthService.create_tokens(user.id, user.token_version, auth_session.id)
+    auth_session.refresh_token_hash = hash_refresh_token(tokens.refresh_token)
+    await db.commit()
+    assert auth_session.mfa_verified is None
+    return auth_session, tokens.access_token, tokens.refresh_token
+
+
+@pytest.mark.asyncio
+async def test_old_password_only_legacy_admin_session_is_refused(
+    client: AsyncClient, db: AsyncSession
+):
+    legacy = User(email="legacy-old@example.com", password_hash="x", role="admin")
+    db.add(legacy)
+    await db.commit()
+    auth_session, access, refresh = await _pre_deploy_session(db, legacy)
+
+    me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {access}"})
+    assert me.status_code == 401
+    refreshed = await client.post("/api/auth/refresh", json={"refresh_token": refresh})
+    assert refreshed.status_code == 401
+    await db.refresh(auth_session)
+    assert auth_session.revoked_at is not None
+
+
+@pytest.mark.asyncio
+async def test_old_session_of_owner_with_mfa_keeps_working(client: AsyncClient, db: AsyncSession):
+    owner, _ = await _owner_with_totp(db)
+    _, access, refresh = await _pre_deploy_session(db, owner)
+
+    me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {access}"})
+    assert me.status_code == 200, me.text
+    refreshed = await client.post("/api/auth/refresh", json={"refresh_token": refresh})
+    assert refreshed.status_code == 200, refreshed.text
+
+
+@pytest.mark.asyncio
+async def test_old_student_session_is_untouched(client: AsyncClient, db: AsyncSession):
+    student = User(email="old-student@example.com", password_hash="x", role="student")
+    db.add(student)
+    await db.commit()
+    _, access, refresh = await _pre_deploy_session(db, student)
+
+    me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {access}"})
+    assert me.status_code == 200, me.text
+    refreshed = await client.post("/api/auth/refresh", json={"refresh_token": refresh})
+    assert refreshed.status_code == 200, refreshed.text
+
+
+@pytest.mark.asyncio
+async def test_session_issued_without_mfa_is_refused_once_account_requires_it(
+    client: AsyncClient, db: AsyncSession
+):
+    user = User(
+        email="later-admin@example.com",
+        password_hash=get_password_hash("LaterAdminPass1!"),
+        role="student",
+    )
+    db.add(user)
+    await db.commit()
+    login = await client.post(
+        "/api/auth/login", json={"email": user.email, "password": "LaterAdminPass1!"}
+    )
+    access = login.json()["access_token"]
+    client.cookies.clear()
+    # Privilege granted outside the role API, which would revoke sessions itself.
+    user.role = "admin"
+    await db.commit()
+
+    me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {access}"})
+    assert me.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_owner_password_change_keeps_the_new_session_signed_in(
+    client: AsyncClient, db: AsyncSession
+):
+    owner, secret = await _owner_with_totp(db)
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": owner.email, "password": "StrongOwnerPass1!", "mfa_code": pyotp.TOTP(secret).now()},
+    )
+    assert login.status_code == 200, login.text
+    csrf = client.cookies.get("csrf_token")
+    changed = await client.post(
+        "/api/auth/change-password",
+        json={"current_password": "StrongOwnerPass1!", "new_password": "NewOwnerPass2!"},
+        headers={"x-csrf-token": csrf},
+    )
+    assert changed.status_code == 200, changed.text
+    me = await client.get("/api/auth/me")
+    assert me.status_code == 200, me.text
+
+
 @pytest.mark.asyncio
 async def test_mfa_requirement_by_account_kind(db: AsyncSession):
     owner = await _owner(db)
