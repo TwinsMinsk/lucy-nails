@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
-from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy import String, and_, case, cast, delete, func, literal, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,6 +52,92 @@ def _mask_phone(value: str | None) -> str | None:
         return None
     digits = "".join(character for character in value if character.isdigit())
     return f"***{digits[-4:]}" if digits else "***"
+
+
+# An unpaid order is shown as abandoned after this long. The stored status stays
+# "pending", so a late payment is still accepted by the webhook.
+ORDER_EXPIRES_AFTER = timedelta(hours=24)
+ORDER_DISPLAY_STATUSES = (
+    "pending",
+    "paid",
+    "partially_refunded",
+    "refunded",
+    "failed",
+    "expired",
+)
+
+
+def _order_refunded_kopecks():
+    """Processed refunds of the order's purchase; requires Purchase outer-joined."""
+    return func.coalesce(
+        select(func.sum(RefundRequest.amount_kopecks))
+        .where(
+            RefundRequest.purchase_id == Purchase.id,
+            RefundRequest.status == "processed",
+        )
+        .correlate(Purchase)
+        .scalar_subquery(),
+        0,
+    )
+
+
+def _order_refundable_kopecks():
+    """What a new refund request may still claim (mirrors RefundService.create_refund)."""
+    allocated = func.coalesce(
+        select(func.sum(RefundRequest.amount_kopecks))
+        .where(
+            RefundRequest.purchase_id == Purchase.id,
+            RefundRequest.status != "rejected",
+        )
+        .correlate(Purchase)
+        .scalar_subquery(),
+        0,
+    )
+    return case(
+        (Purchase.id.is_(None), 0),
+        else_=func.greatest(Purchase.amount_kopecks - allocated, 0),
+    )
+
+
+def _order_failed_attempt_exists():
+    """The provider reported an unsuccessful attempt for this order."""
+    reference = literal("order|") + cast(Order.id, String)
+    return (
+        select(PaymentEvent.id)
+        .where(
+            PaymentEvent.processing_status == "ignored",
+            or_(
+                PaymentEvent.order_id == Order.id,
+                PaymentEvent.order_reference == reference,
+                # Callbacks from the old field mapping carried the reference here.
+                PaymentEvent.external_event_id == reference,
+            ),
+        )
+        .correlate(Order)
+        .exists()
+    )
+
+
+def order_display_status(now: datetime):
+    """Derived order status; requires Purchase outer-joined on Purchase.order_id."""
+    refunded = _order_refunded_kopecks()
+    is_paid = or_(Order.status == "paid", Purchase.payment_status == "success")
+    return case(
+        (
+            is_paid,
+            case(
+                (
+                    and_(refunded > 0, refunded >= Purchase.amount_kopecks),
+                    literal("refunded"),
+                ),
+                (refunded > 0, literal("partially_refunded")),
+                else_=literal("paid"),
+            ),
+        ),
+        (_order_failed_attempt_exists(), literal("failed")),
+        (Order.created_at < now - ORDER_EXPIRES_AFTER, literal("expired")),
+        else_=literal("pending"),
+    )
 
 
 class DashboardResponse(BaseModel):
@@ -219,8 +305,13 @@ class OrderListItem(BaseModel):
     amount_kopecks: int
     currency: str
     access_days: int
+    # Derived display status: pending, paid, partially_refunded, refunded, failed, expired.
     status: str
+    # Raw orders.status as written by checkout and the webhook (pending or paid).
+    order_status: str
     purchase_id: UUID | None
+    refunded_kopecks: int
+    refundable_kopecks: int
     paid_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -342,7 +433,12 @@ async def dashboard(
             RefundRequest.status == "processed", paid_financial_filter()
         )
     )
-    pending_orders = await db.scalar(select(func.count(Order.id)).where(Order.status == "pending"))
+    pending_orders = await db.scalar(
+        select(func.count(Order.id))
+        .select_from(Order)
+        .outerjoin(Purchase, Purchase.order_id == Order.id)
+        .where(order_display_status(now) == "pending")
+    )
     payment_errors = await db.scalar(
         select(func.count(PaymentEvent.id)).where(
             PaymentEvent.processing_status.in_(["rejected", "financial_incident"])
@@ -944,12 +1040,24 @@ async def list_orders(
         # Masked readers may only look up an address they already know; partial
         # matches would let them recover hidden emails character by character.
         conditions.append(func.lower(Order.customer_email) == search.strip().lower())
+    display_status = order_display_status(datetime.utcnow())
     if status_filter:
-        conditions.append(Order.status == status_filter)
-    total = await db.scalar(select(func.count(Order.id)).where(*conditions))
+        conditions.append(display_status == status_filter)
+    total = await db.scalar(
+        select(func.count(Order.id))
+        .select_from(Order)
+        .outerjoin(Purchase, Purchase.order_id == Order.id)
+        .where(*conditions)
+    )
     rows = (
         await db.execute(
-            select(Order, Purchase.id)
+            select(
+                Order,
+                Purchase.id,
+                display_status.label("display_status"),
+                _order_refunded_kopecks().label("refunded_kopecks"),
+                _order_refundable_kopecks().label("refundable_kopecks"),
+            )
             .outerjoin(Purchase, Purchase.order_id == Order.id)
             .where(*conditions)
             .order_by(Order.created_at.desc(), Order.id.desc())
@@ -977,13 +1085,16 @@ async def list_orders(
                 amount_kopecks=order.amount_kopecks,
                 currency=order.currency,
                 access_days=order.access_days,
-                status=order.status,
+                status=row_status,
+                order_status=order.status,
                 purchase_id=purchase_id,
+                refunded_kopecks=int(refunded or 0),
+                refundable_kopecks=int(refundable or 0),
                 paid_at=order.paid_at,
                 created_at=order.created_at,
                 updated_at=order.updated_at,
             )
-            for order, purchase_id in rows
+            for order, purchase_id, row_status, refunded, refundable in rows
         ],
         total=int(total or 0),
         limit=limit,
@@ -1083,9 +1194,15 @@ async def reconciliation(
     admin: User = Depends(require_permission("commerce.read")),
 ):
     now = datetime.utcnow()
+    # Same definitions as the orders list: failed and expired orders are settled,
+    # only a genuinely open order without an answer is stale.
     stale = await db.scalar(
-        select(func.count(Order.id)).where(
-            Order.status == "pending", Order.created_at < now - timedelta(hours=2)
+        select(func.count(Order.id))
+        .select_from(Order)
+        .outerjoin(Purchase, Purchase.order_id == Order.id)
+        .where(
+            order_display_status(now) == "pending",
+            Order.created_at < now - timedelta(hours=2),
         )
     )
     payment_errors = await db.scalar(

@@ -1025,8 +1025,13 @@ export interface AdminOrder {
     amount_kopecks: number;
     currency: string;
     access_days: number;
+    /** Derived: pending, paid, partially_refunded, refunded, failed, expired. */
     status: string;
+    /** Stored orders.status (pending or paid). */
+    order_status?: string;
     purchase_id?: string | null;
+    refunded_kopecks?: number;
+    refundable_kopecks?: number;
     paid_at?: string | null;
     created_at: string;
     updated_at: string;
