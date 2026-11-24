@@ -64,3 +64,12 @@ def test_demo_payments_refused_outside_named_non_production(monkeypatch, env):
     monkeypatch.setattr(settings, "ENVIRONMENT", env)
     monkeypatch.setattr(settings, "PRODAMUS_DEMO_MODE", False)
     assert ProdamusService.demo_payments_allowed() is False
+
+
+@pytest.mark.parametrize("value", ["", "   ", "\t"])
+def test_environment_set_but_empty_fails_at_startup(monkeypatch, value):
+    monkeypatch.setenv("ENVIRONMENT", value)
+    with pytest.raises(ValidationError, match="ENVIRONMENT is set but empty"):
+        Settings(_env_file=None)
+    with pytest.raises(ValidationError, match="ENVIRONMENT is set but empty"):
+        Settings(_env_file=None, ENVIRONMENT=value)

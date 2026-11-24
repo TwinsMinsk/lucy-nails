@@ -177,7 +177,18 @@ class Settings(BaseSettings):
     def normalize_environment(cls, v: str | None) -> str:
         # "Production" must behave exactly like "production" everywhere
         # (demo payment links, mock Kinescope embeds, dev seed).
-        value = (v or "development").strip().lower()
+        # The default applies only when the variable is absent (pydantic does
+        # not run this validator for defaults). A variable that is set but
+        # empty is a broken deploy config, not a request for development.
+        if v is None:
+            return "development"
+        value = str(v).strip().lower()
+        if not value:
+            raise ValueError(
+                "ENVIRONMENT is set but empty; set it to one of: "
+                + ", ".join(ALLOWED_ENVIRONMENTS)
+                + " (or remove the variable for local development)"
+            )
         # A typo must not silently skip the production checks and allow demo
         # payments, so only the known names start the application.
         if value not in ALLOWED_ENVIRONMENTS:
