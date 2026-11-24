@@ -101,6 +101,11 @@ class LessonService:
         lesson = lesson_result.scalars().first()
         max_watched_seconds = lesson.duration_seconds if lesson else data.watched_seconds
         watched_seconds = max(0, min(data.watched_seconds, max_watched_seconds))
+        # A field missing from the request leaves the stored value untouched
+        # (the lesson page sends only is_completed when marking a lesson done).
+        sent_fields = data.model_fields_set
+        sent_watched = "watched_seconds" in sent_fields
+        sent_completed = "is_completed" in sent_fields
 
         # Проверяем существование записи
         query = select(Progress).where(
@@ -114,11 +119,14 @@ class LessonService:
         
         newly_completed = False
         if progress:
-            # Обновляем
-            progress.watched_seconds = watched_seconds
-            
+            # Обновляем; watched time never goes backwards.
+            if sent_watched:
+                progress.watched_seconds = max(progress.watched_seconds or 0, watched_seconds)
+
             # Если статус поменялся на completed
-            if data.is_completed and not progress.is_completed:
+            if not sent_completed:
+                pass
+            elif data.is_completed and not progress.is_completed:
                 progress.is_completed = True
                 progress.completed_at = datetime.utcnow()
                 newly_completed = True
