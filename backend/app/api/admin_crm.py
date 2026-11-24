@@ -460,12 +460,16 @@ async def dashboard(
     dead_letters = await db.scalar(
         select(func.count(OutboxMessage.id)).where(OutboxMessage.status == "dead_letter")
     )
+    # After an early renewal a student holds two active rows; only the latest
+    # effective access end per student and course says whether access is ending.
+    latest_access = (
+        select(func.max(Entitlement.expires_at).label("access_end"))
+        .where(Entitlement.status == "active", Entitlement.expires_at > now)
+        .group_by(Entitlement.user_id, Entitlement.course_id)
+        .subquery()
+    )
     expiring = await db.scalar(
-        select(func.count(Entitlement.id)).where(
-            Entitlement.status == "active",
-            Entitlement.expires_at > now,
-            Entitlement.expires_at <= week,
-        )
+        select(func.count()).select_from(latest_access).where(latest_access.c.access_end <= week)
     )
     return DashboardResponse(
         total_students=int(total_students or 0),
@@ -1008,13 +1012,22 @@ async def list_entitlements(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("users.read")),
 ):
+    now = datetime.utcnow()
+    # An active row whose end has passed is expired, even before the lifecycle
+    # scan rewrites it (same rule as /admin/purchases).
+    effective_status = case(
+        (
+            and_(Entitlement.status == "active", Entitlement.expires_at <= now),
+            literal("expired"),
+        ),
+        else_=Entitlement.status,
+    )
     conditions = []
     if search:
         conditions.append(User.email.ilike(f"%{search.strip()}%"))
     if status_filter:
-        conditions.append(Entitlement.status == status_filter)
+        conditions.append(effective_status == status_filter)
     if expiring_days:
-        now = datetime.utcnow()
         conditions.extend(
             [Entitlement.expires_at > now, Entitlement.expires_at <= now + timedelta(days=expiring_days)]
         )
@@ -1025,7 +1038,7 @@ async def list_entitlements(
     )
     rows = (
         await db.execute(
-            select(Entitlement, User.email, Course.title)
+            select(Entitlement, User.email, Course.title, effective_status.label("effective_status"))
             .join(User, User.id == Entitlement.user_id)
             .join(Course, Course.id == Entitlement.course_id)
             .where(*conditions)
@@ -1044,13 +1057,13 @@ async def list_entitlements(
                 course_title=course_title,
                 source=item.source,
                 tariff=item.tariff,
-                status=item.status,
+                status=row_status,
                 starts_at=item.starts_at,
                 expires_at=item.expires_at,
                 reason=item.reason,
                 revoked_at=item.revoked_at,
             )
-            for item, email, course_title in rows
+            for item, email, course_title, row_status in rows
         ],
         total=int(total or 0),
         limit=limit,
