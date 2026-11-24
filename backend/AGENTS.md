@@ -35,6 +35,7 @@ Python-часть монорепозитория: FastAPI (async) API для п�
 | `sync_lessons_content.py` | Одноразовый идемпотентный скрипт (psycopg2, `DATABASE_URL`) синхронизации текстов курса/уроков с landing-контентом (конспекты, promo-описания, чистка «битой» кириллицы). |
 | `check_production_content.py` | Валидация опубликованного контента перед релизом через ORM: есть опубликованные курсы, у закрытых уроков опубликованных модулей задан `kinescope_video_id`. |
 | `generate_certificate_template.py` | Генерирует статичный фон диплома `app/assets/certificates/template.png` (разметка — `app/services/certificate_layout.py`). |
+| `redact_outbox_links.py` | Одноразовый скрипт (asyncpg, `DATABASE_URL`): заменяет ссылки с токенами в `outbox_messages.payload` строк `sent`/`dead_letter`, записанных до автоочистки воркером, на `[REDACTED]`. По умолчанию dry-run (только счётчики), `--apply` — изменить; значения не печатает. |
 | `fetch_docs.py` | Утилита на Firecrawl для скачивания внешней документации в файлы (использует `FIRECRAWL_API_KEY` из `backend/.env`, зависимости — `requirements-tooling.*`). |
 
 ## For AI Agents

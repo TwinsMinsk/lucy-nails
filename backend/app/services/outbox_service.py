@@ -25,6 +25,34 @@ TELEGRAM_TOKEN_PATTERN = re.compile(
     r"""(?<=api\.telegram\.org/bot)[^/\s'"]+|\d{5,}:[A-Za-z0-9_-]{20,}"""
 )
 REDACTED = "[REDACTED]"
+# A URL whose query carries a token: activation, password reset and login
+# links. Anyone reading the database or a backup could use one that is still
+# valid, so it is removed once the message no longer needs it.
+SECRET_URL_PATTERN = re.compile(
+    r"""https?://[^\s"'<>]*?[?&][^\s"'<>=&]*token=[^\s"'<>]*""",
+    re.IGNORECASE,
+)
+# Statuses after which the worker never sends the message again by itself.
+PAYLOAD_REDACTION_STATUSES = frozenset({"sent", "dead_letter"})
+
+
+def redact_payload_secrets(value):
+    """Return a copy of an outbox payload with every token-bearing URL replaced."""
+    if isinstance(value, str):
+        return SECRET_URL_PATTERN.sub(REDACTED, value)
+    if isinstance(value, dict):
+        return {key: redact_payload_secrets(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [redact_payload_secrets(item) for item in value]
+    return value
+
+
+def _unredacted_link(url: str) -> str:
+    # A message whose link was removed (dead letter retried by hand) must not
+    # send a broken link; the operator has to send a new one instead.
+    if REDACTED in url:
+        raise ValueError("The link of this message was removed after delivery; send a new one")
+    return url
 
 
 class TelegramApiError(RuntimeError):
@@ -153,16 +181,20 @@ async def deliver_outbox_message(message: OutboxMessage) -> None:
     if message.kind == "account_activation":
         await EmailService.send_account_activation(
             message.recipient,
-            message.payload["activation_url"],
+            _unredacted_link(message.payload["activation_url"]),
             message.payload["course_title"],
             message.payload.get("expires_at"),
         )
         return
     if message.kind == "email_verification":
-        await EmailService.send_email_verification(message.recipient, message.payload["activation_url"])
+        await EmailService.send_email_verification(
+            message.recipient, _unredacted_link(message.payload["activation_url"])
+        )
         return
     if message.kind == "password_reset":
-        await EmailService.send_password_reset(message.recipient, message.payload["reset_url"])
+        await EmailService.send_password_reset(
+            message.recipient, _unredacted_link(message.payload["reset_url"])
+        )
         return
     if message.kind == "access_granted":
         await EmailService.send_access_granted(
@@ -173,7 +205,9 @@ async def deliver_outbox_message(message: OutboxMessage) -> None:
         )
         return
     if message.kind == "login_link":
-        await EmailService.send_login_link(message.recipient, message.payload["login_url"])
+        await EmailService.send_login_link(
+            message.recipient, _unredacted_link(message.payload["login_url"])
+        )
         return
     if message.kind in {"certificate_issued", "certificate_reissue"}:
         await EmailService.send_certificate_link(
@@ -289,6 +323,9 @@ async def process_outbox_batch(
             message.next_attempt_at = datetime.utcnow() + timedelta(
                 seconds=min(60 * (2 ** message.attempts), 3600)
             )
+            # A retry still needs the link; a dead letter no longer does.
+            if message.status in PAYLOAD_REDACTION_STATUSES:
+                message.payload = redact_payload_secrets(message.payload)
         else:
             db.add(
                 DeliveryAttempt(
@@ -301,6 +338,7 @@ async def process_outbox_batch(
             message.sent_at = datetime.utcnow()
             message.last_error = None
             message.locked_at = None
+            message.payload = redact_payload_secrets(message.payload)
         await db.commit()
 
     return len(messages)
