@@ -10,6 +10,47 @@ test("public landing and login remain usable", async ({ page }) => {
     await expect(page.getByLabel("Пароль")).toBeVisible()
 })
 
+test.describe("mobile menu", () => {
+    // The burger button only exists below the lg breakpoint.
+    test.use({ viewport: { width: 390, height: 844 } })
+
+    test("a link closes the menu", async ({ page }) => {
+        await page.goto("/")
+        await page.getByRole("button", { name: "Меню" }).click()
+        const menu = page.getByRole("dialog")
+        await expect(menu).toBeVisible()
+
+        await menu.getByRole("link", { name: "Войти" }).click()
+
+        await expect(page).toHaveURL(/\/auth\/login$/)
+        await expect(page.getByRole("dialog")).toHaveCount(0)
+    })
+
+    test("Back with the menu open leaves no dialog on the previous page", async ({ page }) => {
+        await page.goto("/auth/login")
+        await page.goto("/")
+        await page.getByRole("button", { name: "Меню" }).click()
+        await expect(page.getByRole("dialog")).toBeVisible()
+
+        await page.goBack()
+
+        await expect(page).toHaveURL(/\/auth\/login$/)
+        await expect(page.getByRole("dialog")).toHaveCount(0)
+        await expect(page.getByRole("heading", { name: "Вход в аккаунт" })).toBeVisible()
+    })
+
+    test("an anchor link closes the menu and scrolls to the gallery", async ({ page }) => {
+        await page.goto("/")
+        await page.getByRole("button", { name: "Меню" }).click()
+
+        await page.getByRole("dialog").getByRole("link", { name: "Галерея" }).click()
+
+        await expect(page.getByRole("dialog")).toHaveCount(0)
+        await expect(page).toHaveURL(/#gallery$/)
+        await expect.poll(async () => page.evaluate(() => Math.abs(document.getElementById("gallery")!.getBoundingClientRect().top)), { timeout: 5_000 }).toBeLessThan(2)
+    })
+})
+
 test("registration requires personal-data consent", async ({ page }) => {
     let registerCalled = false
     await page.route("**/api/auth/register", async (route) => {

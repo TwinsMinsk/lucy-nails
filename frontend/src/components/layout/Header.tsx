@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { usePathname, useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { getMe, logout, UserResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -36,8 +37,10 @@ export function Header() {
     const [mounted, setMounted] = useState(false);
     const [user, setUser] = useState<UserResponse | null>(null);
     const [menuOpen, setMenuOpen] = useState(false);
+    const [loggingOut, setLoggingOut] = useState(false);
     // Anchor picked in the drawer; scrolled to once the drawer has closed and released the scroll lock.
     const pendingHashRef = useRef<string | null>(null);
+    const pendingScrollTimerRef = useRef<number | null>(null);
 
     // Determines if we are on the landing page
     const isLanding = pathname === "/";
@@ -71,11 +74,40 @@ export function Header() {
         checkAuth();
     }, [pathname]);
 
-    const handleLogout = async () => {
-        await logout();
+    // A new page (link, Back/Forward) closes the drawer and drops an anchor scroll meant for the old page.
+    useEffect(() => {
+        setMenuOpen(false);
+        pendingHashRef.current = null;
+        if (pendingScrollTimerRef.current !== null) {
+            window.clearTimeout(pendingScrollTimerRef.current);
+            pendingScrollTimerRef.current = null;
+        }
+    }, [pathname]);
+
+    // Back/Forward between entries of the same page (hash changes) does not change the pathname.
+    useEffect(() => {
+        if (!menuOpen) return;
+        const closeMenu = () => setMenuOpen(false);
+        window.addEventListener("popstate", closeMenu);
+        return () => window.removeEventListener("popstate", closeMenu);
+    }, [menuOpen]);
+
+    // Returns false when the server did not end the session: the user stays signed in and can retry.
+    const handleLogout = async (): Promise<boolean> => {
+        if (loggingOut) return false;
+        setLoggingOut(true);
+        try {
+            await logout();
+        } catch {
+            toast.error("Не удалось выйти. Проверьте подключение к интернету и попробуйте ещё раз.");
+            return false;
+        } finally {
+            setLoggingOut(false);
+        }
         setUser(null);
         router.push("/");
         router.refresh();
+        return true;
     };
 
     const scrollToHash = (hash: string) => {
@@ -111,12 +143,15 @@ export function Header() {
         if (!hash) return;
         pendingHashRef.current = null;
         // Wait a tick so the dialog has removed its body scroll lock.
-        window.setTimeout(() => scrollToHash(hash), 0);
+        pendingScrollTimerRef.current = window.setTimeout(() => {
+            pendingScrollTimerRef.current = null;
+            scrollToHash(hash);
+        }, 0);
     };
 
+    // The drawer stays open on failure so the retry is one tap away; the toast explains what happened.
     const handleDrawerLogout = async () => {
-        setMenuOpen(false);
-        await handleLogout();
+        if (await handleLogout()) setMenuOpen(false);
     };
 
     const accountLinks = [
@@ -296,7 +331,9 @@ export function Header() {
                                                     <button
                                                         type="button"
                                                         onClick={handleDrawerLogout}
-                                                        className={cn(drawerRowClass, "text-base text-destructive hover:bg-destructive/5 hover:text-destructive active:bg-destructive/10")}
+                                                        disabled={loggingOut}
+                                                        aria-busy={loggingOut || undefined}
+                                                        className={cn(drawerRowClass, "text-base text-destructive hover:bg-destructive/5 hover:text-destructive active:bg-destructive/10 disabled:opacity-60")}
                                                     >
                                                         <LogOut className="size-5" aria-hidden="true" />
                                                         Выйти
