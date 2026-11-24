@@ -161,13 +161,14 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                         {/* Program */}
                         {course.modules && (
                             <section>
+                                <h2 className="text-2xl font-bold mb-6">Программа курса</h2>
                                 <ModuleList modules={course.modules} />
                             </section>
                         )}
 
                         {/* Detailed Pricing / Rates */}
                         <section id="rates" className="scroll-mt-20">
-                            <h3 className="text-2xl font-bold mb-6">Стоимость обучения</h3>
+                            <h2 className="text-2xl font-bold mb-6">Стоимость обучения</h2>
                             <div className="max-w-md">
                                 <Card className="flex flex-col h-full border hover:border-primary/50 transition-colors">
                                     <CardHeader>

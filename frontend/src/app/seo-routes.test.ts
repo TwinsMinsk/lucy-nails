@@ -68,6 +68,8 @@ describe("course page", () => {
         expect(screen.getByRole("heading", { level: 1, name: "Nail Design PRO" })).toBeInTheDocument()
         expect(screen.getByText(/Модуль 1: Фольга/)).toBeInTheDocument()
         expect(screen.getByText("1 уроков")).toBeInTheDocument()
+        const headings = screen.getAllByRole("heading").map((heading) => `${heading.tagName} ${heading.textContent}`)
+        expect(headings).toEqual(["H1 Nail Design PRO", "H2 Программа курса", "H3 Модуль 1: Фольга", "H2 Стоимость обучения"])
     })
 
     it("gives another course a self canonical", async () => {

@@ -13,7 +13,6 @@ import {
     CardDescription,
     CardFooter,
     CardHeader,
-    CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -58,7 +57,7 @@ function ResetPasswordForm() {
     return (
         <Card className="w-full max-w-md">
             <CardHeader className="space-y-1">
-                <CardTitle className="text-2xl font-bold text-center">Новый пароль</CardTitle>
+                <h1 data-slot="card-title" className="text-2xl font-bold text-center">Новый пароль</h1>
                 <CardDescription className="text-center">
                     Придумайте новый пароль для входа в кабинет
                 </CardDescription>
