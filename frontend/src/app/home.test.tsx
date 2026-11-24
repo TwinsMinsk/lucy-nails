@@ -70,7 +70,7 @@ it("binds the canonical CMS course to displayed price access and checkout", asyn
 
 it("points payment questions to the support bot in the pricing section", async () => {
     vi.stubEnv("NEXT_PUBLIC_SUPPORT_BOT_USERNAME", "")
-    vi.mocked(getLandingContent).mockResolvedValue({ course: { id: "canonical", title: "Canonical", price_self: 7200, access_days: 45, lessons_count: 2, total_duration: 3600 }, hero: { ...landingCourse, instructorImageUrl: null }, modules: [], gallery: [] })
+    vi.mocked(getLandingContent).mockResolvedValue({ available: true, course: { id: "canonical", title: "Canonical", price_self: 7200, access_days: 45, lessons_count: 2, total_duration: 3600 }, hero: { ...landingCourse, instructorImageUrl: null }, modules: [], gallery: [] })
     vi.mocked(getPublicCourseModules).mockResolvedValue([])
     const { container } = render(await Home())
     const support = screen.getByRole("link", { name: "Напишите в поддержку в Telegram" })
