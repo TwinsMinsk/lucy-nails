@@ -19,7 +19,7 @@ Next.js 16 (App Router) + React 19 приложение онлайн-школы 
 | `components.json` | shadcn-конфиг: style `new-york`, `rsc: true`, base color `slate`, иконки `lucide`, alias `@/components`, `@/components/ui`, `@/lib`, `@/lib/utils` (alias `@/hooks` объявлен, каталога нет) |
 | `vitest.config.ts` | jsdom, `src/test/setup.ts`, тесты `src/**/*.test.{ts,tsx}`, `restoreMocks: true`, алиас `@` |
 | `playwright.config.ts` | Сервера, проекты и `PLAYWRIGHT_BASE_URL` — см. `e2e/AGENTS.md` |
-| `.env.example` | Шаблон `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SITE_URL`, опционального `NEXT_PUBLIC_YANDEX_METRIKA_ID` |
+| `.env.example` | Шаблон `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SITE_URL`, опциональных `NEXT_PUBLIC_YANDEX_METRIKA_ID` и `NEXT_PUBLIC_SUPPORT_BOT_USERNAME` |
 | `src/proxy.ts` | Next.js proxy (преемник middleware) — см. `src/AGENTS.md` |
 
 ## Subdirectories
@@ -35,7 +35,7 @@ Next.js 16 (App Router) + React 19 приложение онлайн-школы 
 ### Working In This Directory
 
 - Env-файлы читаются **только** из каталога `frontend/` (`frontend/.env.local`). Корневой `.env` репозитория Next.js **не видит**. Реальный `.env.local` не коммитить и не цитировать в чате — только `.env.example`.
-- `NEXT_PUBLIC_API_URL` и `NEXT_PUBLIC_SITE_URL` нужны на этапе **build**, а не runtime (Next.js инлайнит `NEXT_PUBLIC_*` в бандл). При отсутствии — fallback в `src/lib/env.ts` (`localhost:8000/api` / `https://api.lucysmirnova.ru/api` в зависимости от `NODE_ENV`). `NEXT_PUBLIC_YANDEX_METRIKA_ID` опционален: без него счётчик не загружается.
+- `NEXT_PUBLIC_API_URL` и `NEXT_PUBLIC_SITE_URL` нужны на этапе **build**, а не runtime (Next.js инлайнит `NEXT_PUBLIC_*` в бандл). При отсутствии — fallback в `src/lib/env.ts` (`localhost:8000/api` / `https://api.lucysmirnova.ru/api` в зависимости от `NODE_ENV`). `NEXT_PUBLIC_YANDEX_METRIKA_ID` опционален: без него счётчик не загружается. `NEXT_PUBLIC_SUPPORT_BOT_USERNAME` опционален (fallback `lucynails_bot`); ссылки на бота поддержки строит только `src/lib/support.ts` (`supportBotUrl`).
 - `NEXT_PUBLIC_*` читать только статическим обращением (`process.env.NEXT_PUBLIC_X`): динамический `process.env[name]` в браузерный бандл не подставляется (см. комментарий в `src/lib/env.ts`).
 - Все обращения к backend — только через `src/lib/api.ts` (`apiFetch` + доменные функции). Не дублировать `API_BASE_URL`, не делать `fetch` напрямую к API-эндпоинтам. Единственное исключение сейчас — опрос статуса заказа в `src/app/payment-success/payment-status.tsx`.
 - `npm start` рассчитан на Railway (`$PORT`); локально — `npm run dev` или `.\scripts\dev-frontend.ps1` из корня репозитория.

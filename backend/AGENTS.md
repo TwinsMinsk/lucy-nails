@@ -9,7 +9,7 @@ Python-часть монорепозитория: FastAPI (async) API для п�
 ## Key Files
 | File | Description |
 |------|-------------|
-| `Procfile` | Railway processes: `web` (`alembic upgrade head`, затем `uvicorn app.main:app` с `--proxy-headers --forwarded-allow-ips`), `worker` (`python -m app.workers.outbox`), `bot` (`python -m app.bot.main`). |
+| `Procfile` | Railway processes: `web` (`alembic upgrade head`, затем `uvicorn app.main:app` с `--proxy-headers --forwarded-allow-ips`), `worker` (`python -m app.workers.outbox`), `bot` (`python -m app.bot.main`, long polling только для локальной разработки: в production бот получает обновления вебхуком `web`). |
 | `alembic.ini` | Конфиг Alembic; `script_location = alembic`, `prepend_sys_path = .` (запускать из `backend/`), `sqlalchemy.url` — дефолт для локальной разработки (реальный URL подменяется в `alembic/env.py` из `settings.DATABASE_URL`). |
 | `requirements.txt` / `requirements.lock` | Только production runtime: FastAPI/Starlette, SQLAlchemy/asyncpg/Alembic, PyJWT+cryptography, Redis rate limit, email/Telegram/certificates. |
 | `requirements-dev.*` / `requirements-tooling.*` | Pytest/Ruff и отдельные audit/docs utilities; не устанавливаются в runtime image. |
@@ -36,6 +36,7 @@ Python-часть монорепозитория: FastAPI (async) API для п�
 | `check_production_content.py` | Валидация опубликованного контента перед релизом через ORM: есть опубликованные курсы, у закрытых уроков опубликованных модулей задан `kinescope_video_id`. |
 | `generate_certificate_template.py` | Генерирует статичный фон диплома `app/assets/certificates/template.png` (разметка — `app/services/certificate_layout.py`). |
 | `redact_outbox_links.py` | Одноразовый скрипт (asyncpg, `DATABASE_URL`): заменяет ссылки с токенами в `outbox_messages.payload` строк `sent`/`dead_letter`, записанных до автоочистки воркером, на `[REDACTED]`. По умолчанию dry-run (только счётчики), `--apply` — изменить; значения не печатает. |
+| `telegram_webhook.py` | Вебхук бота поддержки: `set` (`setWebhook` на `{BACKEND_URL}/api/telegram/webhook` с `TELEGRAM_WEBHOOK_SECRET`, `allowed_updates` из сервиса, `drop_pending_updates` выключен, `max_connections` 1 — порядок сообщений), `info` (`getWebhookInfo`), `delete`. Читает настройки как backend, токен и секрет не печатает. Не запускать против production-бота без задачи — см. [`TELEGRAM_HELPDESK.md`](../Docs/04_Setup_Ops/TELEGRAM_HELPDESK.md). |
 | `fetch_docs.py` | Утилита на Firecrawl для скачивания внешней документации в файлы (использует `FIRECRAWL_API_KEY` из `backend/.env`, зависимости — `requirements-tooling.*`). |
 
 ## For AI Agents

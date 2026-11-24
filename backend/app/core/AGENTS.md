@@ -31,7 +31,7 @@
 - **Email:** при `SMTP_REQUIRED_FOR_PAYMENT_EMAIL=True` нет транспорта (`RESEND_API_KEY` или `SMTP_USER` + `SMTP_PASSWORD`); `SMTP_START_TLS=False` в production или в staging вне приватного `*.railway.internal`.
 - **Инфраструктура:** пусты `TRUSTED_HOSTS`, `COOKIE_DOMAIN`, `REDIS_URL`; `FORWARDED_ALLOW_IPS` пуст, равен `*` или содержит запись, которая не является IP-адресом или CIDR-сетью, либо сеть `/0`.
 - **Во всех окружениях** (`validate_no_wildcard_origins`): `*` в `CORS_ORIGINS` (CORS всегда с credentials) или в `TRUSTED_HOSTS`.
-- **Telegram:** пусты `TELEGRAM_BOT_TOKEN`/`TELEGRAM_BOT_USERNAME` или `TELEGRAM_OWNER_CHAT_ID`.
+- **Telegram:** пусты `TELEGRAM_BOT_TOKEN`/`TELEGRAM_BOT_USERNAME` или `TELEGRAM_OWNER_CHAT_ID`; задан `TELEGRAM_HELPDESK_CHAT_ID` без `TELEGRAM_WEBHOOK_SECRET` из 32–256 символов `A-Z a-z 0-9 _ -` или с неотрицательным id; непустой `TELEGRAM_WEBHOOK_SECRET` вне этого формата; `TELEGRAM_HELPDESK_ALERTS_TOPIC_ID` без `TELEGRAM_HELPDESK_CHAT_ID`. `ORDER_ABANDONED_ALERT_MINUTES` ограничен 0–720 в любом окружении.
 
 `MONITORING_TOKEN` на старте не проверяется: без него `/health/operations` отвечает 503.
 
