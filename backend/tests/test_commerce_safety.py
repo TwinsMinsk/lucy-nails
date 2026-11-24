@@ -1,18 +1,22 @@
+import hashlib
 import json
 import logging
 import uuid
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import func, select
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from starlette.requests import Request as StarletteRequest
 
 import app.api.payments as payments_module
 import app.services.payment_event_service as payment_event_module
 from app.core.config import settings
 from app.core.database import async_session_maker as app_session_maker
 from app.core.security import get_password_hash
+from app.main import app as fastapi_app
 from app.models.analytics_event import AnalyticsEvent
 from app.models.certificate import Certificate
 from app.models.course import Course
@@ -584,9 +588,29 @@ def _meet_or_pass(parties: int, timeout: float):
     return meet
 
 
+@pytest.fixture
+def purchase_attempts(monkeypatch) -> list[str]:
+    """Record every transaction attempt of the webhook, by event hash.
+
+    The webhook retries a deadlock, so a test of lock order must also prove
+    that no attempt was aborted and run again.
+    """
+    attempts: list[str] = []
+    record_once = payments_module._record_purchase_once
+
+    async def counted(payment_key, course_id, tariff, payload, event_data, *args, **kwargs):
+        attempts.append(event_data.event_hash)
+        return await record_once(
+            payment_key, course_id, tariff, payload, event_data, *args, **kwargs
+        )
+
+    monkeypatch.setattr(payments_module, "_record_purchase_once", counted)
+    return attempts
+
+
 @pytest.mark.asyncio
 async def test_concurrent_deliveries_of_one_order_queue_instead_of_deadlocking(
-    client, db, monkeypatch, production_sessions
+    client, db, monkeypatch, production_sessions, purchase_attempts
 ):
     course = await _course_for_sale(db)
     order = await _pending_order(db, course, "queue@example.com")
@@ -614,6 +638,8 @@ async def test_concurrent_deliveries_of_one_order_queue_instead_of_deadlocking(
         responses
     )
     assert [response.status_code for response in responses] == [200, 200]
+    # One transaction per delivery: a deadlock hidden by the retry fails here.
+    assert len(purchase_attempts) == len(set(purchase_attempts)) == 2
     assert await _count(db, Purchase.id) == 1
     assert await _count(db, Entitlement.id) == 1
     assert sorted(await db.scalars(select(PaymentEvent.processing_status))) == [
@@ -719,7 +745,7 @@ async def test_signed_webhook_for_missing_order_is_rejected_and_alerted_once(
 
 @pytest.mark.asyncio
 async def test_concurrent_orders_of_one_buyer_add_both_paid_periods(
-    client, db, monkeypatch, production_sessions
+    client, db, monkeypatch, production_sessions, purchase_attempts
 ):
     course = await _course_for_sale(db)
     buyer = User(
@@ -752,6 +778,7 @@ async def test_concurrent_orders_of_one_buyer_add_both_paid_periods(
         responses
     )
     assert [response.status_code for response in responses] == [200, 200]
+    assert len(purchase_attempts) == 2
     earlier, later = (
         await db.scalars(
             select(Entitlement)
@@ -926,6 +953,7 @@ async def test_agreeing_or_single_status_markers_are_still_accepted(client, db, 
         ("nan", None, None),
         ("-1", None, None),
         ("1e400", None, None),
+        ("1e1000000", None, None),
         ("Infinity", None, None),
     ],
 )
@@ -968,6 +996,10 @@ async def test_paid_sum_is_parsed_exactly_within_two_kopecks(
         ("-1", None),
         ("-0.01", None),
         ("1e400", None),
+        ("1e1000000", None),
+        ("-1e1000000", None),
+        ("1e-2000000", 0),
+        ("9" * 1000, None),
         ("inf", None),
         ("", None),
         (None, None),
@@ -1048,18 +1080,47 @@ async def test_webhook_body_at_size_limit_is_processed(client, db):
     assert await _count(db, Purchase.id) == 1
 
 
+@pytest.fixture
+def body_parsers(monkeypatch) -> list[str]:
+    """Record every parse or verification of a webhook body."""
+    calls: list[str] = []
+
+    def record(name):
+        def called(*args, **kwargs):
+            calls.append(name)
+            raise AssertionError(f"{name} must not run for this request")
+
+        return called
+
+    monkeypatch.setattr(
+        payments_module,
+        "json",
+        SimpleNamespace(loads=record("json.loads"), dumps=json.dumps),
+    )
+    monkeypatch.setattr(StarletteRequest, "form", record("Request.form"))
+    monkeypatch.setattr(payments_module, "nest_form_fields", record("nest_form_fields"))
+    monkeypatch.setattr(
+        ProdamusService, "verify_signature", staticmethod(record("verify_signature"))
+    )
+    return calls
+
+
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "content_type",
+    [
+        "application/json",
+        "application/x-www-form-urlencoded",
+        "multipart/form-data; boundary=oversized",
+    ],
+)
 async def test_webhook_body_over_size_limit_is_rejected_before_parsing(
-    client, db, monkeypatch
+    client, db, body_parsers, content_type
 ):
     course = await _course_for_sale(db)
     order = await _pending_order(db, course, "oversized@example.com")
     body, headers = _signed_body_of_size(order, WEBHOOK_BODY_LIMIT + 1)
-
-    def must_not_verify(*args, **kwargs):
-        raise AssertionError("an oversized body must be rejected before verification")
-
-    monkeypatch.setattr(ProdamusService, "verify_signature", staticmethod(must_not_verify))
+    headers["Content-Type"] = content_type
 
     async def in_chunks():
         # No Content-Length: the limit must count the bytes actually received.
@@ -1073,14 +1134,84 @@ async def test_webhook_body_over_size_limit_is_rejected_before_parsing(
     unsigned = await client.post(
         "/api/payments/webhook",
         content=body,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": content_type},
     )
 
     assert declared.status_code == streamed.status_code == 413
     assert unsigned.status_code == 400
-    assert unsigned.json() == {"detail": "Missing signature"}
+    assert body_parsers == []
     assert await _count(db, PaymentEvent.id) == 0
     assert await _count(db, Purchase.id) == 0
+
+
+@pytest.mark.asyncio
+async def test_webhook_body_buffer_never_grows_past_the_limit(client, db, monkeypatch):
+    largest = 0
+
+    class TrackedBuffer(bytearray):
+        def extend(self, data) -> None:
+            nonlocal largest
+            super().extend(data)
+            largest = max(largest, len(self))
+
+    monkeypatch.setattr(payments_module, "bytearray", TrackedBuffer, raising=False)
+
+    async def small_then_huge():
+        yield b"{" + b" " * (WEBHOOK_BODY_LIMIT - 10)
+        yield b" " * (1024 * 1024) + b"}"
+
+    response = await client.post(
+        "/api/payments/webhook",
+        content=small_then_huge(),
+        headers={"Sign": "0" * 64, "Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 413
+    assert 0 < largest <= WEBHOOK_BODY_LIMIT
+
+
+@pytest.mark.asyncio
+async def test_webhook_without_signature_is_rejected_before_the_body_is_read():
+    """Drive the ASGI app directly to see whether it ever calls receive."""
+    receive_calls = 0
+    sent: list[dict] = []
+
+    async def receive():
+        nonlocal receive_calls
+        receive_calls += 1
+        return {"type": "http.request", "body": b"{}", "more_body": False}
+
+    async def send(message):
+        sent.append(message)
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/api/payments/webhook",
+        "raw_path": b"/api/payments/webhook",
+        "query_string": b"",
+        "root_path": "",
+        "headers": [
+            (b"host", b"test"),
+            (b"content-type", b"application/json"),
+            (b"content-length", b"2"),
+        ],
+        "client": ("127.0.0.1", 50000),
+        "server": ("test", 80),
+    }
+
+    await fastapi_app(scope, receive, send)
+
+    start = next(message for message in sent if message["type"] == "http.response.start")
+    body = b"".join(
+        message.get("body", b"") for message in sent if message["type"] == "http.response.body"
+    )
+    assert start["status"] == 400
+    assert json.loads(body) == {"detail": "Missing signature"}
+    assert receive_calls == 0
 
 
 @pytest.mark.asyncio
@@ -1108,3 +1239,231 @@ async def test_invalid_webhook_signature_log_names_the_request_not_the_signature
     assert not any(
         signature[:6] in message for signature in (forged, expected) for message in messages
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("blank", ["", "   ", None])
+@pytest.mark.parametrize(
+    ("fallback", "processing_status", "error_code"),
+    [
+        ({"status": "success"}, "rejected", "contradictory_payment_status"),
+        ({"result": "ok"}, "rejected", "contradictory_payment_status"),
+        ({}, "ignored", "payment_not_successful"),
+    ],
+)
+async def test_blank_payment_status_never_confirms_a_payment(
+    client, db, owner_chat, blank, fallback, processing_status, error_code
+):
+    course = await _course_for_sale(db)
+    order = await _pending_order(db, course, "blank-status@example.com")
+    payload = _notification(order, "blank-status-payment", payment_status=blank, **fallback)
+
+    response = await _deliver(client, payload)
+
+    assert response.status_code == 422, response.text
+    assert await _count(db, Purchase.id) == 0
+    assert await _count(db, Entitlement.id) == 0
+    event = (await db.scalars(select(PaymentEvent))).one()
+    assert event.processing_status == processing_status
+    assert event.error_code == error_code
+    assert await _count(
+        db, OutboxMessage.id, OutboxMessage.kind == "owner_payment_rejected"
+    ) == 1
+
+
+async def _paid_order(client, db, email: str, provider_payment_id: str) -> Order:
+    course = await _course_for_sale(db)
+    order = await _pending_order(db, course, email)
+    response = await _deliver(client, _notification(order, provider_payment_id))
+    assert response.status_code == 200, response.text
+    return order
+
+
+@pytest.mark.asyncio
+async def test_known_payment_naming_a_missing_order_is_rejected_not_acknowledged(
+    client, db, owner_chat, production_sessions
+):
+    await _paid_order(client, db, "known-payment@example.com", "known-payment")
+    missing_reference = f"order|{uuid.uuid4()}"
+    payload = {
+        "order_id": "known-payment",
+        "order_num": missing_reference,
+        "customer_email": "known-payment@example.com",
+        "sum": "5900.00",
+        "currency": "rub",
+        "payment_status": "success",
+        "attempt": "2",
+    }
+
+    response = await _deliver(client, payload)
+
+    assert response.status_code == 422, response.text
+    assert response.json() == {"detail": "Order not found"}
+    rejected = (
+        await db.scalars(
+            select(PaymentEvent).where(PaymentEvent.processing_status != "processed")
+        )
+    ).one()
+    assert rejected.processing_status == "rejected"
+    assert rejected.error_code == "order_not_found"
+    assert rejected.order_id is None
+    assert rejected.order_reference == missing_reference
+    assert await _count(
+        db, OutboxMessage.id, OutboxMessage.kind == "owner_payment_rejected"
+    ) == 1
+    assert await _count(db, Purchase.id) == 1
+
+
+@pytest.mark.asyncio
+async def test_known_payment_naming_another_order_is_rejected(client, db, owner_chat):
+    await _paid_order(client, db, "first-order@example.com", "shared-payment")
+    other_course = await _course_for_sale(db)
+    other_order = await _pending_order(db, other_course, "other-order@example.com")
+
+    response = await _deliver(client, _notification(other_order, "shared-payment"))
+
+    assert response.status_code == 422, response.text
+    assert response.json() == {"detail": "Payment belongs to another order"}
+    rejected = (
+        await db.scalars(
+            select(PaymentEvent).where(PaymentEvent.processing_status != "processed")
+        )
+    ).one()
+    assert rejected.processing_status == "rejected"
+    assert rejected.order_id == other_order.id
+    assert await _count(
+        db, OutboxMessage.id, OutboxMessage.kind == "owner_payment_rejected"
+    ) == 1
+    await db.refresh(other_order)
+    assert other_order.status == "pending" and other_order.user_id is None
+    assert await _count(db, Purchase.id) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("names_paid_order", [True, False])
+async def test_exhausted_retries_acknowledge_only_a_processed_notification(
+    client, db, monkeypatch, names_paid_order
+):
+    paid_order = await _paid_order(client, db, "retried@example.com", "retried-payment")
+    other_course = await _course_for_sale(db)
+    other_order = await _pending_order(db, other_course, "retried-other@example.com")
+    calls = 0
+
+    async def always_conflicting(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise IntegrityError("INSERT payment_events", {}, Exception("conflict"))
+
+    monkeypatch.setattr(payments_module, "_record_purchase_once", always_conflicting)
+    payload = _notification(
+        paid_order if names_paid_order else other_order, "retried-payment", attempt="2"
+    )
+
+    if names_paid_order:
+        response = await _deliver(client, payload)
+        assert response.status_code == 200, response.text
+    else:
+        with pytest.raises(IntegrityError):
+            await _deliver(client, payload)
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_second_payment_and_refund_of_the_paid_order_both_complete(
+    client, db, monkeypatch, owner_chat, production_sessions, purchase_attempts
+):
+    order = await _paid_order(client, db, "refunded@example.com", "refunded-payment")
+    purchase = await db.scalar(select(Purchase).where(Purchase.order_id == order.id))
+    operator = User(email="refund-operator@example.com", password_hash="unused", role="admin")
+    db.add(operator)
+    await db.commit()
+    refund = await RefundService.create_refund(
+        db,
+        purchase_id=purchase.id,
+        amount_kopecks=purchase.amount_kopecks,
+        reason="Buyer asked for a refund",
+        created_by_id=operator.id,
+    )
+    await db.commit()
+    purchase_attempts.clear()
+
+    # Hold both sides at the point where each owns one row the other one needs:
+    # the webhook its order lock, the refund its purchase lock.
+    meet = _meet_or_pass(2, timeout=3)
+    holding = {"order": False, "purchase": False}
+    execute, scalar = AsyncSession.execute, AsyncSession.scalar
+
+    async def execute_and_hold(session, statement, *args, **kwargs):
+        result = await execute(session, statement, *args, **kwargs)
+        sql = str(statement)
+        if not holding["order"] and "FROM orders" in sql and "FOR UPDATE" in sql:
+            holding["order"] = True
+            await meet()
+        return result
+
+    async def scalar_and_hold(session, statement, *args, **kwargs):
+        result = await scalar(session, statement, *args, **kwargs)
+        sql = str(statement)
+        if not holding["purchase"] and "FROM purchases" in sql and "FOR UPDATE" in sql:
+            holding["purchase"] = True
+            await meet()
+        return result
+
+    monkeypatch.setattr(AsyncSession, "execute", execute_and_hold)
+    monkeypatch.setattr(AsyncSession, "scalar", scalar_and_hold)
+
+    async def process_refund() -> None:
+        async with production_sessions() as session:
+            await RefundService.update_refund(
+                session,
+                refund.id,
+                status="processed",
+                actor_id=operator.id,
+                provider_reference="provider-refund-1",
+                note=None,
+            )
+            await session.commit()
+
+    results = await asyncio.gather(
+        _deliver(client, _notification(order, "second-payment")),
+        process_refund(),
+        return_exceptions=True,
+    )
+
+    assert all(not isinstance(result, BaseException) for result in results), results
+    assert results[0].status_code == 200, results[0].text
+    assert holding == {"order": True, "purchase": True}
+    # One transaction for the delivery: a deadlock hidden by the retry fails here.
+    assert len(purchase_attempts) == 1
+    incident = await db.scalar(
+        select(PaymentEvent).where(PaymentEvent.processing_status == "financial_incident")
+    )
+    assert incident is not None and incident.purchase_id == purchase.id
+    await db.refresh(refund)
+    assert refund.status == "processed"
+    entitlement = await db.scalar(
+        select(Entitlement).where(Entitlement.source_purchase_id == purchase.id)
+    )
+    await db.refresh(entitlement)
+    assert entitlement.status == "revoked"
+
+
+@pytest.mark.asyncio
+async def test_hashed_and_literal_payment_keys_never_share_an_analytics_event(client, db):
+    long_key = "L" * 200
+    lookalike_key = "sha256:" + hashlib.sha256(long_key.encode("utf-8")).hexdigest()
+    await _paid_order(client, db, "long-key@example.com", long_key)
+    await _paid_order(client, db, "lookalike-key@example.com", lookalike_key)
+
+    event_ids = set(
+        await db.scalars(
+            select(AnalyticsEvent.event_id).where(
+                AnalyticsEvent.event_name == "purchase_confirmed"
+            )
+        )
+    )
+
+    assert len(event_ids) == 2
+    # Ids already stored for short keys keep their format.
+    assert f"purchase_confirmed:{lookalike_key}" in event_ids
+    assert all(len(event_id) <= 128 for event_id in event_ids)

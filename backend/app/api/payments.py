@@ -81,7 +81,8 @@ _SUCCESS_STATUS_VALUES = frozenset(
 )
 # payment_status is the field of the Prodamus notification contract; status
 # and result come from older callback shapes.
-_STATUS_FIELDS = ("payment_status", "status", "result")
+_AUTHORITATIVE_STATUS_FIELD = "payment_status"
+_FALLBACK_STATUS_FIELDS = ("status", "result")
 
 _ANALYTICS_EVENT_ID_LENGTH = AnalyticsEvent.__table__.c.event_id.type.length
 
@@ -305,19 +306,26 @@ def _resolve_payment_key(provider_order_id_raw: Any, merchant_reference_raw: Any
     return f"order_id:{provider_order_id}"
 
 
+def _status_marker(value: Any) -> str:
+    return "" if value is None else str(value).strip().lower()
+
+
 def _payment_status_verdict(payload: dict[str, Any]) -> str:
     """Classify the status markers: "success", "not_successful" or "contradictory".
 
     An empty or absent status is NOT success. payment_status is authoritative
-    when present: the other fields can never turn it into a success, only veto
-    one. Without it, status and result decide. Markers that disagree about
-    success never grant access: the notification is contradictory.
+    whenever its key is present, even with a null or blank value: the other
+    fields can never turn it into a success, only veto one. Only without the
+    key do status and result decide. Markers that disagree about success never
+    grant access: the notification is contradictory.
     """
     markers = [
-        str(value).strip().lower()
-        for field in _STATUS_FIELDS
-        if (value := payload.get(field)) not in (None, "") and str(value).strip()
+        marker
+        for field in _FALLBACK_STATUS_FIELDS
+        if (marker := _status_marker(payload.get(field)))
     ]
+    if _AUTHORITATIVE_STATUS_FIELD in payload:
+        markers.append(_status_marker(payload[_AUTHORITATIVE_STATUS_FIELD]))
     successes = sum(marker in _SUCCESS_STATUS_VALUES for marker in markers)
     if successes == 0:
         return "not_successful"
@@ -327,12 +335,30 @@ def _payment_status_verdict(payload: dict[str, Any]) -> str:
 
 
 def _purchase_confirmed_event_id(payment_key: str) -> str:
-    """analytics_events.event_id is shorter than a provider payment id may be."""
+    """analytics_events.event_id is shorter than a provider payment id may be.
+
+    A key that fits keeps the stored form ``purchase_confirmed:<key>``. A longer
+    one is hashed under ``purchase_confirmed#sha256:``: no key can produce that
+    form, because a literal key always follows a colon.
+    """
     event_id = f"purchase_confirmed:{payment_key}"
     if len(event_id) <= _ANALYTICS_EVENT_ID_LENGTH:
         return event_id
     digest = hashlib.sha256(payment_key.encode("utf-8")).hexdigest()
-    return f"purchase_confirmed:sha256:{digest}"
+    return f"purchase_confirmed#sha256:{digest}"
+
+
+def _purchase_matches_reference(
+    purchase: Purchase, order_uuid: UUID | None, course_id_uuid: UUID | None
+) -> bool:
+    """Whether a recorded purchase belongs to the order the notification names.
+
+    A legacy reference has no order: its purchase has none either and is for
+    the course the reference names.
+    """
+    if order_uuid is not None:
+        return purchase.order_id == order_uuid
+    return purchase.order_id is None and purchase.course_id == course_id_uuid
 
 
 def _is_retryable_database_error(error: DBAPIError) -> bool:
@@ -344,10 +370,11 @@ async def _read_webhook_body(request: Request) -> bytes:
     """Read the body, counting the bytes received rather than Content-Length."""
     body = bytearray()
     async for chunk in request.stream():
-        body.extend(chunk)
-        if len(body) > MAX_WEBHOOK_BODY_BYTES:
+        # Check before copying: one large chunk must not grow the buffer first.
+        if len(body) + len(chunk) > MAX_WEBHOOK_BODY_BYTES:
             logger.warning("Prodamus webhook: body over %s bytes", MAX_WEBHOOK_BODY_BYTES)
             raise HTTPException(status_code=413, detail="Payload too large")
+        body.extend(chunk)
     return bytes(body)
 
 
@@ -433,9 +460,31 @@ async def _record_purchase_once(
 
         existing_pay = await db.execute(select(Purchase).where(Purchase.payment_id == payment_key))
         existing_purchase = existing_pay.scalars().first()
+
+        order: Order | None = None
+        email_differs = False
+        if order_uuid is not None:
+            # Lock the order before anything that references it is written, so
+            # two deliveries for one order queue here. FOR NO KEY UPDATE, not
+            # FOR UPDATE: it does not block the FOR KEY SHARE that foreign-key
+            # checks take, so a refund recording an event for this order, which
+            # holds its purchase, cannot form a lock cycle with us. A missing
+            # order is rejected before a dangling foreign key is ever flushed.
+            order_result = await db.execute(
+                select(Order).where(Order.id == order_uuid).with_for_update(key_share=True)
+            )
+            order = order_result.scalar_one_or_none()
+            if order is None:
+                raise HTTPException(status_code=422, detail="Order not found")
+            course_id_uuid = order.course_id
+            tariff = order.tariff
+
         if existing_purchase:
-            # Nothing else is written or locked in this transaction, so the
-            # event's foreign key cannot join a lock cycle.
+            if not _purchase_matches_reference(existing_purchase, order_uuid, course_id_uuid):
+                # The provider payment is already recorded against another
+                # order (or none): it does not confirm this one.
+                logger.error("Prodamus webhook: known payment for another order")
+                raise HTTPException(status_code=422, detail="Payment belongs to another order")
             payment_event = new_payment_event(event_data, order_id=order_uuid)
             db.add(payment_event)
             payment_event.purchase_id = existing_purchase.id
@@ -443,23 +492,6 @@ async def _record_purchase_once(
             payment_event.processed_at = datetime.utcnow()
             await db.commit()
             return webhook_email or ""
-
-        order: Order | None = None
-        email_differs = False
-        if order_uuid is not None:
-            # Lock the order before anything that references it is written.
-            # Inserting the payment event takes FOR KEY SHARE on the order row
-            # through its foreign key; two deliveries holding that lock would
-            # deadlock on FOR UPDATE. Locked first, they queue. A missing order
-            # is rejected before a dangling foreign key is ever flushed.
-            order_result = await db.execute(
-                select(Order).where(Order.id == order_uuid).with_for_update()
-            )
-            order = order_result.scalar_one_or_none()
-            if order is None:
-                raise HTTPException(status_code=422, detail="Order not found")
-            course_id_uuid = order.course_id
-            tariff = order.tariff
 
         payment_event = new_payment_event(event_data, order_id=order_uuid)
         db.add(payment_event)
@@ -924,8 +956,12 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
             if attempt == 0:
                 continue
             async with async_session_maker() as db:
-                done = await db.execute(select(Purchase).where(Purchase.payment_id == payment_key))
-                if done.scalars().first():
+                done = await db.scalar(select(Purchase).where(Purchase.payment_id == payment_key))
+                # Answer success only for a notification proven processed: its
+                # payment is recorded, and recorded for the order it names.
+                if done is not None and _purchase_matches_reference(
+                    done, order_uuid, course_id_uuid
+                ):
                     logger.info("Prodamus webhook duplicate payment_key=%s", payment_key)
                     return {"status": "ok"}
             logger.error("Prodamus webhook: unresolved database error payment_key=%s", payment_key)

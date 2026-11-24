@@ -4,7 +4,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, DecimalException
 from typing import Any
 from uuid import UUID
 
@@ -16,6 +16,7 @@ from app.models.payment_event import PaymentEvent
 
 # Kopecks are stored in PostgreSQL integer columns.
 MAX_AMOUNT_KOPECKS = 2**31 - 1
+_MAX_AMOUNT_ROUBLES = Decimal(MAX_AMOUNT_KOPECKS).scaleb(-2)
 
 
 def parse_amount_kopecks(raw: Any) -> int | None:
@@ -29,14 +30,16 @@ def parse_amount_kopecks(raw: Any) -> int | None:
         return None
     try:
         amount = Decimal(str(raw).strip().replace(",", "."))
-    except InvalidOperation:
+        # Compare in roubles before any arithmetic: multiplying a value whose
+        # exponent is beyond the context limits would overflow.
+        if not amount.is_finite() or amount < 0 or amount > _MAX_AMOUNT_ROUBLES:
+            return None
+        kopecks = (amount * 100).quantize(Decimal(1), rounding=ROUND_HALF_UP)
+    except DecimalException:
+        # No decimal signal may escape: a bad sum rejects the payment, it must
+        # not crash the webhook.
         return None
-    if not amount.is_finite() or amount < 0:
-        return None
-    kopecks = amount * 100
-    if kopecks > MAX_AMOUNT_KOPECKS:
-        return None
-    return int(kopecks.quantize(Decimal(1), rounding=ROUND_HALF_UP))
+    return int(kopecks)
 
 
 @dataclass(frozen=True)
