@@ -291,3 +291,11 @@ def test_exact_cors_origins_and_hosts_still_pass():
         TRUSTED_HOSTS="api.lucysmirnova.ru,lucysmirnova.ru",
     )
     assert config.CORS_ORIGINS.startswith("https://lucysmirnova.ru")
+
+
+@pytest.mark.parametrize("proxies", ["10.1.2.3/8", "87.232.67.155/24", "2001:db8::1/32"])
+def test_production_rejects_proxy_network_with_host_bits(proxies):
+    # Uvicorn parses networks strictly and would keep these as never-matching literals.
+    with pytest.raises(ValidationError, match="FORWARDED_ALLOW_IPS must list proxy IP addresses"):
+        _valid_prod(FORWARDED_ALLOW_IPS=proxies)
+

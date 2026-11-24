@@ -35,12 +35,16 @@ def _invalid_proxy_entries(value: str) -> list[str]:
     """Entries of a proxy list that are not a single address or a bounded network."""
     invalid: list[str] = []
     for entry in _split_list(value):
+        # Same parsing as Uvicorn's proxy middleware: a network is parsed strictly
+        # (no host bits), anything it cannot parse silently becomes a literal
+        # that never matches the proxy address.
         try:
-            network = ipaddress.ip_network(entry, strict=False)
+            if "/" in entry:
+                if ipaddress.ip_network(entry).prefixlen == 0:
+                    invalid.append(entry)
+            else:
+                ipaddress.ip_address(entry)
         except ValueError:
-            invalid.append(entry)
-            continue
-        if network.prefixlen == 0:
             invalid.append(entry)
     return invalid
 
