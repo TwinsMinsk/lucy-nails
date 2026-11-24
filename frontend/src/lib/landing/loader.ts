@@ -5,7 +5,7 @@ import {
     type GalleryItem,
     type ProgramModuleContent,
 } from "@/lib/landing/course-content";
-import { getLandingPayload, type GalleryItem as ApiGalleryItem, type LandingCourseSnapshot } from "@/lib/api";
+import { getLandingPayload, getPublishedCourses, type GalleryItem as ApiGalleryItem, type LandingCourseSnapshot } from "@/lib/api";
 
 import { formatCourseDuration } from "@/lib/format";
 
@@ -16,6 +16,11 @@ export type ResolvedHero = LandingCourse & {
 };
 
 export interface ResolvedLandingContent {
+    /**
+     * false when the landing API could not be reached and the static marketing copy is shown.
+     * Then `course: null` means "unknown", not "no published course".
+     */
+    available: boolean;
     course: LandingCourseSnapshot | null;
     hero: ResolvedHero;
     modules: ProgramModuleContent[];
@@ -28,6 +33,7 @@ const STATIC_HERO: ResolvedHero = {
 };
 
 const STATIC_FALLBACK: ResolvedLandingContent = {
+    available: false,
     course: null,
     hero: STATIC_HERO,
     modules: staticProgramModules,
@@ -41,6 +47,30 @@ function mapGallery(item: ApiGalleryItem): GalleryItem {
         technique: item.title,
         caption: item.caption ?? "",
     };
+}
+
+export class PrimaryCourseUnknownError extends Error {
+    constructor() {
+        super("Primary course is unknown: the landing API is unavailable and the catalog holds several courses");
+        this.name = "PrimaryCourseUnknownError";
+    }
+}
+
+/**
+ * Id of the primary course, the one the landing page sells (null: nothing is published).
+ * Computed from API answers only, so every server instance and route agrees:
+ * - the landing API answered: its course;
+ * - otherwise the public catalog (published courses only) decides when it holds at most one course;
+ * - otherwise the primary course is unknown and PrimaryCourseUnknownError is thrown.
+ * A catalog failure is rethrown as is. Callers must not guess on any error.
+ */
+export async function resolvePrimaryCourseId(): Promise<string | null> {
+    const landing = await getLandingContent();
+    if (landing.available) return landing.course?.id ?? null;
+    const catalog = await getPublishedCourses();
+    if (catalog.courses.length === 0) return null;
+    if (catalog.courses.length === 1) return catalog.courses[0].id;
+    throw new PrimaryCourseUnknownError();
 }
 
 export async function getLandingContent(): Promise<ResolvedLandingContent> {
@@ -79,5 +109,5 @@ export async function getLandingContent(): Promise<ResolvedLandingContent> {
             mistakes: item.landing_mistakes ?? fallback?.mistakes ?? [],
         };
     });
-    return { course, hero, modules, gallery: payload.gallery.map(mapGallery) };
+    return { available: true, course, hero, modules, gallery: payload.gallery.map(mapGallery) };
 }

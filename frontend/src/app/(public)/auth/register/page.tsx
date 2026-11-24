@@ -16,7 +16,6 @@ import {
     CardDescription,
     CardFooter,
     CardHeader,
-    CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import {
@@ -100,7 +99,7 @@ export default function RegisterPage() {
         <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)] py-12 px-4">
             <Card className="w-full max-w-md">
                 <CardHeader className="space-y-1">
-                    <CardTitle className="text-2xl font-bold text-center">Регистрация</CardTitle>
+                    <h1 data-slot="card-title" className="text-2xl font-bold text-center">Регистрация</h1>
                     <CardDescription className="text-center">
                         Создайте аккаунт для покупки и просмотра курсов
                     </CardDescription>

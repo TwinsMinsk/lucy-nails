@@ -6,48 +6,71 @@ import { Badge } from "@/components/ui/badge";
 import { ModuleList, Module } from "@/components/course/ModuleList";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 
-import { getPublicCourse, getPublicCourseModules, CourseResponse, ModuleResponse } from "@/lib/api";
+import { ApiError, getPublicCourse, getPublicCourseModules, CourseResponse, ModuleResponse } from "@/lib/api";
 import { notFound } from "next/navigation";
 import { CoursePaymentCTA } from "@/components/course/CoursePaymentCTA";
 import { landingCourse } from "@/lib/landing/course-content";
-import { getLandingContent } from "@/lib/landing/loader";
+import { resolvePrimaryCourseId } from "@/lib/landing/loader";
 import { formatCourseDuration, formatDays, formatLessonDuration } from "@/lib/format";
 import { baseOpenGraph } from "@/lib/seo";
 
+// The API takes a UUID and answers 422 to anything else, so such an id cannot be a course.
+const COURSE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Ends with a 404 before any API request when the id cannot be a course. */
+function assertCourseId(id: string): void {
+    if (!COURSE_ID_PATTERN.test(id)) notFound();
+}
+
+/**
+ * Only a 404 from the course request means "no such course". Any other failure is
+ * temporary and must reach the error boundary as a server error, not a cached 404.
+ */
+async function loadCourse(id: string): Promise<CourseResponse> {
+    try {
+        return await getPublicCourse(id);
+    } catch (error) {
+        if (error instanceof ApiError && error.status === 404) notFound();
+        throw error;
+    }
+}
+
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
     const { id } = await params;
+    assertCourseId(id);
 
-    try {
-        const [course, landing] = await Promise.all([getPublicCourse(id), getLandingContent()]);
-        const description = course.description || "Онлайн-курс Люси Смирновой по дизайну ногтей.";
-        const images = course.cover_image_url ? [course.cover_image_url] : baseOpenGraph.images;
-        // The landing page sells this course with fuller content, so it is the page to index.
-        const canonical = landing.course?.id === id ? "/" : `/courses/${id}`;
-        return {
+    // Both requests start together, but the course result is settled first: an unknown id is
+    // a 404 whatever the primary course lookup does or how fast it fails.
+    const primaryCourseId = resolvePrimaryCourseId();
+    primaryCourseId.catch(() => {});
+    const course = await loadCourse(id);
+    // Throws when the primary course is unknown: a server error, never a canonical that may be wrong.
+    const isPrimaryCourse = course.id === (await primaryCourseId);
+    // The landing page sells the primary course with fuller content, so it is the page to index.
+    const canonical = isPrimaryCourse ? "/" : `/courses/${course.id}`;
+    const description = course.description || "Онлайн-курс Люси Смирновой по дизайну ногтей.";
+    // One offer, one link preview: the primary course shares the prepared 1200x630 image of "/".
+    const images = !isPrimaryCourse && course.cover_image_url ? [course.cover_image_url] : baseOpenGraph.images;
+    return {
+        title: course.title,
+        description,
+        alternates: {
+            canonical,
+        },
+        openGraph: {
+            ...baseOpenGraph,
             title: course.title,
             description,
-            alternates: {
-                canonical,
-            },
-            openGraph: {
-                ...baseOpenGraph,
-                title: course.title,
-                description,
-                url: canonical,
-                images,
-            },
-            twitter: {
-                card: "summary_large_image",
-                title: course.title,
-                description,
-                images,
-            },
-        };
-    } catch {
-        return {
-            title: "Курс не найден",
-        };
-    }
+            url: canonical,
+            images,
+        },
+        twitter: {
+            card: "summary_large_image",
+            title: course.title,
+            description,
+            images,
+        },
+    };
 }
 
 // Map API data to component props
@@ -69,20 +92,16 @@ const mapModules = (apiModules: ModuleResponse[]): Module[] => {
 
 export default async function CoursePage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
+    assertCourseId(id);
 
-    let courseData: CourseResponse;
-    let modulesData: ModuleResponse[] = [];
-
-    try {
-        [courseData, modulesData] = await Promise.all([
-            getPublicCourse(id),
-            getPublicCourseModules(id)
-        ]);
-    } catch (error) {
-        // If course not found or API error
-        console.error("Error fetching course data:", error);
-        notFound();
-    }
+    const [courseData, modulesData] = await Promise.all([
+        loadCourse(id),
+        // The programme is secondary: without it the course page still sells the course.
+        getPublicCourseModules(id).catch((error: unknown): ModuleResponse[] | null => {
+            console.error("Error fetching course modules:", error);
+            return null;
+        }),
+    ]);
 
     // Combine API data with some UI defaults or mapped values
     const course = {
@@ -93,8 +112,10 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
             self: courseData.price_self,
         },
         duration: formatCourseDuration(courseData.total_duration),
-        lessonsCount: modulesData.reduce((acc, m) => acc + (m.lessons?.length || 0), 0),
-        modules: mapModules(modulesData),
+        lessonsCount: modulesData
+            ? modulesData.reduce((acc, m) => acc + (m.lessons?.length || 0), 0)
+            : courseData.lessons_count ?? null,
+        modules: modulesData ? mapModules(modulesData) : null,
     };
 
     return (
@@ -130,10 +151,12 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                                         {course.duration}
                                     </div>
                                 )}
-                                <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border shadow-sm">
-                                    <Video className="w-4 h-4 text-primary" />
-                                    {course.lessonsCount} уроков
-                                </div>
+                                {course.lessonsCount != null && (
+                                    <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border shadow-sm">
+                                        <Video className="w-4 h-4 text-primary" />
+                                        {course.lessonsCount} уроков
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -147,13 +170,16 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                     {/* Left Column: Modules & Detailed Rates */}
                     <div className="lg:col-span-2 space-y-12 order-2 lg:order-1">
                         {/* Program */}
-                        <section>
-                            <ModuleList modules={course.modules} />
-                        </section>
+                        {course.modules && (
+                            <section>
+                                <h2 className="text-2xl font-bold mb-6">Программа курса</h2>
+                                <ModuleList modules={course.modules} />
+                            </section>
+                        )}
 
                         {/* Detailed Pricing / Rates */}
                         <section id="rates" className="scroll-mt-20">
-                            <h3 className="text-2xl font-bold mb-6">Стоимость обучения</h3>
+                            <h2 className="text-2xl font-bold mb-6">Стоимость обучения</h2>
                             <div className="max-w-md">
                                 <Card className="flex flex-col h-full border hover:border-primary/50 transition-colors">
                                     <CardHeader>
@@ -232,8 +258,9 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                 </div>
             </div>
 
-            {/* Mobile Sticky CTA - Hidden on Desktop */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur-md border-t lg:hidden z-50">
+            {/* Mobile Sticky CTA - Hidden on Desktop and while the cookie banner, which sits in the same spot, is open */}
+            {/* ConsentBanner sets data-consent-open on <html> while open and finds this bar by data-mobile-buy-bar */}
+            <div data-mobile-buy-bar className="fixed bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur-md border-t lg:hidden z-50 [[data-consent-open]_&]:hidden">
                 <div className="flex items-center justify-between gap-4 max-w-md mx-auto">
                     <div className="flex flex-col">
                         <span className="text-xs text-text-secondary">Стоимость</span>

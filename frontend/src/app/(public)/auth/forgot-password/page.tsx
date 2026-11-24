@@ -11,7 +11,6 @@ import {
     CardDescription,
     CardFooter,
     CardHeader,
-    CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -39,7 +38,7 @@ export default function ForgotPasswordPage() {
         <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)] py-12 px-4">
             <Card className="w-full max-w-md">
                 <CardHeader className="space-y-1">
-                    <CardTitle className="text-2xl font-bold text-center">Сброс пароля</CardTitle>
+                    <h1 data-slot="card-title" className="text-2xl font-bold text-center">Сброс пароля</h1>
                     <CardDescription className="text-center">
                         Укажите email — вышлем ссылку для установки нового пароля
                     </CardDescription>

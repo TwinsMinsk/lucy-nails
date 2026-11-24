@@ -2,11 +2,11 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useLayoutEffect, useState } from "react"
 import { Cookie } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { readConsent, saveConsent } from "@/lib/attribution"
+import { CONSENT_STORAGE_KEY, readConsent, saveConsent } from "@/lib/attribution"
 
 
 const isPublicPage = (pathname: string) =>
@@ -15,15 +15,41 @@ const isPublicPage = (pathname: string) =>
     pathname === "/privacy" ||
     pathname === "/terms"
 
+// Set on <html> while the banner is shown. The course page hides its fixed buy bar by it:
+// on phones both sit at the bottom of the screen.
+const CONSENT_OPEN_ATTRIBUTE = "data-consent-open"
+// Marks the course page's fixed buy bar (phones only, hidden from lg).
+const BUY_BAR_ATTRIBUTE = "data-mobile-buy-bar"
+
 export function ConsentBanner() {
     const pathname = usePathname()
     const [ready, setReady] = useState(false)
     const [open, setOpen] = useState(false)
+    const [buyBarOnPage, setBuyBarOnPage] = useState(false)
+    const bannerShown = ready && open && isPublicPage(pathname)
 
     useEffect(() => {
         setOpen(!readConsent())
         setReady(true)
+        // A choice made in another tab closes (or, when cleared, reopens) the banner here too.
+        const onStorage = (event: StorageEvent) => {
+            if (event.key === CONSENT_STORAGE_KEY || event.key === null) setOpen(!readConsent())
+        }
+        window.addEventListener("storage", onStorage)
+        return () => window.removeEventListener("storage", onStorage)
     }, [])
+
+    // Layout effect: the attribute lands before the banner is painted, so the bar never shows under it.
+    useLayoutEffect(() => {
+        if (!bannerShown) return
+        const root = document.documentElement
+        root.setAttribute(CONSENT_OPEN_ATTRIBUTE, "")
+        return () => root.removeAttribute(CONSENT_OPEN_ATTRIBUTE)
+    }, [bannerShown])
+
+    useEffect(() => {
+        setBuyBarOnPage(document.querySelector(`[${BUY_BAR_ATTRIBUTE}]`) !== null)
+    }, [pathname])
 
     if (!ready || !isPublicPage(pathname)) return null
 
@@ -31,7 +57,8 @@ export function ConsentBanner() {
         return (
             <button
                 type="button"
-                className="fixed bottom-3 left-3 z-50 rounded-full border bg-background/95 p-2.5 text-muted-foreground shadow-sm backdrop-blur hover:text-foreground"
+                // On phones the course page has a fixed buy bar at the bottom: sit above it.
+                className={`fixed ${buyBarOnPage ? "bottom-24 lg:bottom-3" : "bottom-3"} left-3 z-50 rounded-full border bg-background/95 p-2.5 text-muted-foreground shadow-sm backdrop-blur hover:text-foreground`}
                 onClick={() => setOpen(true)}
                 aria-label="Настройки cookies"
                 title="Настройки cookies"

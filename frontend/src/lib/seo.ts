@@ -75,6 +75,8 @@ export function buildHomeJsonLd({ siteUrl, course, title, description, imageUrl 
     ];
 
     if (course) {
+        // Same condition that enables the landing buy button (PaymentButton: a non-empty course id).
+        const canBuy = Boolean(course.id?.trim());
         graph.push({
             "@type": "Course",
             name: title,
@@ -91,6 +93,7 @@ export function buildHomeJsonLd({ siteUrl, course, title, description, imageUrl 
                 price: course.price_self,
                 priceCurrency: "RUB",
                 url: `${siteUrl}/#pricing`,
+                ...(canBuy && { availability: "https://schema.org/InStock" }),
             },
             hasCourseInstance: {
                 "@type": "CourseInstance",

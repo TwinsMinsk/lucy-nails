@@ -13,7 +13,6 @@ import {
     CardDescription,
     CardFooter,
     CardHeader,
-    CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -83,7 +82,7 @@ function ActivateAccountForm() {
         return (
             <Card className="w-full max-w-md">
                 <CardHeader className="space-y-1">
-                    <CardTitle className="text-2xl font-bold text-center">Подтвердите email</CardTitle>
+                    <h1 data-slot="card-title" className="text-2xl font-bold text-center">Подтвердите email</h1>
                     <CardDescription className="text-center">
                         Код активации не найден. Откройте ссылку из письма ещё раз
                         или запросите новую через «Забыли пароль?» — укажите email, на который оформлен курс.
@@ -99,7 +98,7 @@ function ActivateAccountForm() {
     return (
         <Card className="w-full max-w-md">
             <CardHeader className="space-y-1">
-                <CardTitle className="text-2xl font-bold text-center">Подтвердите email</CardTitle>
+                <h1 data-slot="card-title" className="text-2xl font-bold text-center">Подтвердите email</h1>
                 <CardDescription className="text-center">
                     Задайте новый пароль для подтверждения email. Прежние сеансы будут завершены, покупки сохранятся.
                 </CardDescription>

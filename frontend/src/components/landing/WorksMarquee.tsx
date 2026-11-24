@@ -17,6 +17,11 @@ import type { WorkPhoto } from "@/lib/landing/works-photos";
 
 // If a module has few photos, repeat them so the loop always fills the viewport
 const MIN_TILES = 6;
+// Tiles loaded on each side of the visible ones, so the next tile is ready before
+// the auto-scroll or an arrow brings it in (one tile passes in about seven seconds).
+const PRELOAD_NEIGHBOURS = 2;
+// Share of the strip that must be on screen before it auto-scrolls (about 13 px of a 256 px strip).
+const PLAYBACK_VISIBLE_RATIO = 0.05;
 
 export interface WorksMarqueeProps {
   photos: WorkPhoto[];
@@ -27,9 +32,15 @@ export interface WorksMarqueeProps {
 export function WorksMarquee({ photos, title, reverse = false }: WorksMarqueeProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  // Native lazy loading never fires for tiles moved by the carousel transform,
-  // so load the whole strip once the marquee itself approaches the viewport.
-  const [inView, setInView] = useState(false);
+  // True while the strip is on screen or within 300 px of it: tiles load only then,
+  // so strips further down the page cost no requests.
+  const [nearViewport, setNearViewport] = useState(false);
+  // True while some of the strip is actually on screen: it auto-scrolls only then.
+  const [onScreen, setOnScreen] = useState(false);
+  const onScreenRef = useRef(false);
+  // Native lazy loading never fires for tiles moved by the carousel transform, so the tiles
+  // in view and their neighbours are switched to eager loading as the carousel moves.
+  const [loadedTiles, setLoadedTiles] = useState<ReadonlySet<number>>(() => new Set());
   // Endless auto-scroll is motion the visitor did not start: off when the OS asks for less motion.
   const reduceMotion = useReducedMotion();
 
@@ -44,6 +55,8 @@ export function WorksMarquee({ photos, title, reverse = false }: WorksMarqueePro
             stopOnInteraction: false,
             stopOnMouseEnter: true,
             startDelay: 1200,
+            // Started by the visibility observer below, not on mount.
+            playOnInit: false,
             rootNode: (root) => root.parentElement,
           }),
         ]
@@ -62,18 +75,83 @@ export function WorksMarquee({ photos, title, reverse = false }: WorksMarqueePro
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
-    const observer = new IntersectionObserver(
+    const preload = new IntersectionObserver(
       (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          setInView(true);
-          observer.disconnect();
-        }
+        const entry = entries[entries.length - 1];
+        if (entry) setNearViewport(entry.isIntersecting);
       },
       { rootMargin: "300px" }
     );
-    observer.observe(el);
-    return () => observer.disconnect();
+    // isIntersecting is also true for a strip that only touches the viewport edge with
+    // zero visible area, so playback needs part of the strip to be actually visible.
+    const playback = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[entries.length - 1];
+        if (entry) setOnScreen(entry.intersectionRatio >= PLAYBACK_VISIBLE_RATIO);
+      },
+      { threshold: PLAYBACK_VISIBLE_RATIO }
+    );
+    preload.observe(el);
+    playback.observe(el);
+    return () => {
+      preload.disconnect();
+      playback.disconnect();
+    };
   }, []);
+
+  // Auto-scroll only while the strip is on screen. Embla re-creates its plugins after
+  // a resize, and playOnInit is off, so playback is restored on reInit as well.
+  useEffect(() => {
+    onScreenRef.current = onScreen;
+    if (!emblaApi) return;
+    const sync = () => {
+      const autoScroll = emblaApi.plugins()?.autoScroll;
+      if (!autoScroll) return;
+      if (onScreenRef.current) autoScroll.play();
+      else autoScroll.stop();
+    };
+    // The plugin also resumes by itself on mouseleave, focusout and after a drag settles.
+    // Off screen that start is cancelled; the plugin marks itself playing only after
+    // emitting the event, hence the microtask.
+    const keepStillOffScreen = () => {
+      if (!onScreenRef.current) queueMicrotask(() => emblaApi.plugins()?.autoScroll?.stop());
+    };
+    sync();
+    emblaApi.on("reInit", sync).on("autoScroll:play", keepStillOffScreen);
+    return () => {
+      emblaApi.off("reInit", sync).off("autoScroll:play", keepStillOffScreen);
+    };
+  }, [emblaApi, onScreen]);
+
+  // Load the tiles in view plus PRELOAD_NEIGHBOURS on each side (both directions: strips
+  // scroll either way and the arrows go back too). Loaded tiles stay loaded.
+  useEffect(() => {
+    if (!emblaApi || !nearViewport) return;
+    const markNearbyTiles = () => {
+      const count = emblaApi.slideNodes().length;
+      if (count === 0) return;
+      const inView = emblaApi.slidesInView();
+      const anchors = inView.length > 0 ? inView : [emblaApi.selectedScrollSnap()];
+      setLoadedTiles((prev) => {
+        let next: Set<number> | null = null;
+        for (const index of anchors) {
+          for (let offset = -PRELOAD_NEIGHBOURS; offset <= PRELOAD_NEIGHBOURS; offset++) {
+            const tile = (((index + offset) % count) + count) % count;
+            if (!prev.has(tile)) {
+              next ??= new Set(prev);
+              next.add(tile);
+            }
+          }
+        }
+        return next ?? prev;
+      });
+    };
+    markNearbyTiles();
+    emblaApi.on("slidesInView", markNearbyTiles).on("reInit", markNearbyTiles);
+    return () => {
+      emblaApi.off("slidesInView", markNearbyTiles).off("reInit", markNearbyTiles);
+    };
+  }, [emblaApi, nearViewport]);
 
   // Preload lightbox neighbours so arrow navigation feels instant
   useEffect(() => {
@@ -117,7 +195,7 @@ export function WorksMarquee({ photos, title, reverse = false }: WorksMarqueePro
                     alt={`${title} — пример работы ${(i % photos.length) + 1}`}
                     width={640}
                     height={640}
-                    loading={inView ? "eager" : "lazy"}
+                    loading={loadedTiles.has(i) ? "eager" : "lazy"}
                     decoding="async"
                     draggable={false}
                     className="size-full select-none object-cover"

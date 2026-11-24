@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { getLandingContent } from "@/lib/landing/loader"
-import { getLandingPayload, type LandingPayload } from "@/lib/api"
+import { getLandingContent, PrimaryCourseUnknownError, resolvePrimaryCourseId } from "@/lib/landing/loader"
+import { getLandingPayload, getPublishedCourses, type CourseResponse, type LandingPayload } from "@/lib/api"
 import { programModules } from "@/lib/landing/course-content"
 import { worksPhotos } from "@/lib/landing/works-photos"
 
-vi.mock("@/lib/api", () => ({ getLandingPayload: vi.fn() }))
+vi.mock("@/lib/api", () => ({ getLandingPayload: vi.fn(), getPublishedCourses: vi.fn() }))
 const snapshot = { id: "canonical", title: "New course", price_self: 7200, access_days: 45, lessons_count: 2, total_duration: 3600 }
 const payload = { course_id: "canonical", course: snapshot, hero: { landing_title: "CMS title", landing_hero_stats: [], landing_benefits: [] }, modules: [], gallery: [] }
-beforeEach(() => { vi.mocked(getLandingPayload).mockReset() })
+beforeEach(() => { vi.mocked(getLandingPayload).mockReset(); vi.mocked(getPublishedCourses).mockReset() })
 
 describe("authoritative landing publication", () => {
     it("restores details and carousel photo keys for all known modules with unset CMS fields", async () => {
@@ -66,5 +66,40 @@ describe("authoritative landing publication", () => {
         const content = await getLandingContent()
         expect(content.modules.length).toBeGreaterThan(0)
         expect(content.course).toBeNull()
+        expect(content.available).toBe(false)
+    })
+})
+
+describe("primary course", () => {
+    const course = (id: string) => ({ id }) as CourseResponse
+    const catalog = (...ids: string[]) => ({ courses: ids.map(course), total: ids.length })
+
+    it("is the landing course while the landing API answers, without asking the catalog", async () => {
+        vi.mocked(getLandingPayload).mockResolvedValue(payload as unknown as LandingPayload)
+        expect(await resolvePrimaryCourseId()).toBe("canonical")
+        vi.mocked(getLandingPayload).mockResolvedValue({ ...payload, course: null, course_id: null } as unknown as LandingPayload)
+        expect(await resolvePrimaryCourseId()).toBeNull()
+        expect(getPublishedCourses).not.toHaveBeenCalled()
+    })
+
+    it("is the only published course when the landing API fails", async () => {
+        vi.mocked(getLandingPayload).mockRejectedValue(new Error("API unavailable"))
+        vi.mocked(getPublishedCourses).mockResolvedValue(catalog("only"))
+        expect(await resolvePrimaryCourseId()).toBe("only")
+        vi.mocked(getPublishedCourses).mockResolvedValue(catalog())
+        expect(await resolvePrimaryCourseId()).toBeNull()
+    })
+
+    it("is unknown with several published courses and the landing API down", async () => {
+        vi.mocked(getLandingPayload).mockRejectedValue(new Error("API unavailable"))
+        vi.mocked(getPublishedCourses).mockResolvedValue(catalog("a", "b"))
+        await expect(resolvePrimaryCourseId()).rejects.toBeInstanceOf(PrimaryCourseUnknownError)
+    })
+
+    it("does not guess when both sources fail", async () => {
+        const outage = new Error("catalog unavailable")
+        vi.mocked(getLandingPayload).mockRejectedValue(new Error("API unavailable"))
+        vi.mocked(getPublishedCourses).mockRejectedValue(outage)
+        await expect(resolvePrimaryCourseId()).rejects.toBe(outage)
     })
 })
