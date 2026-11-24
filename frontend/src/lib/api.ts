@@ -1303,6 +1303,29 @@ export const adminGetReportDelivery = (params: ReportDateParams = {}) =>
 export const adminReportSourcesCsvUrl = (params: ReportDateParams & { basis?: "payment" | "acquisition" } = {}) =>
     `${API_BASE_URL}/admin/reports/sources${queryString({ ...params, format: "csv" })}`;
 
+/** Download the sources CSV through the API client, so an expired access cookie is refreshed. */
+export async function adminDownloadReportSourcesCsv(
+    params: ReportDateParams & { basis?: "payment" | "acquisition" } = {},
+): Promise<Blob> {
+    const send = () => {
+        const token = getAuthToken();
+        return fetch(adminReportSourcesCsvUrl(params), {
+            credentials: "include",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+    };
+    let response = await send();
+    if (response.status === 401) {
+        if (!await refreshAccessToken()) throw new Error("Требуется вход в аккаунт");
+        response = await send();
+    }
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
+        throw new ApiError(response.status, errorData.detail, `HTTP ${response.status}`);
+    }
+    return response.blob();
+}
+
 export const adminGetStudents = (params: {
     search?: string; active_access?: boolean; limit?: number; offset?: number;
 } = {}) => apiFetch<PageResponse<AdminStudentListItem>>(`/admin/students${queryString(params)}`);

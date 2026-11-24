@@ -18,6 +18,7 @@ import {
     adminGetTeamUsers,
     adminSetCheckoutEnabled,
     adminUpdateTeamRoles,
+    ApiError,
     AdminAuditLog,
     AdminRole,
     AdminSystemStatus,
@@ -61,6 +62,7 @@ export default function AdminSystemPage() {
     const [selectedRoles, setSelectedRoles] = useState<string[]>([])
     const [reason, setReason] = useState("")
     const [switchingCheckout, setSwitchingCheckout] = useState(false)
+    const [loadError, setLoadError] = useState<string | null>(null)
 
     const load = useCallback(async () => {
         setLoading(true)
@@ -74,7 +76,12 @@ export default function AdminSystemPage() {
         if (settled[1].status === "fulfilled") setRoles(settled[1].value)
         if (settled[2].status === "fulfilled") setTeam(settled[2].value)
         if (settled[3].status === "fulfilled") setAudit(settled[3].value)
-        if (settled.some((item) => item.status === "rejected")) toast.warning("Часть системных данных скрыта вашими правами")
+        const failures = settled.flatMap((item) => item.status === "rejected" ? [item.reason as unknown] : [])
+        const forbidden = failures.filter((reason) => reason instanceof ApiError && reason.status === 403)
+        // Only a 403 means "hidden by your rights"; a 5xx or network error is a failure to load.
+        const broken = failures.filter((reason) => !(reason instanceof ApiError && reason.status === 403))
+        if (forbidden.length) toast.warning("Часть системных данных скрыта вашими правами")
+        setLoadError(broken.length ? broken.map((reason) => reason instanceof Error ? reason.message : String(reason)).join("; ") : null)
         setLoading(false)
     }, [canAudit, canManageRoles])
     useEffect(() => { void load() }, [load])
@@ -128,6 +135,7 @@ export default function AdminSystemPage() {
     return (
         <div className="container max-w-7xl space-y-7 px-4 py-8 md:px-6">
             <div><h1 className="flex items-center gap-2 text-3xl font-bold"><ShieldAlert className="h-7 w-7" />Аудит и система</h1><p className="mt-1 text-muted-foreground">Роли команды, MFA, несекретное состояние интеграций и неизменяемый журнал действий.</p></div>
+            {loadError && <div role="alert" className="flex flex-col items-start gap-2 rounded-lg border border-destructive p-4 text-sm"><p className="text-destructive">Не удалось загрузить часть системных данных: {loadError}</p><Button size="sm" variant="outline" onClick={() => void load()}>Повторить загрузку</Button></div>}
             {status && <Card className={status.checkout_enabled ? "border-green-300" : "border-destructive"}><CardHeader><CardTitle>Экстренное управление оплатами</CardTitle></CardHeader><CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-muted-foreground">Переключатель действует сразу, сохраняется в БД и не требует deploy. Webhook продолжает принимать уже начатые платежи.</p>{canManageOperations && <Button variant={status.checkout_enabled ? "destructive" : "default"} disabled={switchingCheckout} onClick={toggleCheckout}>{switchingCheckout && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{status.checkout_enabled ? "Отключить checkout" : "Включить checkout"}</Button>}</CardContent></Card>}
             {status && <Card><CardHeader><CardTitle>Состояние production-контура</CardTitle></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(status.integrations).map(([name, configured]) => <div key={name} className="flex items-center justify-between rounded-lg border p-3 text-sm"><span className="capitalize">{name}</span>{configured ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <XCircle className="h-5 w-5 text-destructive" />}</div>)}</div><div className="mt-4 flex flex-wrap gap-3 text-sm"><Badge variant={status.checkout_enabled ? "default" : "destructive"}>Checkout {status.checkout_enabled ? "включён" : "выключен"}</Badge><Badge variant="outline">Среда: {status.environment}</Badge><Badge variant="outline">Outbox pending: {status.outbox_pending}</Badge><Badge variant="outline">Retry: {status.outbox_retry ?? 0}</Badge><Badge variant="outline">Processing: {status.outbox_processing ?? 0}</Badge><Badge variant={status.outbox_dead_letter ? "destructive" : "outline"}>Dead letter: {status.outbox_dead_letter}</Badge><Badge variant={status.worker_alive ? "outline" : "destructive"}>{workerLabel(status)}</Badge><span className="text-muted-foreground">Старейшее недоставленное: {formatAge(status.oldest_undelivered_seconds)}</span><span className="text-muted-foreground">Последний webhook: {date(status.last_payment_event_at)}</span></div>{queueWarnings(status).map((warning) => <p key={warning} role="alert" className="mt-3 rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive">{warning}</p>)}</CardContent></Card>}
             {team.length > 0 && <Card><CardHeader><CardTitle>Команда</CardTitle></CardHeader><CardContent className="space-y-2">{team.map((user) => <div key={user.id} className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="truncate font-medium">{user.full_name || user.email}</p><p className="text-sm text-muted-foreground">{user.email}</p></div><div className="flex flex-wrap gap-1">{user.roles.map((role) => <Badge key={role} variant="secondary">{role}</Badge>)}</div><Badge variant={user.mfa_enabled ? "default" : "destructive"}>MFA {user.mfa_enabled ? "включена" : "не настроена"}</Badge><span className="text-sm text-muted-foreground">Сессий: {user.active_sessions}</span><Button size="sm" variant="outline" onClick={() => openRoles(user)}>Роли</Button></div>)}</CardContent></Card>}

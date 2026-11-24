@@ -134,3 +134,13 @@ describe("refund form after a partial refund", () => {
         expect(screen.queryByRole("button", { name: /Возврат/ })).not.toBeInTheDocument()
     })
 })
+describe("orders page load errors", () => {
+    it("shows a failed orders load as an error with retry, not as an empty list", async () => {
+        vi.mocked(api.adminGetOrders).mockRejectedValueOnce(new api.ApiError(500, "Internal error", "HTTP 500"))
+        withPermissions(["commerce.read"], <Orders />)
+        expect(await screen.findByText(/Заказы не загрузились: Internal error/)).toBeVisible()
+        expect(screen.queryByText("Заказов нет")).not.toBeInTheDocument()
+        fireEvent.click(screen.getByRole("button", { name: "Повторить загрузку" }))
+        expect(await screen.findByText("buyer@example.test")).toBeVisible()
+    })
+})

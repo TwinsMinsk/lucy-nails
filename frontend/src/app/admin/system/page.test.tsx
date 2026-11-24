@@ -85,3 +85,23 @@ describe("admin system status", () => {
         expect(await screen.findByRole("alert")).toHaveTextContent("ждёт доставки уже 16 мин")
     })
 })
+
+describe("admin system load errors", () => {
+    it("reports a 5xx as a load failure with retry, not as missing rights", async () => {
+        vi.mocked(api.adminGetSystemStatus)
+            .mockRejectedValueOnce(new api.ApiError(503, "Service unavailable", "HTTP 503"))
+            .mockResolvedValueOnce(baseStatus)
+        render(<System />)
+        expect(await screen.findByText(/Не удалось загрузить часть системных данных: Service unavailable/)).toBeVisible()
+        screen.getByRole("button", { name: "Повторить загрузку" }).click()
+        expect(await screen.findByText("Retry: 3")).toBeVisible()
+    })
+
+    it("does not show a load error for a 403", async () => {
+        vi.mocked(api.adminGetSystemStatus).mockResolvedValue(baseStatus)
+        vi.mocked(api.adminGetAuditLogs).mockRejectedValue(new api.ApiError(403, "Permission required: audit.read", "HTTP 403"))
+        render(<System />)
+        await screen.findByText("Retry: 3")
+        expect(screen.queryByText(/Не удалось загрузить часть системных данных/)).not.toBeInTheDocument()
+    })
+})
