@@ -297,6 +297,22 @@ class AccessService:
         await db.flush()
 
     @staticmethod
+    async def _course_access_end(
+        db: AsyncSession, entitlement: Entitlement, *, now: datetime
+    ) -> datetime:
+        """max(now, this row's expiry, latest expiry of the student's other active rows)."""
+        other_end = await db.scalar(
+            select(func.max(Entitlement.expires_at)).where(
+                Entitlement.user_id == entitlement.user_id,
+                Entitlement.course_id == entitlement.course_id,
+                Entitlement.id != entitlement.id,
+                Entitlement.status == "active",
+                Entitlement.expires_at > now,
+            )
+        )
+        return max(now, entitlement.expires_at, other_end or now)
+
+    @staticmethod
     async def extend_entitlement(
         db: AsyncSession,
         entitlement: Entitlement,
@@ -311,7 +327,12 @@ class AccessService:
         if entitlement.status == "revoked":
             raise ValueError("Revoked access cannot be extended")
         now = datetime.utcnow()
-        entitlement.expires_at = max(now, entitlement.expires_at) + timedelta(days=days)
+        # Same base as renewals and manual grants: the student's current access
+        # end for the course, so extending an older row after an early renewal
+        # still moves the end the student sees.
+        entitlement.expires_at = (
+            await AccessService._course_access_end(db, entitlement, now=now)
+        ) + timedelta(days=days)
         if entitlement.status == "expired":
             entitlement.status = "active"
             entitlement.revoked_at = None
