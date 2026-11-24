@@ -20,6 +20,7 @@ from app.models.purchase import Purchase
 from app.models.refund import RefundRequest
 from app.models.rbac import Permission, Role, UserRoleAssignment
 from app.models.user import User
+from conftest import mfa_login
 
 
 async def _admin_headers(client: AsyncClient, db: AsyncSession) -> dict[str, str]:
@@ -31,10 +32,7 @@ async def _admin_headers(client: AsyncClient, db: AsyncSession) -> dict[str, str
     )
     db.add(admin)
     await db.commit()
-    response = await client.post(
-        "/api/auth/login",
-        json={"email": admin.email, "password": "adminpass1"},
-    )
+    response = await mfa_login(client, db, admin.email, "adminpass1")
     assert response.status_code == 200, response.text
     client.cookies.clear()
     return {"Authorization": f"Bearer {response.json()['access_token']}"}

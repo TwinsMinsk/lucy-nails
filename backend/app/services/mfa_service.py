@@ -40,7 +40,20 @@ class MfaService:
             )
             .limit(1)
         )
-        return role_name is not None
+        if role_name is not None:
+            return True
+        # A legacy administrator (role="admin" without any RBAC assignment) gets
+        # every permission through the fallback in user_has_permission, so it
+        # needs the same second factor as an RBAC owner/admin.
+        assignment_exists = await db.scalar(
+            select(UserRoleAssignment.id)
+            .where(UserRoleAssignment.user_id == user_id)
+            .limit(1)
+        )
+        if assignment_exists is not None:
+            return False
+        legacy_role = await db.scalar(select(User.role).where(User.id == user_id))
+        return legacy_role == "admin"
 
     @staticmethod
     async def get_credential(

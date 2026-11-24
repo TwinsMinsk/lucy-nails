@@ -10,6 +10,7 @@ from app.models.certificate import Certificate
 from app.models.course import Course
 from app.models.outbox import OutboxMessage
 from app.models.user import User
+from conftest import mfa_login
 
 
 @pytest.mark.asyncio
@@ -40,10 +41,7 @@ async def test_admin_certificate_registry_revoke_and_reissue(
     )
     db.add(certificate)
     await db.commit()
-    login = await client.post(
-        "/api/auth/login",
-        json={"email": admin.email, "password": "adminpass1"},
-    )
+    login = await mfa_login(client, db, admin.email, "adminpass1")
     client.cookies.clear()
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 

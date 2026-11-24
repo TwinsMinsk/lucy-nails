@@ -79,6 +79,68 @@ async def test_owner_must_setup_and_use_mfa(client: AsyncClient, db: AsyncSessio
 
 
 @pytest.mark.asyncio
+async def test_legacy_admin_without_rbac_must_setup_and_use_mfa(
+    client: AsyncClient, db: AsyncSession
+):
+    legacy = User(
+        email="legacy-admin@example.com",
+        password_hash=get_password_hash("LegacyAdminPass1!"),
+        role="admin",
+    )
+    db.add(legacy)
+    await db.commit()
+    credentials = {"email": legacy.email, "password": "LegacyAdminPass1!"}
+
+    initial = await client.post("/api/auth/login", json=credentials)
+    assert initial.status_code == 403, initial.text
+    detail = initial.json()["detail"]
+    assert detail["code"] == "mfa_setup_required"
+    setup = await client.post("/api/auth/mfa/setup", json={"setup_token": detail["setup_token"]})
+    assert setup.status_code == 200, setup.text
+    confirm = await client.post(
+        "/api/auth/mfa/confirm",
+        json={"setup_token": detail["setup_token"], "code": pyotp.TOTP(setup.json()["secret"]).now()},
+    )
+    assert confirm.status_code == 200, confirm.text
+    client.cookies.clear()
+
+    missing_code = await client.post("/api/auth/login", json=credentials)
+    assert missing_code.status_code == 401
+    assert missing_code.json()["detail"]["code"] == "mfa_code_required"
+    # The legacy fallback itself stays: with MFA the account keeps every permission.
+    login = await client.post(
+        "/api/auth/login",
+        json={**credentials, "mfa_code": confirm.json()["backup_codes"][0]},
+    )
+    assert login.status_code == 200, login.text
+    client.cookies.clear()
+    capabilities = await client.get(
+        "/api/admin/team/me",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+    )
+    assert capabilities.json()["permissions"] == ["*"]
+
+
+@pytest.mark.asyncio
+async def test_mfa_requirement_by_account_kind(db: AsyncSession):
+    owner = await _owner(db)
+    legacy = User(email="legacy@example.com", password_hash="x", role="admin")
+    student = User(email="student@example.com", password_hash="x", role="student")
+    curator_role = Role(name="curator", description="Curator", is_system=True)
+    # role="admin" with a non-privileged RBAC assignment is not a legacy admin.
+    assigned = User(email="assigned@example.com", password_hash="x", role="admin")
+    db.add_all([legacy, student, curator_role, assigned])
+    await db.flush()
+    db.add(UserRoleAssignment(user_id=assigned.id, role_id=curator_role.id))
+    await db.commit()
+
+    assert await MfaService.requires_mfa(db, owner.id) is True
+    assert await MfaService.requires_mfa(db, legacy.id) is True
+    assert await MfaService.requires_mfa(db, student.id) is False
+    assert await MfaService.requires_mfa(db, assigned.id) is False
+
+
+@pytest.mark.asyncio
 async def test_backup_code_is_single_use(client: AsyncClient, db: AsyncSession):
     owner = await _owner(db)
     credentials = {"email": owner.email, "password": "StrongOwnerPass1!"}

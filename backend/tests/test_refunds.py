@@ -18,6 +18,7 @@ from app.models.analytics_event import AnalyticsEvent
 from app.models.audit_log import AuditLog
 from app.services.access_service import AccessService
 from app.services.refund_service import RefundError, RefundService
+from conftest import mfa_login
 
 
 @pytest.mark.asyncio
@@ -74,10 +75,7 @@ async def test_admin_refund_workflow_revokes_access_without_rewriting_purchase(
     db.add(entitlement)
     await db.commit()
 
-    login = await client.post(
-        "/api/auth/login",
-        json={"email": admin.email, "password": "adminpass1"},
-    )
+    login = await mfa_login(client, db, admin.email, "adminpass1")
     token = login.json()["access_token"]
     client.cookies.clear()
     headers = {"Authorization": f"Bearer {token}"}
@@ -208,9 +206,7 @@ async def test_refund_cannot_exceed_purchase_amount(client: AsyncClient, db: Asy
     db.add(purchase)
     await db.commit()
 
-    login = await client.post(
-        "/api/auth/login", json={"email": admin.email, "password": "adminpass1"}
-    )
+    login = await mfa_login(client, db, admin.email, "adminpass1")
     token = login.json()["access_token"]
     client.cookies.clear()
     response = await client.post(
@@ -270,10 +266,7 @@ async def test_partial_refund_keeps_access_until_full_amount_is_processed(
     db.add(entitlement)
     await db.commit()
 
-    login = await client.post(
-        "/api/auth/login",
-        json={"email": admin.email, "password": "adminpass1"},
-    )
+    login = await mfa_login(client, db, admin.email, "adminpass1")
     client.cookies.clear()
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
     created = await client.post(
