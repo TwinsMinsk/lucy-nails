@@ -138,8 +138,13 @@ async def call_telegram_api(method: str, payload: dict) -> Any:
     return await _telegram_request(method, payload)
 
 
-async def send_telegram_message(recipient: str, text: str) -> None:
-    await _telegram_request("sendMessage", {"chat_id": recipient, "text": text})
+async def send_telegram_message(
+    recipient: str, text: str, *, message_thread_id: int | None = None
+) -> None:
+    payload: dict[str, Any] = {"chat_id": recipient, "text": text}
+    if message_thread_id is not None:
+        payload["message_thread_id"] = message_thread_id
+    await _telegram_request("sendMessage", payload)
 
 
 async def remove_telegram_group_member(group_id: str, user_id: str) -> None:
@@ -183,6 +188,27 @@ def format_rub(kopecks: int) -> str:
     return f"{amount} ₽"
 
 
+def owner_alert_target() -> tuple[str, int | None] | None:
+    """Chat (and forum topic) that receives owner alerts, or None when off.
+
+    With the help desk group and its «Оплаты» topic configured, alerts go there
+    so both operators see them; otherwise to the owner's own chat.
+    """
+    if not settings.TELEGRAM_BOT_TOKEN:
+        return None
+    if (
+        settings.TELEGRAM_HELPDESK_CHAT_ID is not None
+        and settings.TELEGRAM_HELPDESK_ALERTS_TOPIC_ID is not None
+    ):
+        return (
+            str(settings.TELEGRAM_HELPDESK_CHAT_ID),
+            settings.TELEGRAM_HELPDESK_ALERTS_TOPIC_ID,
+        )
+    if settings.TELEGRAM_OWNER_CHAT_ID is not None:
+        return str(settings.TELEGRAM_OWNER_CHAT_ID), None
+    return None
+
+
 async def enqueue_owner_telegram_alert(
     db: AsyncSession,
     *,
@@ -192,22 +218,28 @@ async def enqueue_owner_telegram_alert(
 ) -> bool:
     """Queue a Telegram message to the shop owner once per dedupe key.
 
-    Does nothing unless both the bot token and the owner chat id are set.
-    The message joins the caller's transaction (transactional outbox).
+    Does nothing unless the bot token and an alert chat (see
+    owner_alert_target) are set. The message joins the caller's transaction
+    (transactional outbox).
     """
-    if not settings.TELEGRAM_BOT_TOKEN or settings.TELEGRAM_OWNER_CHAT_ID is None:
+    target = owner_alert_target()
+    if target is None:
         return False
     existing = await db.scalar(
         select(OutboxMessage.id).where(OutboxMessage.dedupe_key == dedupe_key)
     )
     if existing is not None:
         return False
+    recipient, topic_id = target
+    payload: dict[str, Any] = {"text": text}
+    if topic_id is not None:
+        payload["message_thread_id"] = topic_id
     enqueue_outbox_message(
         db,
         kind=kind,
         channel="telegram",
-        recipient=str(settings.TELEGRAM_OWNER_CHAT_ID),
-        payload={"text": text},
+        recipient=recipient,
+        payload=payload,
         dedupe_key=dedupe_key,
     )
     return True
@@ -224,7 +256,16 @@ async def deliver_outbox_message(message: OutboxMessage) -> None:
                 str(message.payload["group_id"]), message.recipient
             )
         else:
-            await send_telegram_message(message.recipient, message.payload["text"])
+            topic_id = message.payload.get("message_thread_id")
+            if topic_id is not None:
+                await send_telegram_message(
+                    message.recipient,
+                    message.payload["text"],
+                    message_thread_id=int(topic_id),
+                )
+            else:
+                # Rows queued before alerts could target a topic carry text only.
+                await send_telegram_message(message.recipient, message.payload["text"])
         return
     if message.channel != "email":
         raise ValueError(f"Unsupported outbox channel: {message.channel}")

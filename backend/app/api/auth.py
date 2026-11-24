@@ -40,6 +40,7 @@ from app.schemas.auth import (
 from app.services.auth_service import AuthService
 from app.services.outbox_service import enqueue_outbox_message
 from app.services.mfa_service import MfaService
+from app.services.owner_alerts import enqueue_account_activated_alert
 from app.services.session_service import SessionService, hash_refresh_token, hmac_compare
 
 
@@ -513,9 +514,12 @@ async def activate_payment_account(
     user = result.scalar_one_or_none()
     if not user or payload.get("ver") != user.token_version:
         raise invalid
+    first_activation = user.email_verified_at is None
     await AuthService.set_password(db, user, data.new_password)
     await AuthService.confirm_mailbox(db, user)
     await SessionService.revoke_all(db, user.id)
+    if first_activation:
+        await enqueue_account_activated_alert(db, user)
     await db.commit()
     return {"message": "Account activated"}
 

@@ -1,0 +1,416 @@
+"""Order and payment alerts for the owner: routing, new kinds, dedupe, emails."""
+
+import json
+from datetime import datetime, timedelta
+from types import SimpleNamespace
+from uuid import uuid4
+
+import httpx
+import pytest
+from httpx import AsyncClient
+from pydantic import ValidationError
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+import app.services.outbox_service as outbox_service
+from app.core.config import Settings, settings
+from app.core.security import create_account_activation_token, get_password_hash
+from app.models.course import Course
+from app.models.order import Order
+from app.models.outbox import OutboxMessage
+from app.models.user import User
+from app.services.auth_service import AuthService
+from app.services.lifecycle_service import LifecycleService
+from app.services.owner_alerts import schedule_abandoned_order_alerts
+from app.services.prodamus_service import _make_signature
+
+OWNER_CHAT = 555000111
+GROUP_ID = -1001234567890
+ALERTS_TOPIC = 77
+
+
+@pytest.fixture
+def owner_alerts(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", "7000001:owner-alerts-test-token-AAAAAAAAAAAA")
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", OWNER_CHAT)
+    monkeypatch.setattr(settings, "TELEGRAM_HELPDESK_CHAT_ID", None)
+    monkeypatch.setattr(settings, "TELEGRAM_HELPDESK_ALERTS_TOPIC_ID", None)
+
+
+@pytest.fixture
+def helpdesk_alerts(owner_alerts, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(settings, "TELEGRAM_HELPDESK_CHAT_ID", GROUP_ID)
+    monkeypatch.setattr(settings, "TELEGRAM_HELPDESK_ALERTS_TOPIC_ID", ALERTS_TOPIC)
+
+
+@pytest.fixture
+def telegram_requests(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict]]:
+    calls: list[tuple[str, dict]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.url.path.rsplit("/", 1)[-1], json.loads(request.content or b"{}")))
+        return httpx.Response(200, json={"ok": True, "result": {"message_id": 1}})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        outbox_service,
+        "httpx",
+        SimpleNamespace(
+            AsyncClient=lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs),
+            HTTPError=httpx.HTTPError,
+            Response=httpx.Response,
+        ),
+    )
+    return calls
+
+
+async def _course(db: AsyncSession) -> Course:
+    course = Course(title="Маникюр с нуля", price_self=5900, price_support=9900, is_published=True)
+    db.add(course)
+    await db.commit()
+    await db.refresh(course)
+    return course
+
+
+async def _alerts(db: AsyncSession, kind: str) -> list[OutboxMessage]:
+    db.expire_all()
+    rows = await db.execute(
+        select(OutboxMessage).where(OutboxMessage.kind == kind).order_by(OutboxMessage.created_at)
+    )
+    return list(rows.scalars().all())
+
+
+def _order(course: Course, email: str, *, status: str = "pending", created_at: datetime) -> Order:
+    return Order(
+        course_id=course.id,
+        course_title=course.title,
+        tariff="self",
+        customer_email=email,
+        amount_kopecks=590000,
+        currency="RUB",
+        access_days=30,
+        status=status,
+        status_token_hash="0" * 64,
+        created_at=created_at,
+    )
+
+
+# --- Routing -----------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_alerts_go_to_the_owner_chat_without_the_helpdesk(
+    db: AsyncSession, owner_alerts, telegram_requests
+):
+    assert await outbox_service.enqueue_owner_telegram_alert(
+        db, kind="owner_payment_alert", text="💰 Новая оплата", dedupe_key="routing:owner"
+    )
+    await db.commit()
+    message = (await _alerts(db, "owner_payment_alert"))[0]
+    assert message.recipient == str(OWNER_CHAT)
+    assert message.payload == {"text": "💰 Новая оплата"}
+
+    assert await outbox_service.process_outbox_batch(db) == 1
+    assert telegram_requests == [("sendMessage", {"chat_id": str(OWNER_CHAT), "text": "💰 Новая оплата"})]
+
+
+@pytest.mark.asyncio
+async def test_alerts_go_to_the_payments_topic_with_the_helpdesk(
+    db: AsyncSession, helpdesk_alerts, telegram_requests
+):
+    assert await outbox_service.enqueue_owner_telegram_alert(
+        db, kind="owner_payment_alert", text="💰 Новая оплата", dedupe_key="routing:topic"
+    )
+    # A row queued before the change carries text only and still goes out.
+    outbox_service.enqueue_outbox_message(
+        db, kind="owner_payment_alert", channel="telegram", recipient=str(OWNER_CHAT),
+        payload={"text": "старая строка"}, dedupe_key="routing:legacy",
+    )
+    await db.commit()
+
+    message = await db.scalar(select(OutboxMessage).where(OutboxMessage.dedupe_key == "routing:topic"))
+    assert message.recipient == str(GROUP_ID)
+    assert message.payload == {"text": "💰 Новая оплата", "message_thread_id": ALERTS_TOPIC}
+
+    assert await outbox_service.process_outbox_batch(db) == 2
+    assert sorted(telegram_requests, key=lambda call: call[1]["text"]) == [
+        ("sendMessage", {"chat_id": str(OWNER_CHAT), "text": "старая строка"}),
+        ("sendMessage", {"chat_id": str(GROUP_ID), "text": "💰 Новая оплата",
+                         "message_thread_id": ALERTS_TOPIC}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_alerts_without_the_topic_stay_with_the_owner(
+    db: AsyncSession, owner_alerts, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(settings, "TELEGRAM_HELPDESK_CHAT_ID", GROUP_ID)
+
+    assert outbox_service.owner_alert_target() == (str(OWNER_CHAT), None)
+
+
+@pytest.mark.asyncio
+async def test_dead_letter_digest_follows_the_routing(db: AsyncSession, helpdesk_alerts):
+    outbox_service.enqueue_outbox_message(
+        db, kind="access_granted", recipient="x@example.com", payload={}, dedupe_key="dead",
+    ).status = "dead_letter"
+    await db.commit()
+
+    await LifecycleService.schedule(db, now=datetime.utcnow())
+    await db.commit()
+
+    digest = (await _alerts(db, "system_alert"))[0]
+    assert digest.recipient == str(GROUP_ID)
+    assert digest.payload["message_thread_id"] == ALERTS_TOPIC
+
+
+# --- Order created -----------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_guest_checkout_alerts_once_per_order_with_email_and_utm(
+    client: AsyncClient, db: AsyncSession, helpdesk_alerts
+):
+    course = await _course(db)
+    responses = []
+    for _ in range(2):
+        responses.append(await client.post(
+            "/api/payments/guest-link",
+            json={
+                "course_id": str(course.id),
+                "tariff": "self",
+                "customer_email": "Guest@Example.com",
+                "offer_accepted": True,
+                "personal_data_consent": True,
+                "attribution": {"first_touch": {"utm_source": "vk", "utm_campaign": "autumn"}},
+            },
+        ))
+    assert all(response.status_code == 200 for response in responses)
+
+    alerts = await _alerts(db, "owner_order_created")
+    assert len(alerts) == 2
+    first_order = responses[0].json()["order_id"]
+    alert = next(item for item in alerts if item.payload["text"].endswith(first_order))
+    text = alert.payload["text"]
+    assert text.startswith("🧾 Новый заказ\n")
+    assert "Сумма: 5 900 ₽" in text and "Курс: Маникюр с нуля" in text
+    assert "Email: guest@example.com" in text
+    assert "Источник: vk\nКампания: autumn\n" in text
+    assert text.endswith(f"Заказ: {first_order}")
+    assert alert.dedupe_key == f"order:{first_order.split('|')[1]}:created"
+    assert alert.payload["message_thread_id"] == ALERTS_TOPIC
+    assert await outbox_service.enqueue_owner_telegram_alert(
+        db, kind="owner_order_created", text="повтор", dedupe_key=alert.dedupe_key
+    ) is False
+
+
+@pytest.mark.asyncio
+async def test_logged_in_checkouts_alert_from_both_entry_points(
+    client: AsyncClient, db: AsyncSession, owner_alerts
+):
+    course = await _course(db)
+    user = User(email="member@example.com", email_verified_at=datetime.utcnow(),
+                password_hash=get_password_hash("member-password-1"), role="student")
+    db.add(user)
+    await db.commit()
+    headers = {"Authorization": f"Bearer {AuthService.create_tokens(user.id, user.token_version).access_token}"}
+
+    link = await client.post("/api/payments/link",
+                             json={"course_id": str(course.id), "tariff": "self"}, headers=headers)
+    created = await client.post("/api/purchases/create",
+                                json={"course_id": str(course.id), "tariff": "self"}, headers=headers)
+    assert link.status_code == 200, link.text
+    assert created.status_code == 200, created.text
+    await db.commit()
+
+    alerts = await _alerts(db, "owner_order_created")
+    references = {alert.payload["text"].rsplit("Заказ: ", 1)[1] for alert in alerts}
+    assert references == {link.json()["order_id"], created.json()["order_id"]}
+    assert all("Email: member@example.com" in alert.payload["text"] for alert in alerts)
+    assert all("Источник" not in alert.payload["text"] for alert in alerts)
+
+
+@pytest.mark.asyncio
+async def test_order_alert_is_skipped_without_any_alert_chat(
+    client: AsyncClient, db: AsyncSession, owner_alerts, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", None)
+    course = await _course(db)
+
+    response = await client.post("/api/payments/guest-link", json={
+        "course_id": str(course.id), "tariff": "self", "customer_email": "a@example.com",
+        "offer_accepted": True, "personal_data_consent": True,
+    })
+
+    assert response.status_code == 200
+    assert await _alerts(db, "owner_order_created") == []
+
+
+# --- Abandoned orders --------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_abandoned_order_alert_once_and_only_for_recent_unpaid_orders(
+    db: AsyncSession, owner_alerts
+):
+    now = datetime(2026, 11, 25, 12, 0)
+    course = await _course(db)
+    abandoned = _order(course, "slow@example.com", created_at=now - timedelta(hours=2))
+    fresh = _order(course, "fresh@example.com", created_at=now - timedelta(minutes=10))
+    paid = _order(course, "paid@example.com", status="paid", created_at=now - timedelta(hours=2))
+    ancient = _order(course, "old@example.com", created_at=now - timedelta(days=2))
+    retried = _order(course, "retry@example.com", created_at=now - timedelta(hours=3))
+    retried_paid = _order(course, "Retry@Example.com", status="paid", created_at=now - timedelta(hours=2))
+    db.add_all([abandoned, fresh, paid, ancient, retried, retried_paid])
+    await db.commit()
+    abandoned_id = abandoned.id
+
+    assert await schedule_abandoned_order_alerts(db, now=now) == 1
+    await db.commit()
+    assert await schedule_abandoned_order_alerts(db, now=now + timedelta(minutes=5)) == 0
+    await db.commit()
+
+    alerts = await _alerts(db, "owner_order_abandoned")
+    assert len(alerts) == 1
+    assert alerts[0].dedupe_key == f"order:{abandoned_id}:abandoned"
+    assert alerts[0].payload["text"] == (
+        "⏳ Заказ не оплачен\n"
+        "Сумма: 5 900 ₽\n"
+        "Курс: Маникюр с нуля\n"
+        "Email: slow@example.com\n"
+        f"Заказ: order|{abandoned_id}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_abandoned_order_alert_follows_the_setting_and_the_lifecycle_scan(
+    db: AsyncSession, owner_alerts, monkeypatch: pytest.MonkeyPatch
+):
+    now = datetime.utcnow()
+    course = await _course(db)
+    db.add(_order(course, "slow@example.com", created_at=now - timedelta(minutes=45)))
+    await db.commit()
+
+    assert await schedule_abandoned_order_alerts(db, now=now) == 0  # default 60 minutes
+    monkeypatch.setattr(settings, "ORDER_ABANDONED_ALERT_MINUTES", 0)
+    assert await schedule_abandoned_order_alerts(db, now=now + timedelta(hours=1)) == 0
+    monkeypatch.setattr(settings, "ORDER_ABANDONED_ALERT_MINUTES", 30)
+    await LifecycleService.schedule(db, now=now)
+    await db.commit()
+    assert len(await _alerts(db, "owner_order_abandoned")) == 1
+
+
+def test_abandoned_order_delay_is_bounded():
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, ORDER_ABANDONED_ALERT_MINUTES=-1)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, ORDER_ABANDONED_ALERT_MINUTES=721)
+
+
+# --- Activation --------------------------------------------------------------
+
+
+async def _signed_webhook(client: AsyncClient, payload: dict) -> httpx.Response:
+    headers = {"Sign": _make_signature(payload, "test-prodamus-hmac-secret-key-for-ci")}
+    return await client.post("/api/payments/webhook", json=payload, headers=headers)
+
+
+@pytest.mark.asyncio
+async def test_activating_a_purchased_account_alerts_the_owner(
+    client: AsyncClient, db: AsyncSession, owner_alerts
+):
+    course = await _course(db)
+    checkout = await client.post("/api/payments/guest-link", json={
+        "course_id": str(course.id), "tariff": "self", "customer_email": "new-buyer@example.com",
+        "offer_accepted": True, "personal_data_consent": True,
+    })
+    order_reference = checkout.json()["order_id"]
+    paid = await _signed_webhook(client, {
+        "order_id": "prodamus-activation-1", "order_num": order_reference,
+        "customer_email": "new-buyer@example.com", "sum": "5900", "currency": "rub",
+        "payment_status": "success",
+    })
+    assert paid.status_code == 200, paid.text
+    user_id = await db.scalar(select(User.id).where(User.email == "new-buyer@example.com"))
+
+    for _ in range(2):
+        db.expire_all()
+        user = await db.get(User, user_id)
+        response = await client.post("/api/auth/activate", json={
+            "token": create_account_activation_token(user_id, user.token_version),
+            "new_password": "new-buyer-password-1",
+        })
+        assert response.status_code == 200, response.text
+
+    alerts = await _alerts(db, "owner_account_activated")
+    assert len(alerts) == 1
+    assert alerts[0].payload["text"] == (
+        f"🔑 Аккаунт активирован\nEmail: new-buyer@example.com\nЗаказ: {order_reference}"
+    )
+    assert alerts[0].dedupe_key == f"user:{user_id}:activated"
+
+
+@pytest.mark.asyncio
+async def test_activating_an_account_without_purchase_is_not_reported(
+    client: AsyncClient, db: AsyncSession, owner_alerts
+):
+    user = User(email="self-registered@example.com", password_hash=get_password_hash("password-123456"),
+                role="student")
+    db.add(user)
+    await db.commit()
+
+    response = await client.post("/api/auth/activate", json={
+        "token": create_account_activation_token(user.id, user.token_version),
+        "new_password": "self-registered-1",
+    })
+
+    assert response.status_code == 200, response.text
+    assert await _alerts(db, "owner_account_activated") == []
+
+
+# --- Rejected payments -------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_failed_payment_alert_names_the_checkout_email_and_the_form_email(
+    client: AsyncClient, db: AsyncSession, owner_alerts
+):
+    course = await _course(db)
+    checkout = await client.post("/api/payments/guest-link", json={
+        "course_id": str(course.id), "tariff": "self", "customer_email": "checkout@example.com",
+        "offer_accepted": True, "personal_data_consent": True,
+    })
+    reference = checkout.json()["order_id"]
+
+    declined = await _signed_webhook(client, {
+        "order_id": "prodamus-declined-1", "order_num": reference,
+        "customer_email": "typed-on-form@example.com", "sum": "5900", "currency": "rub",
+        "payment_status": "fail",
+    })
+    same_email = await _signed_webhook(client, {
+        "order_id": "prodamus-declined-2", "order_num": reference,
+        "customer_email": "CHECKOUT@example.com", "sum": "5900", "currency": "rub",
+        "payment_status": "fail",
+    })
+    unknown_order = await _signed_webhook(client, {
+        "order_id": "prodamus-declined-3", "order_num": f"order|{uuid4()}",
+        "customer_email": "stranger@example.com", "sum": "5900", "currency": "rub",
+        "payment_status": "fail",
+    })
+    assert declined.status_code == same_email.status_code == unknown_order.status_code == 422
+
+    texts = {alert.payload["text"] for alert in await _alerts(db, "owner_payment_rejected")}
+    assert len(texts) == 3
+    assert (
+        "ℹ️ Неуспешная попытка оплаты (статус: fail)\n"
+        "Email: checkout@example.com\n"
+        "Email в форме оплаты: typed-on-form@example.com\n"
+        f"Заказ: {reference}"
+    ) in texts
+    assert (
+        "ℹ️ Неуспешная попытка оплаты (статус: fail)\n"
+        "Email: checkout@example.com\n"
+        f"Заказ: {reference}"
+    ) in texts
+    assert any(text.startswith("ℹ️ Неуспешная попытка оплаты (статус: fail)\nEmail: stranger@example.com\nЗаказ: order|")
+               for text in texts)

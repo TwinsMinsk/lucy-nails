@@ -13,7 +13,12 @@ from app.models.outbox import OutboxMessage
 from app.models.user import User
 from app.services.analytics_service import AnalyticsService
 from app.services.access_service import AccessService
-from app.services.outbox_service import enqueue_outbox_message
+from app.services.outbox_service import (
+    enqueue_outbox_message,
+    enqueue_owner_telegram_alert,
+    owner_alert_target,
+)
+from app.services.owner_alerts import schedule_abandoned_order_alerts
 from app.services.telegram_helpdesk_service import prune_processed_updates
 
 
@@ -149,12 +154,13 @@ class LifecycleService:
                 )
 
         scheduled += await cls._schedule_owner_alert(db, now=now)
+        scheduled += await schedule_abandoned_order_alerts(db, now=now)
         await prune_processed_updates(db, now=now)
         return scheduled
 
     @classmethod
     async def _schedule_owner_alert(cls, db: AsyncSession, *, now: datetime) -> int:
-        if not settings.TELEGRAM_BOT_TOKEN or settings.TELEGRAM_OWNER_CHAT_ID is None:
+        if owner_alert_target() is None:
             return 0
         # Rejected payments are alerted one by one when the webhook arrives, so this
         # digest only covers undelivered notifications. Alert when their number
@@ -168,18 +174,14 @@ class LifecycleService:
             return 0
         day_key = now.strftime("%Y%m%d")
         return int(
-            await cls._enqueue_once(
+            await enqueue_owner_telegram_alert(
                 db,
                 kind="system_alert",
-                channel="telegram",
-                recipient=str(settings.TELEGRAM_OWNER_CHAT_ID),
-                payload={
-                    "text": (
-                        "⚠️ Lucy Smirnova: не доставлено уведомлений: "
-                        f"{dead_letters}. Откройте админку → «Уведомления» "
-                        "и отправьте их повторно."
-                    )
-                },
+                text=(
+                    "⚠️ Lucy Smirnova: не доставлено уведомлений: "
+                    f"{dead_letters}. Откройте админку → «Уведомления» "
+                    "и отправьте их повторно."
+                ),
                 dedupe_key=f"system-alert:dead-letters:{dead_letters}:{day_key}",
             )
         )

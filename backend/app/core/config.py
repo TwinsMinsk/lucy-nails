@@ -13,7 +13,7 @@ from pathlib import Path
 import re
 from urllib.parse import urlparse
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/app/core/config.py -> backend = parents[2], repo root = parents[3]
@@ -175,6 +175,9 @@ class Settings(BaseSettings):
     TELEGRAM_HELPDESK_CHAT_ID: int | None = None
     # Topic «Оплаты» in that group; with both ids set, owner alerts go there.
     TELEGRAM_HELPDESK_ALERTS_TOPIC_ID: int | None = None
+    # A pending order without payment after this many minutes is reported once;
+    # 0 turns the alert off. Orders older than a day are never reported.
+    ORDER_ABANDONED_ALERT_MINUTES: int = Field(default=60, ge=0, le=720)
     LIFECYCLE_SCAN_SECONDS: int = 300
     
     # === Frontend ===
