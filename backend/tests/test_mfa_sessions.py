@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import pyotp
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.security import get_password_hash
@@ -184,6 +185,7 @@ async def test_privileged_role_promotion_revokes_existing_sessions(
         email="promoted-admin@example.com",
         password_hash=get_password_hash("PromotedAdminPass1!"),
         role="student",
+        email_verified_at=datetime.utcnow(),
     )
     db.add_all([admin_role, target])
     await db.commit()
@@ -217,6 +219,68 @@ async def test_privileged_role_promotion_revokes_existing_sessions(
     )
     assert setup_required.status_code == 403
     assert setup_required.json()["detail"]["code"] == "mfa_setup_required"
+
+
+@pytest.mark.asyncio
+async def test_team_role_requires_confirmed_email(client: AsyncClient, db: AsyncSession):
+    owner = await _owner(db)
+    curator_role = Role(name="curator", description="Curator", is_system=True)
+    squatter = User(
+        email="staff-member@example.com",
+        password_hash=get_password_hash("SquatterPass1!"),
+        role="student",
+    )
+    db.add_all([curator_role, squatter])
+    await db.commit()
+
+    owner_token = AuthService.create_tokens(owner.id, owner.token_version).access_token
+    response = await client.put(
+        f"/api/admin/team/users/{squatter.id}/roles",
+        json={"roles": ["curator"], "reason": "New support curator"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert response.status_code == 409
+    assert "не подтверждена" in response.json()["detail"]
+    assignment = await db.scalar(
+        select(UserRoleAssignment.id).where(UserRoleAssignment.user_id == squatter.id)
+    )
+    assert assignment is None
+
+
+@pytest.mark.asyncio
+async def test_any_role_change_revokes_target_sessions(client: AsyncClient, db: AsyncSession):
+    owner = await _owner(db)
+    curator_role = Role(name="curator", description="Curator", is_system=True)
+    target = User(
+        email="curator@example.com",
+        password_hash=get_password_hash("CuratorPass1!"),
+        role="student",
+        email_verified_at=datetime.utcnow(),
+    )
+    db.add_all([curator_role, target])
+    await db.commit()
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": target.email, "password": "CuratorPass1!"},
+    )
+    old_access_token = login.json()["access_token"]
+    client.cookies.clear()
+
+    owner_token = AuthService.create_tokens(owner.id, owner.token_version).access_token
+    response = await client.put(
+        f"/api/admin/team/users/{target.id}/roles",
+        json={"roles": ["curator"], "reason": "New support curator"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert response.status_code == 200, response.text
+    await db.refresh(target)
+    assert target.token_version == 1
+    rejected = await client.get(
+        "/api/auth/me", headers={"Authorization": f"Bearer {old_access_token}"}
+    )
+    assert rejected.status_code == 401
 
 
 @pytest.mark.asyncio
