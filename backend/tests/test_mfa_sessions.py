@@ -71,11 +71,55 @@ async def test_owner_must_setup_and_use_mfa(client: AsyncClient, db: AsyncSessio
     assert missing_code.status_code == 401
     assert missing_code.json()["detail"]["code"] == "mfa_code_required"
 
+    # The confirmation consumed the current step; the next one is still in the window.
     login = await client.post(
         "/api/auth/login",
-        json={**credentials, "mfa_code": pyotp.TOTP(secret).now()},
+        json={**credentials, "mfa_code": pyotp.TOTP(secret).at(datetime.now(), 1)},
     )
     assert login.status_code == 200, login.text
+
+
+async def _owner_with_totp(db: AsyncSession) -> tuple[User, str]:
+    owner = await _owner(db)
+    credential, secret, _ = await MfaService.get_or_create_setup(db, owner)
+    credential.enabled_at = datetime.utcnow()
+    await db.commit()
+    return owner, secret
+
+
+@pytest.mark.asyncio
+async def test_totp_code_cannot_be_replayed(client: AsyncClient, db: AsyncSession):
+    owner, secret = await _owner_with_totp(db)
+    credentials = {"email": owner.email, "password": "StrongOwnerPass1!"}
+    code = pyotp.TOTP(secret).now()
+
+    first = await client.post("/api/auth/login", json={**credentials, "mfa_code": code})
+    assert first.status_code == 200, first.text
+    client.cookies.clear()
+    replay = await client.post("/api/auth/login", json={**credentials, "mfa_code": code})
+    assert replay.status_code == 401
+    assert replay.json()["detail"]["code"] == "mfa_code_invalid"
+
+
+@pytest.mark.asyncio
+async def test_totp_code_for_an_earlier_step_is_refused(client: AsyncClient, db: AsyncSession):
+    owner, secret = await _owner_with_totp(db)
+    credentials = {"email": owner.email, "password": "StrongOwnerPass1!"}
+    totp = pyotp.TOTP(secret)
+    now = datetime.now()
+
+    later = await client.post(
+        "/api/auth/login", json={**credentials, "mfa_code": totp.at(now, 1)}
+    )
+    assert later.status_code == 200, later.text
+    client.cookies.clear()
+    earlier = await client.post(
+        "/api/auth/login", json={**credentials, "mfa_code": totp.at(now, 0)}
+    )
+    assert earlier.status_code == 401
+    credential = await MfaService.get_credential(db, owner.id)
+    await db.refresh(credential)
+    assert credential.last_totp_step == totp.timecode(now) + 1
 
 
 @pytest.mark.asyncio

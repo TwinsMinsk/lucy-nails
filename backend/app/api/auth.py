@@ -553,7 +553,7 @@ async def confirm_mfa(
     db: AsyncSession = Depends(get_db),
 ):
     user = await _resolve_mfa_setup_user(db, data.setup_token)
-    credential = await MfaService.get_credential(db, user.id)
+    credential = await MfaService.get_credential(db, user.id, for_update=True)
     if credential is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -102,9 +102,33 @@ class MfaService:
             raise ValueError("MFA secret cannot be decrypted") from exc
 
     @staticmethod
-    def enable(credential: MfaCredential, code: str) -> list[str] | None:
+    def _accept_totp(credential: MfaCredential, code: str) -> bool:
+        """Check a TOTP code within +-1 step and consume its time step.
+
+        A code for the last accepted step or an earlier one is a replay and is
+        refused. Callers hold the credential row lock, as the login flow does.
+        """
         secret = MfaService.decrypt_secret(credential)
-        if not pyotp.TOTP(secret).verify(code.strip(), valid_window=1):
+        totp = pyotp.TOTP(secret)
+        now = datetime.now()  # pyotp computes steps from naive local time
+        current_step = totp.timecode(now)
+        matched = [
+            current_step + offset
+            for offset in (-1, 0, 1)
+            if hmac.compare_digest(code, totp.at(now, offset))
+        ]
+        if not matched:
+            return False
+        step = max(matched)
+        if credential.last_totp_step is not None and step <= credential.last_totp_step:
+            return False
+        credential.last_totp_step = step
+        credential.updated_at = datetime.utcnow()
+        return True
+
+    @staticmethod
+    def enable(credential: MfaCredential, code: str) -> list[str] | None:
+        if not MfaService._accept_totp(credential, code.strip()):
             return None
         backup_codes = [secrets.token_hex(5).upper() for _ in range(8)]
         credential.backup_code_hashes = [_backup_hash(item) for item in backup_codes]
@@ -116,8 +140,7 @@ class MfaService:
     def verify(credential: MfaCredential, code: str) -> bool:
         normalized = code.strip().replace("-", "").upper()
         if normalized.isdigit() and len(normalized) == 6:
-            secret = MfaService.decrypt_secret(credential)
-            return bool(pyotp.TOTP(secret).verify(normalized, valid_window=1))
+            return MfaService._accept_totp(credential, normalized)
 
         candidate = _backup_hash(normalized)
         remaining = list(credential.backup_code_hashes or [])
