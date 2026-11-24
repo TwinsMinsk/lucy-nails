@@ -20,6 +20,8 @@ const MIN_TILES = 6;
 // Tiles loaded on each side of the visible ones, so the next tile is ready before
 // the auto-scroll or an arrow brings it in (one tile passes in about seven seconds).
 const PRELOAD_NEIGHBOURS = 2;
+// Share of the strip that must be on screen before it auto-scrolls (about 13 px of a 256 px strip).
+const PLAYBACK_VISIBLE_RATIO = 0.05;
 
 export interface WorksMarqueeProps {
   photos: WorkPhoto[];
@@ -73,19 +75,24 @@ export function WorksMarquee({ photos, title, reverse = false }: WorksMarqueePro
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
-    const observe = (margin: string, onChange: (visible: boolean) => void) => {
-      const observer = new IntersectionObserver(
-        (entries) => {
-          const entry = entries[entries.length - 1];
-          if (entry) onChange(entry.isIntersecting);
-        },
-        { rootMargin: margin }
-      );
-      observer.observe(el);
-      return observer;
-    };
-    const preload = observe("300px", setNearViewport);
-    const playback = observe("0px", setOnScreen);
+    const preload = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[entries.length - 1];
+        if (entry) setNearViewport(entry.isIntersecting);
+      },
+      { rootMargin: "300px" }
+    );
+    // isIntersecting is also true for a strip that only touches the viewport edge with
+    // zero visible area, so playback needs part of the strip to be actually visible.
+    const playback = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[entries.length - 1];
+        if (entry) setOnScreen(entry.intersectionRatio >= PLAYBACK_VISIBLE_RATIO);
+      },
+      { threshold: PLAYBACK_VISIBLE_RATIO }
+    );
+    preload.observe(el);
+    playback.observe(el);
     return () => {
       preload.disconnect();
       playback.disconnect();
