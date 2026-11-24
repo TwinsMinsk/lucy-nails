@@ -3,9 +3,7 @@
 """
 
 from datetime import datetime
-from functools import lru_cache
 from uuid import UUID
-import secrets
 import uuid
 
 from sqlalchemy import delete, func, select
@@ -21,10 +19,10 @@ from app.schemas.auth import UserRegister, UserLogin, Token
 from app.services.outbox_service import enqueue_outbox_message
 
 
-@lru_cache(maxsize=1)
-def _dummy_password_hash() -> str:
-    """A fixed bcrypt hash (same scheme and cost as real ones) no password matches."""
-    return get_password_hash(secrets.token_urlsafe(32))
+# bcrypt hash (passlib scheme, cost 12 like get_password_hash) of a random
+# password that was discarded. Precomputed so that no request ever hashes on
+# the event loop; test_auth.py checks that its scheme and cost match.
+DUMMY_PASSWORD_HASH = "$2b$12$Ex.RaMxoreaCc1zxvXKTaevuTs5mmfM.pwVkSAgmod7snxUSavhZC"
 
 
 class AuthService:
@@ -114,7 +112,7 @@ class AuthService:
         if not user:
             # Spend the same bcrypt work as for a real account, so response
             # time does not tell which addresses are registered.
-            await run_in_threadpool(verify_password, data.password, _dummy_password_hash())
+            await run_in_threadpool(verify_password, data.password, DUMMY_PASSWORD_HASH)
             return None
 
         if not await run_in_threadpool(verify_password, data.password, user.password_hash):
