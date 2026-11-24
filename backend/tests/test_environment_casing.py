@@ -3,6 +3,7 @@
 import urllib.parse
 
 import pytest
+from pydantic import ValidationError
 
 from app.core.config import Settings, settings
 from app.services.kinescope_service import KinescopeService
@@ -31,3 +32,35 @@ def test_payment_link_has_no_demo_mode_for_capitalized_production(monkeypatch):
 def test_kinescope_treats_capitalized_deployed_env_as_deployed(monkeypatch, env):
     monkeypatch.setattr(settings, "ENVIRONMENT", env)
     assert KinescopeService()._production is True
+
+
+@pytest.mark.parametrize("env", ["prod", "Production-1", "preview", "dev"])
+def test_unknown_environment_fails_at_startup(env):
+    with pytest.raises(ValidationError, match="is not supported"):
+        Settings(_env_file=None, ENVIRONMENT=env)
+
+
+@pytest.mark.parametrize("env", ["development", "test"])
+def test_local_environment_names_still_start(env):
+    assert Settings(_env_file=None, ENVIRONMENT=env).ENVIRONMENT == env
+
+
+def test_missing_environment_defaults_to_development(monkeypatch):
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+    assert Settings(_env_file=None).ENVIRONMENT == "development"
+
+
+@pytest.mark.parametrize("env", ["development", "test", "staging"])
+def test_demo_payments_allowed_in_named_non_production(monkeypatch, env):
+    monkeypatch.setattr(settings, "ENVIRONMENT", env)
+    monkeypatch.setattr(settings, "PRODAMUS_DEMO_MODE", False)
+    assert ProdamusService.demo_payments_allowed() is True
+
+
+@pytest.mark.parametrize("env", ["production", "preview", "prod"])
+def test_demo_payments_refused_outside_named_non_production(monkeypatch, env):
+    # Settings refuses unknown names at startup; the runtime check must not
+    # treat one as non-production either.
+    monkeypatch.setattr(settings, "ENVIRONMENT", env)
+    monkeypatch.setattr(settings, "PRODAMUS_DEMO_MODE", False)
+    assert ProdamusService.demo_payments_allowed() is False

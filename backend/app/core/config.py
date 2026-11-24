@@ -20,6 +20,12 @@ _BACKEND_DIR = Path(__file__).resolve().parents[2]
 _REPO_ROOT = _BACKEND_DIR.parent
 
 
+# Closed list of ENVIRONMENT values. "test" is used by the load-test seed
+# (scripts/load); everything except "production" is non-production.
+ALLOWED_ENVIRONMENTS = ("development", "test", "staging", "production")
+NON_PRODUCTION_ENVIRONMENTS = frozenset({"development", "test", "staging"})
+
+
 def _env_files() -> tuple[Path, ...]:
     paths: list[Path] = []
     root_env = _REPO_ROOT / ".env"
@@ -152,7 +158,15 @@ class Settings(BaseSettings):
     def normalize_environment(cls, v: str | None) -> str:
         # "Production" must behave exactly like "production" everywhere
         # (demo payment links, mock Kinescope embeds, dev seed).
-        return (v or "development").strip().lower()
+        value = (v or "development").strip().lower()
+        # A typo must not silently skip the production checks and allow demo
+        # payments, so only the known names start the application.
+        if value not in ALLOWED_ENVIRONMENTS:
+            raise ValueError(
+                f"ENVIRONMENT={value!r} is not supported; use one of: "
+                + ", ".join(ALLOWED_ENVIRONMENTS)
+            )
+        return value
 
     # === Dev seed (development only) ===
     # Passwords for the startup seed (admin@/student@). Empty -> generated and
@@ -188,6 +202,11 @@ class Settings(BaseSettings):
     @property
     def is_deployed(self) -> bool:
         return self.ENVIRONMENT.lower() in {"production", "staging"}
+
+    @property
+    def is_non_production(self) -> bool:
+        """True only for the explicitly non-production environment names."""
+        return self.ENVIRONMENT.lower() in NON_PRODUCTION_ENVIRONMENTS
 
     @model_validator(mode="after")
     def validate_production_safety(self):
