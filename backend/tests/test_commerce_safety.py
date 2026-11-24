@@ -1449,6 +1449,107 @@ async def test_second_payment_and_refund_of_the_paid_order_both_complete(
 
 
 @pytest.mark.asyncio
+async def test_renewal_during_an_extension_counts_both_periods(
+    client, db, monkeypatch, production_sessions, purchase_attempts
+):
+    """An admin extension is under way when a payment renewal arrives.
+
+    Extension works per row: extending an older row after a renewal created a
+    later one adds nothing, even sequentially. That is left to the admin
+    changes; this test covers the race the (user, course) lock closes.
+    """
+    course = await _course_for_sale(db)
+    student = User(
+        email="extended@example.com",
+        password_hash="unused",
+        email_verified_at=datetime.utcnow(),
+        role="student",
+    )
+    operator = User(email="extender@example.com", password_hash="unused", role="admin")
+    db.add_all([student, operator])
+    await db.flush()
+    current_end = datetime.utcnow() + timedelta(days=10)
+    access = Entitlement(
+        user_id=student.id,
+        course_id=course.id,
+        granted_by_id=operator.id,
+        source="manual",
+        tariff="self",
+        status="active",
+        starts_at=datetime.utcnow() - timedelta(days=20),
+        expires_at=current_end,
+        reason="Running access",
+    )
+    db.add(access)
+    await db.commit()
+    order = await _pending_order(db, course, student.email)
+    extension_sessions: list[AsyncSession] = []
+    extension_holds_row = asyncio.Event()
+    renewal_has_read = asyncio.Event()
+
+    # The extension holds its row and waits for the renewal to read the
+    # current access; with the lock the renewal cannot, and the extension
+    # goes on after a short wait.
+    lock_row = AccessService._lock_for_access_change
+
+    async def lock_row_then_wait(session, entitlement):
+        await lock_row(session, entitlement)
+        extension_holds_row.set()
+        try:
+            await asyncio.wait_for(renewal_has_read.wait(), 2)
+        except asyncio.TimeoutError:
+            pass
+
+    # The renewal starts only once the extension is under way.
+    lock_access = AccessService.lock_course_access
+
+    async def renewal_after_extension(session, user_id, course_id):
+        if session not in extension_sessions:
+            await asyncio.wait_for(extension_holds_row.wait(), 5)
+        await lock_access(session, user_id, course_id)
+
+    read_access = AccessService.get_active_entitlement
+
+    async def read_and_report(session, user_id, course_id, *, now=None):
+        current = await read_access(session, user_id, course_id, now=now)
+        renewal_has_read.set()
+        return current
+
+    monkeypatch.setattr(AccessService, "_lock_for_access_change", staticmethod(lock_row_then_wait))
+    monkeypatch.setattr(
+        AccessService, "lock_course_access", staticmethod(renewal_after_extension)
+    )
+    monkeypatch.setattr(AccessService, "get_active_entitlement", staticmethod(read_and_report))
+
+    async def extend() -> None:
+        async with production_sessions() as session:
+            extension_sessions.append(session)
+            row = await session.get(Entitlement, access.id, with_for_update=True)
+            await AccessService.extend_entitlement(
+                session, row, days=30, reason="Extended by the school"
+            )
+            await session.commit()
+
+    results = await asyncio.gather(
+        extend(),
+        _deliver(client, _notification(order, "renewal-during-extension")),
+        return_exceptions=True,
+    )
+
+    assert all(not isinstance(result, BaseException) for result in results), results
+    assert results[1].status_code == 200, results[1].text
+    assert len(purchase_attempts) == 1
+    access_end = await db.scalar(
+        select(func.max(Entitlement.expires_at)).where(
+            Entitlement.user_id == student.id,
+            Entitlement.course_id == course.id,
+            Entitlement.status == "active",
+        )
+    )
+    assert access_end == current_end + timedelta(days=60)
+
+
+@pytest.mark.asyncio
 async def test_hashed_and_literal_payment_keys_never_share_an_analytics_event(client, db):
     long_key = "L" * 200
     lookalike_key = "sha256:" + hashlib.sha256(long_key.encode("utf-8")).hexdigest()

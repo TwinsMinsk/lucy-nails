@@ -304,6 +304,9 @@ class AccessService:
         days: int,
         reason: str,
     ) -> None:
+        # Same order as a manual grant: the (user, course) lock first, so an
+        # extension and a payment renewal for the same access never interleave.
+        await AccessService.lock_course_access(db, entitlement.user_id, entitlement.course_id)
         await AccessService._lock_for_access_change(db, entitlement)
         if entitlement.status == "revoked":
             raise ValueError("Revoked access cannot be extended")
