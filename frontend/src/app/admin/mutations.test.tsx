@@ -114,3 +114,23 @@ describe("admin mutations are single-flight and report API errors", () => {
         expect(api.adminUpdateTeamRoles).toHaveBeenCalledTimes(1)
     })
 })
+
+describe("refund form after a partial refund", () => {
+    it("defaults to the remaining refundable amount and shows what was refunded", async () => {
+        withPermissions(["commerce.read", "refunds.manage"], <Orders />)
+        fireEvent.click(await screen.findByRole("button", { name: /Возврат/ }))
+        expect(screen.getByLabelText("Сумма возврата, копейки")).toHaveValue(490000)
+        expect(screen.getByText(/уже возвращено 1\s000 ₽/)).toBeVisible()
+        expect(screen.getByText(/доступно к возврату 4\s900 ₽/)).toBeVisible()
+        fireEvent.change(screen.getByPlaceholderText("Причина возврата"), { target: { value: "Customer request" } })
+        fireEvent.change(screen.getByLabelText("Сумма возврата, копейки"), { target: { value: "590000" } })
+        expect(screen.getByRole("button", { name: /Создать заявку/ })).toBeDisabled()
+    })
+
+    it("offers no refund for a fully refunded order", async () => {
+        vi.mocked(api.adminGetOrders).mockResolvedValue({ items: [{ ...order, status: "refunded", refunded_kopecks: 590000, refundable_kopecks: 0 }], total: 1, limit: 50, offset: 0 })
+        withPermissions(["commerce.read", "refunds.manage"], <Orders />)
+        await screen.findByText("buyer@example.test")
+        expect(screen.queryByRole("button", { name: /Возврат/ })).not.toBeInTheDocument()
+    })
+})
