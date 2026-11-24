@@ -371,6 +371,9 @@ class NotificationPage(BaseModel):
     offset: int
 
 
+RETRYABLE_NOTIFICATION_STATUSES = frozenset({"retry", "dead_letter"})
+
+
 class RetryRequest(BaseModel):
     reason: str = Field(..., min_length=5, max_length=1000)
 
@@ -1144,9 +1147,21 @@ async def retry_notification(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("notifications.manage")),
 ):
-    message = await db.get(OutboxMessage, message_id)
+    # Lock the row so a worker cannot claim or finish it between the check and the reset.
+    message = await db.scalar(
+        select(OutboxMessage).where(OutboxMessage.id == message_id).with_for_update()
+    )
     if message is None:
         raise HTTPException(status_code=404, detail="Notification not found")
+    if message.status not in RETRYABLE_NOTIFICATION_STATUSES:
+        # get_db rolls back on the exception, which releases the row lock.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Повтор невозможен: уведомление в статусе «{message.status}». "
+                "Повторить можно только сообщения в статусах retry и dead_letter."
+            ),
+        )
     old_value = {"status": message.status, "attempts": message.attempts}
     message.status = "pending"
     message.attempts = 0
