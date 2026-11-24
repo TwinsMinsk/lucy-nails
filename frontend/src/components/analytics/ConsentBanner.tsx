@@ -6,7 +6,7 @@ import { useEffect, useLayoutEffect, useState } from "react"
 import { Cookie } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { readConsent, saveConsent } from "@/lib/attribution"
+import { CONSENT_STORAGE_KEY, readConsent, saveConsent } from "@/lib/attribution"
 
 
 const isPublicPage = (pathname: string) =>
@@ -31,6 +31,12 @@ export function ConsentBanner() {
     useEffect(() => {
         setOpen(!readConsent())
         setReady(true)
+        // A choice made in another tab closes (or, when cleared, reopens) the banner here too.
+        const onStorage = (event: StorageEvent) => {
+            if (event.key === CONSENT_STORAGE_KEY || event.key === null) setOpen(!readConsent())
+        }
+        window.addEventListener("storage", onStorage)
+        return () => window.removeEventListener("storage", onStorage)
     }, [])
 
     // Layout effect: the attribute lands before the banner is painted, so the bar never shows under it.

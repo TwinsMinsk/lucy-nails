@@ -1,7 +1,8 @@
-import { cleanup, render, screen } from "@testing-library/react"
+import { act, cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import { ConsentBanner } from "@/components/analytics/ConsentBanner"
+import { CONSENT_POLICY_VERSION, CONSENT_STORAGE_KEY } from "@/lib/attribution"
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/courses/11111111-1111-4111-8111-111111111111" }))
 beforeEach(() => { window.localStorage.clear() })
@@ -18,6 +19,19 @@ it("marks the document while the banner is open and clears the mark after a choi
     // Reopening the settings marks the document again.
     await userEvent.click(screen.getByRole("button", { name: "Настройки cookies" }))
     expect(isMarkedOpen()).toBe(true)
+})
+
+it("closes the banner and clears the mark when consent is given in another tab", async () => {
+    render(<ConsentBanner />)
+    await screen.findByRole("region", { name: "Согласие на cookies" })
+    expect(isMarkedOpen()).toBe(true)
+    // The other tab writes the shared storage; this tab only receives the storage event.
+    const value = JSON.stringify({ necessary: true, analytics: true, policy_version: CONSENT_POLICY_VERSION, updated_at: new Date().toISOString() })
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, value)
+    act(() => { window.dispatchEvent(new StorageEvent("storage", { key: CONSENT_STORAGE_KEY, newValue: value })) })
+    expect(screen.queryByRole("region", { name: "Согласие на cookies" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Настройки cookies" })).toBeInTheDocument()
+    expect(isMarkedOpen()).toBe(false)
 })
 
 it("clears the mark when the banner unmounts", async () => {
