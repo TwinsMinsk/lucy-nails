@@ -168,3 +168,29 @@ async def test_register_records_consent(client: AsyncClient, db: AsyncSession):
     assert user.consent_version == CONSENT_VERSION
     assert user.offer_accepted_at is not None and user.offer_accepted_at >= before
     assert user.personal_data_consent_at is not None and user.personal_data_consent_at >= before
+
+
+@pytest.mark.asyncio
+async def test_login_with_unknown_email_still_compares_a_bcrypt_hash(
+    client: AsyncClient, monkeypatch
+):
+    import app.services.auth_service as auth_service_module
+
+    checked_hashes: list[str] = []
+    real_verify = auth_service_module.verify_password
+
+    def recording_verify(password: str, password_hash: str) -> bool:
+        checked_hashes.append(password_hash)
+        return real_verify(password, password_hash)
+
+    monkeypatch.setattr(auth_service_module, "verify_password", recording_verify)
+
+    response = await client.post(
+        "/api/auth/login",
+        json={"email": "nobody-here@example.com", "password": "password123"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Incorrect email or password"
+    assert len(checked_hashes) == 1
+    assert checked_hashes[0].startswith("$2b$")

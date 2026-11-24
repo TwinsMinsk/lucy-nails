@@ -3,7 +3,9 @@
 """
 
 from datetime import datetime
+from functools import lru_cache
 from uuid import UUID
+import secrets
 import uuid
 
 from sqlalchemy import delete, func, select
@@ -17,6 +19,12 @@ from app.models.user import User
 from app.models.telegram_link import TelegramLinkToken
 from app.schemas.auth import UserRegister, UserLogin, Token
 from app.services.outbox_service import enqueue_outbox_message
+
+
+@lru_cache(maxsize=1)
+def _dummy_password_hash() -> str:
+    """A fixed bcrypt hash (same scheme and cost as real ones) no password matches."""
+    return get_password_hash(secrets.token_urlsafe(32))
 
 
 class AuthService:
@@ -104,8 +112,11 @@ class AuthService:
         user = result.scalar_one_or_none()
 
         if not user:
+            # Spend the same bcrypt work as for a real account, so response
+            # time does not tell which addresses are registered.
+            await run_in_threadpool(verify_password, data.password, _dummy_password_hash())
             return None
-        
+
         if not await run_in_threadpool(verify_password, data.password, user.password_hash):
             return None
         
