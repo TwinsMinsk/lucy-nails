@@ -133,12 +133,21 @@ export default function AdminCoursesPage() {
         }
 
         setIsSaving(true);
+        // Without the pricing permission the commercial terms are not sent at all:
+        // the server keeps the stored (or default) values, and a price the owner
+        // changed meanwhile cannot turn the editor's text save into a 403.
+        const payload: CourseCreateRequest = { ...formData };
+        if (!canManagePricing) {
+            delete payload.price_self;
+            delete payload.price_support;
+            delete payload.access_days;
+        }
         try {
             if (editingCourse) {
-                await adminUpdateCourse(editingCourse.id, formData);
+                await adminUpdateCourse(editingCourse.id, payload);
                 toast.success("Курс обновлён");
             } else {
-                await adminCreateCourse(formData);
+                await adminCreateCourse(payload);
                 toast.success("Курс создан");
             }
             setIsDialogOpen(false);
