@@ -4,7 +4,7 @@ import Home, { generateMetadata } from "@/app/page"
 import { getLandingContent } from "@/lib/landing/loader"
 import { landingCourse } from "@/lib/landing/course-content"
 import { getPublishedCourses, getPublicCourseModules } from "@/lib/api"
-import { AUTHOR_NAME, HOME_DESCRIPTION, HOME_TITLE, ORGANIZATION_NAME, SITE_NAME, SOCIAL_IMAGE } from "@/lib/seo"
+import { AUTHOR_NAME, buildHomeJsonLd, HOME_DESCRIPTION, HOME_TITLE, ORGANIZATION_NAME, SITE_NAME, SOCIAL_IMAGE } from "@/lib/seo"
 
 vi.mock("@/lib/landing/loader", () => ({ getLandingContent: vi.fn() }))
 vi.mock("@/lib/api", () => ({ getPublishedCourses: vi.fn(), getPublicCourseModules: vi.fn() }))
@@ -29,7 +29,14 @@ it("describes the published course in JSON-LD with its CMS price", async () => {
     const script = container.querySelector('script[type="application/ld+json"]')
     expect(script?.innerHTML).not.toContain("</script>")
     const course = JSON.parse(script?.textContent ?? "{}")["@graph"].find((item: { "@type": string }) => item["@type"] === "Course")
-    expect(course).toMatchObject({ name: "Renamed </script> course", offers: { category: "Paid", price: 7200, priceCurrency: "RUB" }, hasCourseInstance: { courseMode: "Online", courseWorkload: "PT60M" } })
+    expect(course).toMatchObject({ name: "Renamed </script> course", offers: { category: "Paid", price: 7200, priceCurrency: "RUB", availability: "https://schema.org/InStock" }, hasCourseInstance: { courseMode: "Online", courseWorkload: "PT60M" } })
+})
+
+it("claims availability only when the buy button can open checkout", async () => {
+    const snapshot = { id: "  ", title: "Canonical", price_self: 7200, access_days: 45, lessons_count: 2, total_duration: 3600 }
+    const graph = buildHomeJsonLd({ siteUrl: "https://example.test", course: snapshot, title: "T", description: "D", imageUrl: "/i.jpg" })["@graph"]
+    const offers = (graph.find((item) => item["@type"] === "Course") as { offers: Record<string, unknown> }).offers
+    expect(offers).not.toHaveProperty("availability")
 })
 
 it("names the subject and the author in the visible hero", async () => {
