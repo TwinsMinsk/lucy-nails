@@ -31,7 +31,8 @@ export function ConsentBanner() {
         return (
             <button
                 type="button"
-                className="fixed bottom-3 left-3 z-50 rounded-full border bg-background/95 p-2.5 text-muted-foreground shadow-sm backdrop-blur hover:text-foreground"
+                // On phones the course page has a fixed buy bar at the bottom: sit above it.
+                className="fixed bottom-3 left-3 z-50 max-lg:[body:has([data-mobile-buy-bar])_&]:bottom-24 rounded-full border bg-background/95 p-2.5 text-muted-foreground shadow-sm backdrop-blur hover:text-foreground"
                 onClick={() => setOpen(true)}
                 aria-label="Настройки cookies"
                 title="Настройки cookies"
@@ -47,7 +48,8 @@ export function ConsentBanner() {
     }
 
     return (
-        <section className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-3xl max-h-[60svh] overflow-y-auto rounded-2xl border bg-background/98 p-4 shadow-2xl backdrop-blur sm:p-5" aria-label="Согласие на cookies">
+        // data-consent-banner hides the course page's fixed buy bar, which shares this spot on phones.
+        <section data-consent-banner className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-3xl max-h-[60svh] overflow-y-auto rounded-2xl border bg-background/98 p-4 shadow-2xl backdrop-blur sm:p-5" aria-label="Согласие на cookies">
             <div className="flex items-start gap-3">
                 <Cookie className="mt-0.5 hidden h-5 w-5 shrink-0 text-primary sm:block" aria-hidden="true" />
                 <div className="min-w-0 flex-1 space-y-3">

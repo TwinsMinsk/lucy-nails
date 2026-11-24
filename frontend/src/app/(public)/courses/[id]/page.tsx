@@ -246,8 +246,8 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                 </div>
             </div>
 
-            {/* Mobile Sticky CTA - Hidden on Desktop */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur-md border-t lg:hidden z-50">
+            {/* Mobile Sticky CTA - Hidden on Desktop and while the cookie banner, which sits in the same spot, is open */}
+            <div data-mobile-buy-bar className="fixed bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur-md border-t lg:hidden z-50 [body:has([data-consent-banner])_&]:hidden">
                 <div className="flex items-center justify-between gap-4 max-w-md mx-auto">
                     <div className="flex flex-col">
                         <span className="text-xs text-text-secondary">Стоимость</span>
