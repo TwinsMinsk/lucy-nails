@@ -166,6 +166,10 @@ def _parse_persisted_order_id(order_id_raw: str) -> UUID | None:
         return None
 
 
+# The success page polls for minutes; a buyer may come back to it the next day.
+ORDER_STATUS_TOKEN_TTL = timedelta(hours=72)
+
+
 def _hash_status_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
@@ -1344,6 +1348,10 @@ async def get_order_status(order_id: str, token: str) -> dict[str, str | int | f
         order = result.scalar_one_or_none()
     supplied_hash = _hash_status_token(token)
     if order is None or not hmac.compare_digest(order.status_token_hash, supplied_hash):
+        raise HTTPException(status_code=404, detail="Order not found")
+    # The token sits in the success-page URL (browser history, logs), so it only
+    # works for a fixed time after checkout; afterwards it reads as unknown.
+    if order.created_at < datetime.utcnow() - ORDER_STATUS_TOKEN_TTL:
         raise HTTPException(status_code=404, detail="Order not found")
     # Order snapshot, not the current course price: the success page reports it
     # to Metrika as purchase revenue.
