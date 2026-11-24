@@ -24,7 +24,7 @@ import { landingCourse } from "@/lib/landing/course-content";
 import { getLandingContent } from "@/lib/landing/loader";
 import { formatDays } from "@/lib/format";
 import { getPublicSiteUrl } from "@/lib/env";
-import { baseOpenGraph, buildHomeJsonLd, HOME_DESCRIPTION, HOME_TITLE } from "@/lib/seo";
+import { AUTHOR_NAME, baseOpenGraph, buildHomeJsonLd, HOME_DESCRIPTION, HOME_TITLE } from "@/lib/seo";
 import { JsonLd } from "@/components/seo/JsonLd";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -104,7 +104,7 @@ export default async function Home() {
                 <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-[#D4AF37] via-[#FFF3AD] to-[#BFA15F] border border-[#D4AF37]/30 shadow-[0_4px_15px_rgba(191,161,95,0.3)] mb-4">
                   <Sparkles className="w-4 h-4 text-[#5A4B4B]" aria-hidden="true" />
                   <span className="text-[#5A4B4B] text-xs font-semibold tracking-[0.08em] uppercase">
-                    Онлайн-курс для мастеров
+                    Онлайн-курс дизайна ногтей для мастеров маникюра
                   </span>
                 </div>
                 <h1 className="font-serif text-4xl md:text-5xl lg:text-6xl leading-[1.05] text-text-primary tracking-tight">
@@ -149,12 +149,12 @@ export default async function Home() {
             </div>
 
             {/* Right Image & Stats */}
-            <div className="relative lg:col-span-5 group/image flex flex-col justify-center">
+            <figure className="relative lg:col-span-5 group/image flex flex-col justify-center">
               <div className="relative aspect-[4/5] md:aspect-square lg:aspect-[4/5] w-full max-w-md mx-auto lg:ml-auto rounded-[2.5rem] overflow-hidden shadow-[0_24px_60px_rgba(90,40,50,0.25)]">
                 <div className="w-full h-full bg-[#EBC8C8] relative">
                   <Image
                     src={instructorImageSrc}
-                    alt="Мастер маникюра в студии Lucy Smirnova Nails"
+                    alt={`${AUTHOR_NAME} — автор онлайн-курса дизайна ногтей`}
                     fill
                     sizes="(max-width: 1024px) min(100vw, 448px), 448px"
                     className="object-cover"
@@ -162,8 +162,10 @@ export default async function Home() {
                   />
                 </div>
               </div>
-
-            </div>
+              <figcaption className="mt-4 w-full max-w-md mx-auto text-center text-sm text-text-secondary">
+                Автор курса — <span className="font-semibold text-text-primary">{AUTHOR_NAME}</span>
+              </figcaption>
+            </figure>
 
           </div>
         </div>
