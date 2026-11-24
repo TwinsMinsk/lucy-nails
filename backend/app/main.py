@@ -35,6 +35,33 @@ logger = logging.getLogger(__name__)
 # and the polling bot do, it keeps that logger at WARNING).
 logging.getLogger("httpx").setLevel(logging.WARNING)
 _CORRELATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+_APP_LOG_HANDLER_NAME = "lucy-app-stderr"
+
+
+def configure_app_logging() -> None:
+    """Emit the application's INFO records (request log with correlation id).
+
+    Uvicorn configures only its own loggers, so without this the root logger's
+    default WARNING level drops them. Uvicorn's access log is untouched. A
+    handler is added only when the root logger has none, so a host that already
+    configured logging does not print every record twice. The request log
+    carries method, path, status and timing only: no query, body or token.
+    """
+    app_logger = logging.getLogger("app")
+    app_logger.setLevel(logging.INFO)
+    has_handler = any(
+        handler.get_name() == _APP_LOG_HANDLER_NAME for handler in app_logger.handlers
+    )
+    if not has_handler and not logging.getLogger().handlers:
+        handler = logging.StreamHandler()
+        handler.set_name(_APP_LOG_HANDLER_NAME)
+        handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
+        app_logger.addHandler(handler)
+    # httpx logs full request URLs at INFO, and Telegram URLs contain the bot token.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
+configure_app_logging()
 
 
 def _is_production() -> bool:
