@@ -12,6 +12,7 @@ Create Date: 2026-11-25
 
 from typing import Sequence, Union
 
+import sqlalchemy as sa
 from alembic import op
 
 
@@ -20,6 +21,7 @@ down_revision: Union[str, None] = "9d0e1f2a3b4c"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+CONSTRAINT = "ck_payment_events_processing_status"
 # Every status the application writes: "received" while an event is being
 # processed, then one terminal status.
 NEW_STATUSES = (
@@ -31,23 +33,56 @@ OLD_STATUSES = (
 )
 
 
+def _constraint_definition() -> str | None:
+    return (
+        op.get_bind()
+        .execute(
+            sa.text(
+                "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                "WHERE conrelid = 'payment_events'::regclass AND conname = :name"
+            ),
+            {"name": CONSTRAINT},
+        )
+        .scalar()
+    )
+
+
 def upgrade() -> None:
-    op.drop_constraint(
-        "ck_payment_events_processing_status", "payment_events", type_="check"
-    )
-    op.create_check_constraint(
-        "ck_payment_events_processing_status", "payment_events", NEW_STATUSES
-    )
-    # Incidents a downgrade parked as rejected (see below) get their status
-    # back. No rejection writes the error code duplicate_order_payment: only the
-    # incident path does, so this touches nothing else.
-    op.execute(
-        "UPDATE payment_events SET processing_status = 'financial_incident' "
-        "WHERE processing_status = 'rejected' AND error_code = 'duplicate_order_payment'"
-    )
+    # Every step is idempotent, so an upgrade interrupted between the two
+    # phases finishes when it runs again.
+    #
+    # Phase 1, inside the migration transaction: swap the constraint for one
+    # that is NOT VALID. That needs ACCESS EXCLUSIVE on the table but no scan,
+    # so the lock is held only until the transaction commits right below. New
+    # rows are checked against the new constraint from here on.
+    definition = _constraint_definition()
+    if definition is None or "'financial_incident'" not in definition:
+        op.execute(
+            f"ALTER TABLE payment_events DROP CONSTRAINT IF EXISTS {CONSTRAINT}, "
+            f"ADD CONSTRAINT {CONSTRAINT} CHECK ({NEW_STATUSES}) NOT VALID"
+        )
+    # Phase 2, outside that transaction: VALIDATE takes only SHARE UPDATE
+    # EXCLUSIVE, so the webhook keeps reading and writing while existing rows
+    # are scanned; repeating it on a validated constraint does nothing.
+    with op.get_context().autocommit_block():
+        op.execute(f"ALTER TABLE payment_events VALIDATE CONSTRAINT {CONSTRAINT}")
+        # Incidents a downgrade parked as rejected (see below) get their
+        # status back. No rejection writes the error code
+        # duplicate_order_payment: only the incident path does, so this
+        # touches nothing else.
+        op.execute(
+            "UPDATE payment_events SET processing_status = 'financial_incident' "
+            "WHERE processing_status = 'rejected' "
+            "AND error_code = 'duplicate_order_payment'"
+        )
 
 
 def downgrade() -> None:
+    # One transaction. The lock comes first: it lets readers through but holds
+    # back every writer, so no webhook can commit a new financial_incident
+    # between the UPDATE and the old constraint, which would fail the
+    # downgrade.
+    op.execute("LOCK TABLE payment_events IN SHARE ROW EXCLUSIVE MODE")
     # The old constraint does not know financial_incident. Such a row records a
     # second payment for an already paid order and must not be lost: it is kept
     # as 'rejected' with its error code duplicate_order_payment unchanged, so
@@ -57,9 +92,7 @@ def downgrade() -> None:
         "UPDATE payment_events SET processing_status = 'rejected' "
         "WHERE processing_status = 'financial_incident'"
     )
-    op.drop_constraint(
-        "ck_payment_events_processing_status", "payment_events", type_="check"
-    )
-    op.create_check_constraint(
-        "ck_payment_events_processing_status", "payment_events", OLD_STATUSES
+    op.execute(
+        f"ALTER TABLE payment_events DROP CONSTRAINT IF EXISTS {CONSTRAINT}, "
+        f"ADD CONSTRAINT {CONSTRAINT} CHECK ({OLD_STATUSES})"
     )

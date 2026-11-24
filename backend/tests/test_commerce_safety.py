@@ -1896,31 +1896,34 @@ def alembic_database_url() -> str:
 
     conftest builds the test schema from the ORM models, so a constraint that
     only the migrations create is invisible there. This database is created
-    next to the test database and dropped afterwards.
+    next to the test database under a name unique to this run, so two runs
+    against one server never touch each other's database, and this run drops
+    only the database it created.
     """
     url = make_url(settings.DATABASE_URL)
-    name = f"{url.database}_alembic"
+    name = f"{url.database}_alembic_{uuid.uuid4().hex[:12]}"
     admin = create_engine(
         url.set(drivername="postgresql", database="postgres"),
         isolation_level="AUTOCOMMIT",
         poolclass=NullPool,
     )
     with admin.connect() as connection:
-        connection.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
         connection.execute(text(f'CREATE DATABASE "{name}"'))
-    target = url.set(database=name).render_as_string(hide_password=False)
-    upgrade = subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        cwd=BACKEND_DIR,
-        env={**os.environ, "DATABASE_URL": target, "PYTHONPATH": str(BACKEND_DIR)},
-        capture_output=True,
-        text=True,
-    )
-    assert upgrade.returncode == 0, upgrade.stderr[-2000:]
-    yield target
-    with admin.connect() as connection:
-        connection.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
-    admin.dispose()
+    try:
+        target = url.set(database=name).render_as_string(hide_password=False)
+        upgrade = subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            cwd=BACKEND_DIR,
+            env={**os.environ, "DATABASE_URL": target, "PYTHONPATH": str(BACKEND_DIR)},
+            capture_output=True,
+            text=True,
+        )
+        assert upgrade.returncode == 0, upgrade.stderr[-2000:]
+        yield target
+    finally:
+        with admin.connect() as connection:
+            connection.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+        admin.dispose()
 
 
 @pytest.mark.asyncio
