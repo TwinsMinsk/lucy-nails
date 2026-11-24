@@ -25,6 +25,7 @@ from app.models.certificate import Certificate
 from app.schemas.auth import UserResponse
 from app.services.access_service import AccessService
 from app.services.audit_service import append_audit_log
+from app.services.content_audit import audit_content_event, audit_content_update, snapshot
 
 
 router = APIRouter()
@@ -397,6 +398,10 @@ async def create_course(
     )
 
     db.add(new_course)
+    audit_content_event(
+        db, request, admin.id, action="create", object_type="course",
+        object_id=new_course.id, new_value=snapshot(new_course),
+    )
     _audit_pricing_changes(
         db,
         request,
@@ -482,6 +487,10 @@ async def update_course(
         {field: getattr(course, field) for field in PRICING_FIELDS},
         update_data,
     )
+    audit_content_update(
+        db, request, admin.id, object_type="course", object_id=course.id,
+        entity=course, update_data=update_data,
+    )
     for key, value in update_data.items():
         setattr(course, key, value)
     _audit_pricing_changes(db, request, admin, course.id, pricing_changes)
@@ -510,6 +519,7 @@ async def update_course(
 @router.delete("/courses/{course_id}")
 async def delete_course(
     course_id: UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("content.manage"))
 ):
@@ -535,6 +545,10 @@ async def delete_course(
                 detail="Курс с оплатами или доступами нельзя удалить — снимите его с публикации",
             )
 
+    audit_content_event(
+        db, request, admin.id, action="delete", object_type="course",
+        object_id=course.id, old_value=snapshot(course),
+    )
     await db.delete(course)
     await db.commit()
 
@@ -578,6 +592,7 @@ async def get_course_modules(
 @router.post("/modules", response_model=ModuleResponse)
 async def create_module(
     data: ModuleCreateRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("content.manage"))
 ):
@@ -601,6 +616,11 @@ async def create_module(
     )
     
     db.add(new_module)
+    audit_content_event(
+        db, request, admin.id, action="create", object_type="module",
+        object_id=new_module.id,
+        new_value={"course_id": str(new_module.course_id), **snapshot(new_module)},
+    )
     await db.commit()
     await db.refresh(new_module)
     
@@ -621,6 +641,7 @@ async def create_module(
 async def update_module(
     module_id: UUID,
     data: ModuleUpdateRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("content.manage"))
 ):
@@ -633,6 +654,10 @@ async def update_module(
         raise HTTPException(status_code=404, detail="Module not found")
     
     update_data = data.model_dump(exclude_unset=True)
+    audit_content_update(
+        db, request, admin.id, object_type="module", object_id=module.id,
+        entity=module, update_data=update_data,
+    )
     for key, value in update_data.items():
         setattr(module, key, value)
     
@@ -657,6 +682,7 @@ async def update_module(
 @router.delete("/modules/{module_id}")
 async def delete_module(
     module_id: UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("content.manage"))
 ):
@@ -668,6 +694,11 @@ async def delete_module(
     if not module:
         raise HTTPException(status_code=404, detail="Module not found")
     
+    audit_content_event(
+        db, request, admin.id, action="delete", object_type="module",
+        object_id=module.id,
+        old_value={"course_id": str(module.course_id), **snapshot(module)},
+    )
     await db.delete(module)
     await db.commit()
     
@@ -679,6 +710,7 @@ async def delete_module(
 @router.post("/lessons", response_model=LessonResponse)
 async def create_lesson(
     data: LessonCreateRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("content.manage"))
 ):
@@ -709,6 +741,11 @@ async def create_lesson(
     )
     
     db.add(new_lesson)
+    audit_content_event(
+        db, request, admin.id, action="create", object_type="lesson",
+        object_id=new_lesson.id,
+        new_value={"module_id": str(new_lesson.module_id), **snapshot(new_lesson)},
+    )
     await db.commit()
     await db.refresh(new_lesson)
     
@@ -736,6 +773,7 @@ async def get_lesson_admin(
 async def update_lesson(
     lesson_id: UUID,
     data: LessonUpdateRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("content.manage"))
 ):
@@ -748,6 +786,10 @@ async def update_lesson(
         raise HTTPException(status_code=404, detail="Lesson not found")
     
     update_data = data.model_dump(exclude_unset=True)
+    audit_content_update(
+        db, request, admin.id, object_type="lesson", object_id=lesson.id,
+        entity=lesson, update_data=update_data,
+    )
     for key, value in update_data.items():
         setattr(lesson, key, value)
     
@@ -760,6 +802,7 @@ async def update_lesson(
 @router.delete("/lessons/{lesson_id}")
 async def delete_lesson(
     lesson_id: UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("content.manage"))
 ):
@@ -771,6 +814,11 @@ async def delete_lesson(
     if not lesson:
         raise HTTPException(status_code=404, detail="Lesson not found")
     
+    audit_content_event(
+        db, request, admin.id, action="delete", object_type="lesson",
+        object_id=lesson.id,
+        old_value={"module_id": str(lesson.module_id), **snapshot(lesson)},
+    )
     await db.delete(lesson)
     await db.commit()
     
