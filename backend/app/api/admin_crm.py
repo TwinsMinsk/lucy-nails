@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import String, and_, case, cast, delete, func, literal, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.core.database import get_db
 from app.core.config import settings
@@ -117,6 +118,52 @@ def _order_failed_attempt_exists():
         .correlate(Order)
         .exists()
     )
+
+
+PAYMENT_INCIDENT_WINDOW = timedelta(days=30)
+
+
+def _payment_incident_count_query(since: datetime | None = None):
+    """Distinct unresolved payment incidents, not raw journal rows.
+
+    Every provider delivery (with its own ``attempt``) is a separate row, so one
+    rejected payment yields several. An incident is one provider payment id (or,
+    without it, one order reference); a rejection is resolved once a later
+    delivery for the same order or payment was processed.
+    """
+    later = aliased(PaymentEvent)
+    resolved = (
+        select(later.id)
+        .where(
+            later.processing_status == "processed",
+            later.received_at > PaymentEvent.received_at,
+            or_(
+                and_(PaymentEvent.order_id.is_not(None), later.order_id == PaymentEvent.order_id),
+                and_(
+                    PaymentEvent.order_reference.is_not(None),
+                    later.order_reference == PaymentEvent.order_reference,
+                ),
+                and_(
+                    PaymentEvent.external_event_id.is_not(None),
+                    later.external_event_id == PaymentEvent.external_event_id,
+                ),
+            ),
+        )
+        .correlate(PaymentEvent)
+        .exists()
+    )
+    incident_key = func.coalesce(
+        PaymentEvent.external_event_id,
+        PaymentEvent.order_reference,
+        cast(PaymentEvent.id, String),
+    )
+    conditions = [
+        PaymentEvent.processing_status.in_(["rejected", "financial_incident"]),
+        or_(PaymentEvent.processing_status != "rejected", ~resolved),
+    ]
+    if since is not None:
+        conditions.append(PaymentEvent.received_at >= since)
+    return select(func.count(func.distinct(incident_key))).where(*conditions)
 
 
 def order_display_status(now: datetime):
@@ -453,9 +500,7 @@ async def dashboard(
         .where(order_display_status(now) == "pending")
     )
     payment_errors = await db.scalar(
-        select(func.count(PaymentEvent.id)).where(
-            PaymentEvent.processing_status.in_(["rejected", "financial_incident"])
-        )
+        _payment_incident_count_query(since=now - PAYMENT_INCIDENT_WINDOW)
     )
     dead_letters = await db.scalar(
         select(func.count(OutboxMessage.id)).where(OutboxMessage.status == "dead_letter")
@@ -1265,11 +1310,9 @@ async def reconciliation(
             Order.created_at < now - timedelta(hours=2),
         )
     )
-    payment_errors = await db.scalar(
-        select(func.count(PaymentEvent.id)).where(
-            PaymentEvent.processing_status.in_(["rejected", "financial_incident"])
-        )
-    )
+    # Same incident definition as the dashboard, without its 30-day window:
+    # an unresolved incident stays on the reconciliation list until handled.
+    payment_errors = await db.scalar(_payment_incident_count_query())
     processed_refund_total = (
         select(func.coalesce(func.sum(RefundRequest.amount_kopecks), 0))
         .where(
