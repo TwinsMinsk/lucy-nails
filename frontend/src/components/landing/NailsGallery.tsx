@@ -15,31 +15,23 @@ interface NailsGalleryProps {
 }
 
 interface CarouselState {
-    /** Slide shown as the current work (scaled up, caption visible). */
-    activeSlide: number;
-    /** Slides fully inside the viewport. */
-    inView: number[];
-    /** Every slide is fully in view: nothing to scroll, all works are shown equally. */
-    fits: boolean;
-    /** Scroll snap that brings each slide into place (a snap is not a slide index). */
-    snapOfSlide: number[];
+    /**
+     * "carousel": every work has its own scroll position, the selected one is emphasised.
+     * "strip": Embla could not loop, merged positions or everything fits; all works are shown equally.
+     */
+    mode: "carousel" | "strip";
+    /** Selected scroll position; in carousel mode it is also the work index. */
+    selected: number;
+    positions: number;
 }
 
 function readCarouselState(api: EmblaCarouselType): CarouselState {
-    const slideCount = api.slideNodes().length;
-    // Snap index -> slide indexes. When Embla cannot loop it merges the edge snaps (trimSnaps),
-    // so one snap may hold several slides.
-    const registry = api.internalEngine().slideRegistry;
-    const snap = api.selectedScrollSnap();
-    const group = registry[snap] ?? [snap];
-    // In a merged start group the slide nearest the centre is the last one; in the end group, the first.
-    let activeSlide = group[0];
-    if (registry.length > 1 && snap === 0) activeSlide = group[group.length - 1];
-    const inView = api.slidesInView();
-    const snapOfSlide = Array.from({ length: slideCount }, (_, slide) =>
-        Math.max(0, registry.findIndex((slides) => slides.includes(slide))),
-    );
-    return { activeSlide, inView, fits: slideCount > 0 && inView.length === slideCount, snapOfSlide };
+    const positions = api.scrollSnapList().length;
+    return {
+        mode: positions === api.slideNodes().length ? "carousel" : "strip",
+        selected: api.selectedScrollSnap(),
+        positions,
+    };
 }
 
 export function NailsGallery({ items }: NailsGalleryProps) {
@@ -47,15 +39,12 @@ export function NailsGallery({ items }: NailsGalleryProps) {
         loop: true,
         align: "center",
         skipSnaps: false,
-        // A slide counts as in view only when it is (almost) entirely visible, not when it peeks in.
-        inViewThreshold: 0.99,
     });
 
     const [carousel, setCarousel] = useState<CarouselState>({
-        activeSlide: 0,
-        inView: [],
-        fits: false,
-        snapOfSlide: items.map((_, index) => index),
+        mode: "carousel",
+        selected: 0,
+        positions: items.length,
     });
     const reduceMotion = useReducedMotion();
 
@@ -70,14 +59,15 @@ export function NailsGallery({ items }: NailsGalleryProps) {
     useEffect(() => {
         if (!emblaApi) return;
         sync();
-        emblaApi.on("select", sync).on("reInit", sync).on("slidesInView", sync);
+        emblaApi.on("select", sync).on("reInit", sync).on("resize", sync);
         return () => {
-            emblaApi.off("select", sync).off("reInit", sync).off("slidesInView", sync);
+            emblaApi.off("select", sync).off("reInit", sync).off("resize", sync);
         };
     }, [emblaApi, sync]);
 
-    const { activeSlide, inView, fits, snapOfSlide } = carousel;
-    const showNavigation = !fits && items.length > 1;
+    const { mode, selected, positions } = carousel;
+    const isCarousel = mode === "carousel";
+    const showNavigation = positions > 1;
     const transition = reduceMotion ? { duration: 0 } : {
         type: "spring" as const,
         stiffness: 300,
@@ -92,11 +82,10 @@ export function NailsGallery({ items }: NailsGalleryProps) {
                 <div className="overflow-hidden" ref={emblaRef}>
                     <div className="flex">
                         {items.map((item, index) => {
-                            const isActive = !fits && activeSlide === index;
-                            const isShown = fits || isActive;
-                            // When every work fits, each visible slide shows its caption; otherwise only the current one,
-                            // so cut-off neighbour text never competes with it.
-                            const captionVisible = fits ? inView.includes(index) : isActive;
+                            const isActive = isCarousel && selected === index;
+                            // In carousel mode only the selected work is shown in full, so cut-off neighbour
+                            // text never competes with it; in strip mode every work is.
+                            const isShown = !isCarousel || isActive;
                             const caption = item.caption.trim();
 
                             return (
@@ -116,7 +105,7 @@ export function NailsGallery({ items }: NailsGalleryProps) {
                                         <motion.div
                                             initial={false}
                                             animate={{
-                                                scale: fits ? 1 : isActive ? 1.1 : 0.85,
+                                                scale: !isCarousel ? 1 : isActive ? 1.1 : 0.85,
                                                 zIndex: isActive ? 10 : 0,
                                             }}
                                             transition={transition}
@@ -131,13 +120,13 @@ export function NailsGallery({ items }: NailsGalleryProps) {
                                                 className="object-cover select-none"
                                             />
                                         </motion.div>
-                                        {/* As wide as the scaled active photo (-mx-[5%]); the text wraps in full, and flex-1
-                                            makes every caption area as tall as the longest one in the row */}
+                                        {/* Never wider than its slide; the text wraps in full, and flex-1 makes every
+                                            caption area as tall as the longest one in the row */}
                                         <motion.figcaption
                                             initial={false}
-                                            animate={{ opacity: captionVisible ? 1 : 0 }}
+                                            animate={{ opacity: isShown ? 1 : 0 }}
                                             transition={transition}
-                                            className="-mx-[5%] mt-4 flex flex-1 flex-col items-center gap-1.5 px-1 text-center"
+                                            className="mt-4 flex flex-1 flex-col items-center gap-1.5 px-1 text-center"
                                         >
                                             {item.technique && (
                                                 <Badge variant="secondary" className="block max-w-full whitespace-normal break-words bg-[#fff1f4] text-text-primary border border-primary/20">
@@ -160,11 +149,11 @@ export function NailsGallery({ items }: NailsGalleryProps) {
                 {showNavigation && (
                     /* Navigation Arrows, positioned against the photo box rather than the caption: the wrapper starts
                        at the slide's top padding and its padding-top (a % of the gallery width) equals the photo height
-                       (slide width minus pl-1, times 4/3). The active photo grows upward from its bottom edge by 10%,
-                       so -5% moves the arrows to its visual centre */
+                       (slide width minus pl-1, times 4/3). In carousel mode the active photo grows upward from its
+                       bottom edge by 10%, so -5% moves the arrows to its visual centre */
                     <div className="pointer-events-none absolute inset-x-0 top-[10vw] sm:top-16 z-20">
                         <div className="relative pt-[calc((70%_-_4px)*4/3)] sm:pt-[calc((50%_-_4px)*4/3)] md:pt-[calc((40%_-_4px)*4/3)] lg:pt-[calc((33.333%_-_4px)*4/3)]">
-                            <div className="absolute inset-0 -translate-y-[5%] flex items-center justify-between gap-4">
+                            <div className={`absolute inset-0 flex items-center justify-between gap-4 ${isCarousel ? "-translate-y-[5%]" : ""}`}>
                                 <Button
                                     onClick={scrollPrev}
                                     variant="outline"
@@ -189,21 +178,21 @@ export function NailsGallery({ items }: NailsGalleryProps) {
                 )}
             </div>
 
-            {/* Dots / Indicators */}
+            {/* Dots / Indicators: one per work in carousel mode, one per scroll position in strip mode */}
             {/* 24px tall hit area around a 10px dot (WCAG 2.5.8) */}
             {showNavigation && (
                 <div className="flex justify-center gap-1 mt-6">
-                    {items.map((_, index) => (
+                    {Array.from({ length: positions }, (_, index) => (
                         <button
                             key={index}
                             type="button"
-                            onClick={() => emblaApi?.scrollTo(snapOfSlide[index] ?? index)}
+                            onClick={() => emblaApi?.scrollTo(index)}
                             className="group/dot flex h-6 items-center px-1"
-                            aria-label={`Работа ${index + 1} из ${items.length}`}
-                            aria-current={activeSlide === index ? "true" : undefined}
+                            aria-label={`${isCarousel ? "Работа" : "Страница"} ${index + 1} из ${positions}`}
+                            aria-current={selected === index ? "true" : undefined}
                         >
                             <span
-                                className={`block h-2.5 rounded-full transition-all duration-300 ${activeSlide === index
+                                className={`block h-2.5 rounded-full transition-all duration-300 ${selected === index
                                     ? "w-12 bg-primary"
                                     : "w-2.5 bg-primary/30 group-hover/dot:bg-primary/50"
                                     }`}

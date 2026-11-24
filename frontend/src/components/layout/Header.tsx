@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { Menu, User, LogOut, BookOpen, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -74,23 +74,34 @@ export function Header() {
         checkAuth();
     }, [pathname]);
 
-    // A new page (link, Back/Forward) closes the drawer and drops an anchor scroll meant for the old page.
-    useEffect(() => {
-        setMenuOpen(false);
+    // Drops an anchor scroll that the drawer has not performed yet (it would write a stale hash into history).
+    const cancelPendingScroll = useCallback(() => {
         pendingHashRef.current = null;
         if (pendingScrollTimerRef.current !== null) {
             window.clearTimeout(pendingScrollTimerRef.current);
             pendingScrollTimerRef.current = null;
         }
-    }, [pathname]);
+    }, []);
 
-    // Back/Forward between entries of the same page (hash changes) does not change the pathname.
+    // A new page (link, Back/Forward) closes the drawer and cancels the anchor scroll meant for the old page.
     useEffect(() => {
-        if (!menuOpen) return;
-        const closeMenu = () => setMenuOpen(false);
-        window.addEventListener("popstate", closeMenu);
-        return () => window.removeEventListener("popstate", closeMenu);
-    }, [menuOpen]);
+        setMenuOpen(false);
+        cancelPendingScroll();
+    }, [pathname, cancelPendingScroll]);
+
+    // Any Back/Forward step, including between hashes of the same page, does the same; on unmount the
+    // pending scroll is dropped too.
+    useEffect(() => {
+        const onHistoryStep = () => {
+            setMenuOpen(false);
+            cancelPendingScroll();
+        };
+        window.addEventListener("popstate", onHistoryStep);
+        return () => {
+            window.removeEventListener("popstate", onHistoryStep);
+            cancelPendingScroll();
+        };
+    }, [cancelPendingScroll]);
 
     // Returns false when the server did not end the session: the user stays signed in and can retry.
     const handleLogout = async (): Promise<boolean> => {
