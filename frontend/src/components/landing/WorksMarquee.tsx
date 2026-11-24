@@ -30,10 +30,12 @@ export interface WorksMarqueeProps {
 export function WorksMarquee({ photos, title, reverse = false }: WorksMarqueeProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  // True while the strip is on screen or within 300 px of it: it loads tiles and auto-scrolls
-  // only then, so strips further down the page cost neither requests nor animation frames.
+  // True while the strip is on screen or within 300 px of it: tiles load only then,
+  // so strips further down the page cost no requests.
   const [nearViewport, setNearViewport] = useState(false);
-  const nearViewportRef = useRef(false);
+  // True while some of the strip is actually on screen: it auto-scrolls only then.
+  const [onScreen, setOnScreen] = useState(false);
+  const onScreenRef = useRef(false);
   // Native lazy loading never fires for tiles moved by the carousel transform, so the tiles
   // in view and their neighbours are switched to eager loading as the carousel moves.
   const [loadedTiles, setLoadedTiles] = useState<ReadonlySet<number>>(() => new Set());
@@ -71,34 +73,48 @@ export function WorksMarquee({ photos, title, reverse = false }: WorksMarqueePro
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[entries.length - 1];
-        if (entry) setNearViewport(entry.isIntersecting);
-      },
-      { rootMargin: "300px" }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
+    const observe = (margin: string, onChange: (visible: boolean) => void) => {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const entry = entries[entries.length - 1];
+          if (entry) onChange(entry.isIntersecting);
+        },
+        { rootMargin: margin }
+      );
+      observer.observe(el);
+      return observer;
+    };
+    const preload = observe("300px", setNearViewport);
+    const playback = observe("0px", setOnScreen);
+    return () => {
+      preload.disconnect();
+      playback.disconnect();
+    };
   }, []);
 
-  // Auto-scroll only while the strip is near the screen. Embla re-creates its plugins after
+  // Auto-scroll only while the strip is on screen. Embla re-creates its plugins after
   // a resize, and playOnInit is off, so playback is restored on reInit as well.
   useEffect(() => {
-    nearViewportRef.current = nearViewport;
+    onScreenRef.current = onScreen;
     if (!emblaApi) return;
     const sync = () => {
       const autoScroll = emblaApi.plugins()?.autoScroll;
       if (!autoScroll) return;
-      if (nearViewportRef.current) autoScroll.play();
+      if (onScreenRef.current) autoScroll.play();
       else autoScroll.stop();
     };
-    sync();
-    emblaApi.on("reInit", sync);
-    return () => {
-      emblaApi.off("reInit", sync);
+    // The plugin also resumes by itself on mouseleave, focusout and after a drag settles.
+    // Off screen that start is cancelled; the plugin marks itself playing only after
+    // emitting the event, hence the microtask.
+    const keepStillOffScreen = () => {
+      if (!onScreenRef.current) queueMicrotask(() => emblaApi.plugins()?.autoScroll?.stop());
     };
-  }, [emblaApi, nearViewport]);
+    sync();
+    emblaApi.on("reInit", sync).on("autoScroll:play", keepStillOffScreen);
+    return () => {
+      emblaApi.off("reInit", sync).off("autoScroll:play", keepStillOffScreen);
+    };
+  }, [emblaApi, onScreen]);
 
   // Load the tiles in view plus PRELOAD_NEIGHBOURS on each side (both directions: strips
   // scroll either way and the arrows go back too). Loaded tiles stay loaded.
