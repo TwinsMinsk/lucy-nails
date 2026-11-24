@@ -67,9 +67,23 @@ FUNNEL = [
 ]
 
 
+REPORT_MIN_DATE = date(2000, 1, 1)
+REPORT_MAX_DATE = date(2100, 12, 31)
+
+
 def _date_bounds(
     date_from: date | None, date_to: date | None
 ) -> tuple[date, date, datetime, datetime]:
+    for value in (date_from, date_to):
+        # date.max + 1 day overflows; reports have no data outside these years.
+        if value is not None and not REPORT_MIN_DATE <= value <= REPORT_MAX_DATE:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Report dates must be between {REPORT_MIN_DATE.isoformat()} "
+                    f"and {REPORT_MAX_DATE.isoformat()}"
+                ),
+            )
     end_date = date_to or datetime.utcnow().date()
     start_date = date_from or end_date - timedelta(days=29)
     if start_date > end_date:
@@ -394,7 +408,11 @@ async def _source_rows(
             "orders": int(row.orders),
             "paid_orders": int(row.paid_orders),
             "gross_revenue_kopecks": int(row.gross),
-            "conversion_pct": round(row.paid_orders / row.orders * 100, 2)
+            # On the payment basis every row is a paid order, so a conversion
+            # would always read 100%: it is only meaningful for acquisition.
+            "conversion_pct": None
+            if basis == "payment"
+            else round(row.paid_orders / row.orders * 100, 2)
             if row.orders
             else 0,
         }

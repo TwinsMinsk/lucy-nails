@@ -1202,7 +1202,8 @@ export interface ReportSource {
     orders: number;
     paid_orders: number;
     gross_revenue_kopecks: number;
-    conversion_pct: number;
+    /** Null on the payment basis, where every row is already paid. */
+    conversion_pct: number | null;
 }
 
 export interface ReportTariff {

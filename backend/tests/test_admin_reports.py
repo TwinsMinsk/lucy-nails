@@ -543,3 +543,71 @@ async def test_explicit_manual_grant_and_its_refund_do_not_change_financial_repo
     assert overview.json()["paid_orders"] == 0
     cohort = await client.get("/api/admin/reports/cohorts", headers=headers)
     assert cohort.json()[0]["purchasers"] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "query",
+    [
+        "date_to=9999-12-31",
+        "date_from=9999-12-30&date_to=9999-12-31",
+        "date_from=0001-01-01&date_to=0001-01-02",
+    ],
+)
+@pytest.mark.parametrize("report", ["overview", "sources", "timeseries", "cohorts"])
+async def test_report_dates_outside_bounds_are_rejected(client, db, report, query):
+    """date_to=9999-12-31 used to overflow end_date + 1 day into a 500 (audit M3)."""
+    _, _, _, _, headers = await _report_fixture(db)
+    response = await client.get(f"/api/admin/reports/{report}?{query}", headers=headers)
+    assert response.status_code == 422, response.text
+
+
+@pytest.mark.asyncio
+async def test_payment_basis_sources_leave_conversion_empty(client, db):
+    """Every payment-basis row is a paid order, so 100% says nothing (audit M5)."""
+    import csv
+    import io
+
+    now, admin, student, course, headers = await _report_fixture(db)
+    order = Order(
+        user_id=student.id,
+        course_id=course.id,
+        course_title=course.title,
+        tariff="self",
+        customer_email=student.email,
+        amount_kopecks=10000,
+        access_days=30,
+        status="paid",
+        status_token_hash="conversion-source",
+        first_utm_source="vk",
+        created_at=now,
+    )
+    db.add(order)
+    await db.flush()
+    db.add(
+        Purchase(
+            user_id=student.id,
+            course_id=course.id,
+            order_id=order.id,
+            tariff="self",
+            amount_kopecks=10000,
+            payment_id="conversion-payment",
+            payment_status="success",
+            paid_at=now,
+            expires_at=now + timedelta(days=30),
+        )
+    )
+    await db.commit()
+
+    payment_csv = await client.get("/api/admin/reports/sources?format=csv", headers=headers)
+    row = next(csv.DictReader(io.StringIO(payment_csv.text.lstrip("\ufeff"))))
+    assert row["source"] == "vk"
+    assert row["conversion_pct"] == ""
+    payment_json = await client.get("/api/admin/reports/sources", headers=headers)
+    assert payment_json.json()[0]["conversion_pct"] is None
+
+    acquisition = await client.get(
+        "/api/admin/reports/sources?format=csv&basis=acquisition", headers=headers
+    )
+    row = next(csv.DictReader(io.StringIO(acquisition.text.lstrip("\ufeff"))))
+    assert float(row["conversion_pct"]) == 100.0
