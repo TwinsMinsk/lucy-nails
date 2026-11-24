@@ -82,40 +82,76 @@ function Access() {
         navigate(searchInput.trim(), status, 0)
     }
 
-    const confirmRevoke = async () => {
-        if (!revoke || reason.trim().length < 5) return
-        await adminRevokeEntitlement(revoke.id, reason.trim())
-        toast.success("Доступ отозван")
-        setRevoke(null)
-        setReason("")
-        await load()
+    // One mutation at a time: a second click while a request is in flight is ignored.
+    const [busy, setBusy] = useState(false)
+    const busyRef = useRef(false)
+    const [actionError, setActionError] = useState<string | null>(null)
+    const [extendItem, setExtendItem] = useState<AdminEntitlement | null>(null)
+    const [extendDays, setExtendDays] = useState("30")
+    const [extendReason, setExtendReason] = useState("")
+    const [extendKey, setExtendKey] = useState("")
+
+    /** Returns null on success, otherwise the API error text (409/422 details included). */
+    const runMutation = async (action: () => Promise<void>): Promise<string | null> => {
+        if (busyRef.current) return "Предыдущее действие ещё выполняется"
+        busyRef.current = true
+        setBusy(true)
+        setActionError(null)
+        try {
+            await action()
+            return null
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Не удалось выполнить действие"
+            setActionError(message)
+            return message
+        } finally {
+            busyRef.current = false
+            setBusy(false)
+            await load()
+        }
     }
 
-    const extend = async (item: AdminEntitlement) => {
-        const rawDays = window.prompt("На сколько дней продлить доступ?", "30")
-        if (!rawDays) return
-        const days = Number(rawDays)
-        if (!Number.isInteger(days) || days < 1 || days > 3650) {
-            toast.error("Укажите целое число дней от 1 до 3650")
-            return
+    const openRevoke = (item: AdminEntitlement) => { setRevoke(item); setReason(""); setActionError(null) }
+    const confirmRevoke = async () => {
+        if (!revoke || reason.trim().length < 5) return
+        const failure = await runMutation(() => adminRevokeEntitlement(revoke.id, reason.trim()).then(() => undefined))
+        if (failure === null) {
+            toast.success("Доступ отозван")
+            setRevoke(null)
+            setReason("")
         }
-        const actionReason = window.prompt("Укажите причину продления")?.trim()
-        if (!actionReason || actionReason.length < 5) return
-        await adminExtendEntitlement(item.id, days, actionReason)
-        toast.success("Доступ продлён")
-        await load()
+    }
+
+    const openExtend = (item: AdminEntitlement) => {
+        setExtendItem(item)
+        setExtendDays("30")
+        setExtendReason("")
+        setActionError(null)
+        // A fresh key per dialog: repeats of this submit are applied once by the API.
+        setExtendKey(crypto.randomUUID())
+    }
+    const extendDaysValue = Number(extendDays)
+    const extendDaysValid = Number.isInteger(extendDaysValue) && extendDaysValue >= 1 && extendDaysValue <= 3650
+    const confirmExtend = async () => {
+        if (!extendItem || !extendDaysValid || extendReason.trim().length < 5) return
+        const failure = await runMutation(() => adminExtendEntitlement(extendItem.id, extendDaysValue, extendReason.trim(), extendKey).then(() => undefined))
+        if (failure === null) {
+            toast.success("Доступ продлён")
+            setExtendItem(null)
+        }
     }
 
     const changeState = async (item: AdminEntitlement, action: "suspend" | "restore") => {
+        if (busyRef.current) return
         const actionReason = window.prompt(
             action === "suspend"
                 ? "Укажите причину приостановки"
                 : "Укажите причину восстановления",
         )?.trim()
         if (!actionReason || actionReason.length < 5) return
-        await adminChangeEntitlementState(item.id, action, actionReason)
-        toast.success(action === "suspend" ? "Доступ приостановлен" : "Доступ восстановлен")
-        await load()
+        const failure = await runMutation(() => adminChangeEntitlementState(item.id, action, actionReason).then(() => undefined))
+        if (failure === null) toast.success(action === "suspend" ? "Доступ приостановлен" : "Доступ восстановлен")
+        else toast.error("Не удалось изменить доступ", { description: failure })
     }
 
     return (
@@ -163,10 +199,10 @@ function Access() {
                                         <td className="p-3">{date(item.expires_at)}</td>
                                         <td className="p-3">
                                             <div className="flex justify-end gap-2">
-                                                {canManageAccess && item.status !== "revoked" && <Button size="sm" variant="outline" onClick={() => void extend(item)}>Продлить</Button>}
-                                                {canManageAccess && item.status === "active" && <Button size="sm" variant="outline" onClick={() => void changeState(item, "suspend")}>Приостановить</Button>}
-                                                {canManageAccess && item.status === "suspended" && <Button size="sm" variant="outline" onClick={() => void changeState(item, "restore")}>Восстановить</Button>}
-                                                {canManageAccess && ["active", "suspended"].includes(item.status) && <Button size="sm" variant="destructive" onClick={() => setRevoke(item)}>Отозвать</Button>}
+                                                {canManageAccess && item.status !== "revoked" && <Button size="sm" variant="outline" disabled={busy} onClick={() => openExtend(item)}>Продлить</Button>}
+                                                {canManageAccess && item.status === "active" && <Button size="sm" variant="outline" disabled={busy} onClick={() => void changeState(item, "suspend")}>Приостановить</Button>}
+                                                {canManageAccess && item.status === "suspended" && <Button size="sm" variant="outline" disabled={busy} onClick={() => void changeState(item, "restore")}>Восстановить</Button>}
+                                                {canManageAccess && ["active", "suspended"].includes(item.status) && <Button size="sm" variant="destructive" disabled={busy} onClick={() => openRevoke(item)}>Отозвать</Button>}
                                             </div>
                                         </td>
                                     </tr>
@@ -182,9 +218,24 @@ function Access() {
                     <DialogHeader><DialogTitle>Отозвать доступ</DialogTitle></DialogHeader>
                     <p className="text-sm text-muted-foreground">{revoke?.user_email} · {revoke?.course_title}</p>
                     <Textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Укажите причину (обязательно)" />
+                    {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setRevoke(null)}>Отмена</Button>
-                        <Button variant="destructive" disabled={reason.trim().length < 5} onClick={confirmRevoke}>Отозвать</Button>
+                        <Button variant="destructive" disabled={busy || reason.trim().length < 5} onClick={confirmRevoke}>{busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Отозвать</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            <Dialog open={Boolean(extendItem)} onOpenChange={(open) => { if (!open) setExtendItem(null) }}>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>Продлить доступ</DialogTitle></DialogHeader>
+                    <p className="text-sm text-muted-foreground">{extendItem?.user_email} · {extendItem?.course_title}</p>
+                    <p className="text-xs text-muted-foreground">Дни добавляются к текущему окончанию доступа ученика к курсу.</p>
+                    <Input aria-label="Дней продления" type="number" min={1} max={3650} value={extendDays} onChange={(event) => setExtendDays(event.target.value)} />
+                    <Textarea value={extendReason} onChange={(event) => setExtendReason(event.target.value)} placeholder="Причина продления (обязательно)" />
+                    {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setExtendItem(null)}>Отмена</Button>
+                        <Button disabled={busy || !extendDaysValid || extendReason.trim().length < 5} onClick={confirmExtend}>{busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Продлить</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

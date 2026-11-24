@@ -1362,10 +1362,11 @@ export const adminRevokeEntitlement = (entitlementId: string, reason: string) =>
         body: JSON.stringify({ entitlement_id: entitlementId, reason }),
     });
 
-export const adminExtendEntitlement = (entitlementId: string, days: number, reason: string) =>
+/** idempotencyKey: generated once per dialog so a repeated submit does not add the days twice. */
+export const adminExtendEntitlement = (entitlementId: string, days: number, reason: string, idempotencyKey?: string) =>
     apiFetch<{ entitlement_id: string; status: string; expires_at: string }>(`/admin/entitlements/${entitlementId}/extend`, {
         method: "POST",
-        body: JSON.stringify({ days, reason }),
+        body: JSON.stringify({ days, reason, ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}) }),
     });
 
 export const adminChangeEntitlementState = (

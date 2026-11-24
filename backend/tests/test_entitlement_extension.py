@@ -100,3 +100,69 @@ async def test_extending_the_latest_row_adds_days_to_its_own_end(
     assert response.status_code == 200, response.text
     async with TestingSessionLocal() as fresh:
         assert (await fresh.get(Entitlement, renewed.id)).expires_at == renewed_end + timedelta(days=5)
+
+
+@pytest.mark.asyncio
+async def test_repeated_extension_with_the_same_key_adds_days_once(
+    client: AsyncClient, db: AsyncSession
+):
+    headers, _, renewed = await _setup(client, db)
+    renewed_end = renewed.expires_at
+    payload = {"days": 7, "reason": "Goodwill extension", "idempotency_key": "dialog-key-0001"}
+
+    first = await client.post(f"/api/admin/entitlements/{renewed.id}/extend", json=payload, headers=headers)
+    second = await client.post(f"/api/admin/entitlements/{renewed.id}/extend", json=payload, headers=headers)
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert first.json()["expires_at"] == second.json()["expires_at"]
+    async with TestingSessionLocal() as fresh:
+        assert (await fresh.get(Entitlement, renewed.id)).expires_at == renewed_end + timedelta(days=7)
+        audits = (
+            await fresh.execute(select(AuditLog).where(AuditLog.action == "entitlement.extend"))
+        ).scalars().all()
+    assert len(audits) == 1
+    assert audits[0].new_value["idempotency_key"] == "dialog-key-0001"
+
+    # A new dialog (new key) is a new, deliberate extension.
+    third = await client.post(
+        f"/api/admin/entitlements/{renewed.id}/extend",
+        json={**payload, "idempotency_key": "dialog-key-0002"},
+        headers=headers,
+    )
+    assert third.status_code == 200, third.text
+    async with TestingSessionLocal() as fresh:
+        assert (await fresh.get(Entitlement, renewed.id)).expires_at == renewed_end + timedelta(days=14)
+
+
+@pytest.mark.asyncio
+async def test_concurrent_double_submit_adds_days_once(client: AsyncClient, db: AsyncSession):
+    import asyncio
+
+    from app.core.database import get_db
+    from app.main import app
+
+    headers, _, renewed = await _setup(client, db)
+    renewed_end = renewed.expires_at
+
+    async def isolated_db():
+        async with TestingSessionLocal() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    app.dependency_overrides[get_db] = isolated_db
+    payload = {"days": 3, "reason": "Goodwill extension", "idempotency_key": "double-click-01"}
+    responses = await asyncio.gather(
+        *(
+            client.post(f"/api/admin/entitlements/{renewed.id}/extend", json=payload, headers=headers)
+            for _ in range(2)
+        )
+    )
+
+    assert [response.status_code for response in responses] == [200, 200]
+    async with TestingSessionLocal() as fresh:
+        assert (await fresh.get(Entitlement, renewed.id)).expires_at == renewed_end + timedelta(days=3)

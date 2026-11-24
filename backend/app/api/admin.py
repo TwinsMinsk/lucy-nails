@@ -14,6 +14,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.dependencies import require_permission, user_has_permission
+from app.models.audit_log import AuditLog
 from app.models.user import User
 from app.models.course import Course
 from app.models.module import Module
@@ -66,6 +67,12 @@ class EntitlementReasonRequest(BaseModel):
 
 class EntitlementExtendRequest(EntitlementReasonRequest):
     days: int = Field(..., ge=1, le=3650)
+    # Generated when the extension dialog opens; a repeated request with the same
+    # key (double click, network retry) returns the first result instead of
+    # adding the days again.
+    idempotency_key: str | None = Field(
+        default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$"
+    )
 
 
 class EntitlementActionResponse(BaseModel):
@@ -1088,6 +1095,22 @@ async def extend_entitlement(
     admin: User = Depends(require_permission("access.manage")),
 ):
     entitlement = await _load_entitlement_for_action(db, entitlement_id)
+    if data.idempotency_key:
+        # The row lock above serializes repeats, so a committed first attempt is
+        # visible here and the days are never added twice.
+        already_done = await db.scalar(
+            select(AuditLog.id).where(
+                AuditLog.action == "entitlement.extend",
+                AuditLog.object_id == str(entitlement.id),
+                AuditLog.new_value["idempotency_key"].as_string() == data.idempotency_key,
+            ).limit(1)
+        )
+        if already_done is not None:
+            return EntitlementActionResponse(
+                entitlement_id=entitlement.id,
+                status=entitlement.status,
+                expires_at=entitlement.expires_at,
+            )
     old_value = {
         "status": entitlement.status,
         "expires_at": entitlement.expires_at.isoformat(),
@@ -1114,6 +1137,7 @@ async def extend_entitlement(
             "status": entitlement.status,
             "expires_at": entitlement.expires_at.isoformat(),
             "days": data.days,
+            **({"idempotency_key": data.idempotency_key} if data.idempotency_key else {}),
         },
     )
     await db.commit()

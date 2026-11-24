@@ -77,13 +77,29 @@ function Orders() {
     }, [canManageRefunds, search, status, offset])
     useEffect(() => { void load(); return () => { generation.current += 1 } }, [load])
 
+    const [refundBusy, setRefundBusy] = useState(false)
+    const refundInFlight = useRef(false)
+    const [refundError, setRefundError] = useState<string | null>(null)
     const openRefund = (order: AdminOrder) => {
-        setRefundOrder(order); setRefundAmount(order.amount_kopecks); setRefundReason("")
+        setRefundOrder(order); setRefundAmount(order.amount_kopecks); setRefundReason(""); setRefundError(null)
     }
     const createRefund = async () => {
-        if (!canManageRefunds || !refundOrder?.purchase_id || refundReason.trim().length < 5) return
-        await adminCreateRefund({ purchase_id: refundOrder.purchase_id, amount_kopecks: refundAmount, reason: refundReason.trim() })
-        setRefundOrder(null); toast.success("Заявка на возврат создана"); await load()
+        if (refundInFlight.current || !canManageRefunds || !refundOrder?.purchase_id || refundReason.trim().length < 5) return
+        // A double click must not create two refund requests.
+        refundInFlight.current = true
+        setRefundBusy(true)
+        setRefundError(null)
+        try {
+            await adminCreateRefund({ purchase_id: refundOrder.purchase_id, amount_kopecks: refundAmount, reason: refundReason.trim() })
+            setRefundOrder(null); toast.success("Заявка на возврат создана")
+        } catch (error) {
+            // 409/422 (e.g. the amount exceeds what is left) are shown to the operator.
+            setRefundError(error instanceof Error ? error.message : "Не удалось создать заявку")
+        } finally {
+            refundInFlight.current = false
+            setRefundBusy(false)
+            await load()
+        }
     }
     const moveRefund = async (refund: AdminRefund, target: AdminRefund["status"]) => {
         if (!canManageRefunds) return
@@ -113,7 +129,7 @@ function Orders() {
                 {canManageRefunds && <Card><CardHeader><CardTitle>Возвраты</CardTitle></CardHeader><CardContent className="space-y-3">{refunds.map((refund) => <div key={refund.id} className="rounded-lg border p-3 text-sm"><div className="flex items-center justify-between"><b>{money(refund.amount_kopecks)}</b><Badge variant="outline">{refund.status}</Badge></div><p className="mt-2">{refund.reason}</p><p className="mt-1 text-xs text-muted-foreground">Purchase {refund.purchase_id.slice(0, 8)}… · {date(refund.created_at)}</p><div className="mt-3 flex gap-2">{refund.status === "requested" && <Button size="sm" variant="outline" onClick={() => moveRefund(refund, "submitted")}>Отмечен в Prodamus</Button>}{refund.status === "submitted" && <Button size="sm" onClick={() => moveRefund(refund, "processed")}>Подтвердить возврат</Button>}</div></div>)}{!refunds.length && <p className="text-sm text-muted-foreground">Заявок нет</p>}</CardContent></Card>}
                 <Card><CardHeader><CardTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5" />Журнал webhook</CardTitle></CardHeader><CardContent className="max-h-[520px] space-y-2 overflow-y-auto">{events.map((event) => <div key={event.id} className="rounded-lg border p-3 text-sm"><div className="flex justify-between"><b>{event.event_type}</b><Badge variant={["error", "rejected", "financial_incident"].includes(event.processing_status) ? "destructive" : "outline"}>{event.processing_status === "financial_incident" ? "Финансовый инцидент" : event.processing_status}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{date(event.received_at)} · {event.order_reference || "без order reference"}</p>{event.error_detail && <p className="mt-2 text-destructive">{event.error_code}: {event.error_detail}</p>}</div>)}</CardContent></Card>
             </div>
-            <Dialog open={Boolean(refundOrder)} onOpenChange={(open) => { if (!open) setRefundOrder(null) }}><DialogContent><DialogHeader><DialogTitle>Создать заявку на возврат</DialogTitle></DialogHeader><p className="text-sm">{refundOrder?.customer_email} · {refundOrder?.course_title}</p><Input type="number" min={1} max={refundOrder?.amount_kopecks} value={refundAmount} onChange={(event) => setRefundAmount(Number(event.target.value))} /><Textarea value={refundReason} onChange={(event) => setRefundReason(event.target.value)} placeholder="Причина возврата" /><p className="text-xs text-muted-foreground">Деньги возвращаются в официальном кабинете Prodamus. Здесь фиксируется заявка, история и итоговый статус.</p><DialogFooter><Button variant="outline" onClick={() => setRefundOrder(null)}>Отмена</Button><Button disabled={refundReason.trim().length < 5 || refundAmount < 1} onClick={createRefund}>Создать заявку</Button></DialogFooter></DialogContent></Dialog>
+            <Dialog open={Boolean(refundOrder)} onOpenChange={(open) => { if (!open) setRefundOrder(null) }}><DialogContent><DialogHeader><DialogTitle>Создать заявку на возврат</DialogTitle></DialogHeader><p className="text-sm">{refundOrder?.customer_email} · {refundOrder?.course_title}</p><Input type="number" min={1} max={refundOrder?.amount_kopecks} value={refundAmount} onChange={(event) => setRefundAmount(Number(event.target.value))} /><Textarea value={refundReason} onChange={(event) => setRefundReason(event.target.value)} placeholder="Причина возврата" /><p className="text-xs text-muted-foreground">Деньги возвращаются в официальном кабинете Prodamus. Здесь фиксируется заявка, история и итоговый статус.</p>{refundError && <p role="alert" className="text-sm text-destructive">{refundError}</p>}<DialogFooter><Button variant="outline" onClick={() => setRefundOrder(null)}>Отмена</Button><Button disabled={refundBusy || refundReason.trim().length < 5 || refundAmount < 1} onClick={createRefund}>{refundBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Создать заявку</Button></DialogFooter></DialogContent></Dialog>
         </div>
     )
 }

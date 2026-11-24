@@ -93,6 +93,7 @@ function Users() {
     const [grantDays, setGrantDays] = useState(30)
     const [grantReason, setGrantReason] = useState("")
     const [saving, setSaving] = useState(false)
+    const grantInFlight = useRef(false)
     const [createOpen, setCreateOpen] = useState(false)
     const [studentForm, setStudentForm] = useState(emptyStudentForm)
     const generation = useRef(0)
@@ -162,14 +163,18 @@ function Users() {
     }
 
     const grant = async () => {
-        if (!selected || !grantCourse || grantReason.trim().length < 5) return
+        if (grantInFlight.current || !selected || !grantCourse || grantReason.trim().length < 5) return
+        // A second click before the button re-renders as disabled must not grant twice.
+        grantInFlight.current = true
         setSaving(true)
         try {
             await adminGrantAccess(selected.id, grantCourse, "self", grantReason.trim(), grantDays)
             setGrantReason("")
             await Promise.all([refreshSelected(), load()])
             toast.success("Доступ выдан")
-        } finally { setSaving(false) }
+        } catch (error) {
+            toast.error("Не удалось выдать доступ", { description: errorText(error) })
+        } finally { grantInFlight.current = false; setSaving(false) }
     }
 
     const createStudent = async (event: FormEvent) => {
