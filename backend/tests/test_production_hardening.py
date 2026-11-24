@@ -249,3 +249,45 @@ def test_local_smtp_can_disable_starttls(environment):
 def test_smtp_starttls_defaults_to_enabled(monkeypatch):
     monkeypatch.delenv("SMTP_START_TLS", raising=False)
     assert _valid_prod().SMTP_START_TLS is True
+
+
+@pytest.mark.parametrize(
+    "proxies",
+    ["87.232.67.155", "87.232.67.155,203.0.113.7", "10.0.0.0/8,100.64.0.0/10", "2001:db8::1"],
+)
+def test_production_accepts_proxy_addresses_and_bounded_networks(proxies):
+    assert _valid_prod(FORWARDED_ALLOW_IPS=proxies).FORWARDED_ALLOW_IPS == proxies
+
+
+@pytest.mark.parametrize(
+    "proxies",
+    ["0.0.0.0/0", "::/0", "10.0.0.*", "87.232.67.155,*", "proxy.internal", "10.0.0.0/33"],
+)
+def test_production_rejects_wildcard_or_unbounded_proxy_entries(proxies):
+    with pytest.raises(ValidationError, match="FORWARDED_ALLOW_IPS must list proxy IP addresses"):
+        _valid_prod(FORWARDED_ALLOW_IPS=proxies)
+
+
+@pytest.mark.parametrize("origins", ["*", "https://lucysmirnova.ru,*", "https://*.lucysmirnova.ru"])
+@pytest.mark.parametrize("environment", ["development", "production"])
+def test_wildcard_cors_origin_is_rejected_with_credentials(origins, environment):
+    overrides = {"ENVIRONMENT": environment, "CORS_ORIGINS": origins}
+    with pytest.raises(ValidationError, match="CORS_ORIGINS must list exact origins"):
+        if environment == "production":
+            _valid_prod(**overrides)
+        else:
+            Settings(_env_file=None, **overrides)
+
+
+@pytest.mark.parametrize("hosts", ["*", "api.lucysmirnova.ru,*.lucysmirnova.ru"])
+def test_wildcard_trusted_host_is_rejected(hosts):
+    with pytest.raises(ValidationError, match="TRUSTED_HOSTS must list exact host names"):
+        _valid_prod(TRUSTED_HOSTS=hosts)
+
+
+def test_exact_cors_origins_and_hosts_still_pass():
+    config = _valid_prod(
+        CORS_ORIGINS="https://lucysmirnova.ru,https://www.lucysmirnova.ru",
+        TRUSTED_HOSTS="api.lucysmirnova.ru,lucysmirnova.ru",
+    )
+    assert config.CORS_ORIGINS.startswith("https://lucysmirnova.ru")

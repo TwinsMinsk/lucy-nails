@@ -8,6 +8,7 @@
 Переменные из окружения ОС имеют приоритет над файлами.
 """
 
+import ipaddress
 from pathlib import Path
 import re
 from urllib.parse import urlparse
@@ -24,6 +25,24 @@ _REPO_ROOT = _BACKEND_DIR.parent
 # (scripts/load); everything except "production" is non-production.
 ALLOWED_ENVIRONMENTS = ("development", "test", "staging", "production")
 NON_PRODUCTION_ENVIRONMENTS = frozenset({"development", "test", "staging"})
+
+
+def _split_list(value: str) -> list[str]:
+    return [item.strip() for item in (value or "").split(",") if item.strip()]
+
+
+def _invalid_proxy_entries(value: str) -> list[str]:
+    """Entries of a proxy list that are not a single address or a bounded network."""
+    invalid: list[str] = []
+    for entry in _split_list(value):
+        try:
+            network = ipaddress.ip_network(entry, strict=False)
+        except ValueError:
+            invalid.append(entry)
+            continue
+        if network.prefixlen == 0:
+            invalid.append(entry)
+    return invalid
 
 
 def _env_files() -> tuple[Path, ...]:
@@ -209,6 +228,18 @@ class Settings(BaseSettings):
         return self.ENVIRONMENT.lower() in NON_PRODUCTION_ENVIRONMENTS
 
     @model_validator(mode="after")
+    def validate_no_wildcard_origins(self):
+        """CORS always runs with credentials, so no environment may allow any origin."""
+        errors: list[str] = []
+        if any("*" in entry for entry in _split_list(self.CORS_ORIGINS)):
+            errors.append("CORS_ORIGINS must list exact origins: wildcards are not allowed with credentials")
+        if any("*" in entry for entry in _split_list(self.TRUSTED_HOSTS)):
+            errors.append("TRUSTED_HOSTS must list exact host names: wildcards are not allowed")
+        if errors:
+            raise ValueError("; ".join(errors))
+        return self
+
+    @model_validator(mode="after")
     def validate_production_safety(self):
         """Fail fast when production starts with unsafe defaults."""
         if not self.is_deployed:
@@ -285,6 +316,13 @@ class Settings(BaseSettings):
             errors.append("TRUSTED_HOSTS is required in production")
         if not self.FORWARDED_ALLOW_IPS or self.FORWARDED_ALLOW_IPS.strip() == "*":
             errors.append("FORWARDED_ALLOW_IPS must list trusted proxy IPs/CIDRs in production")
+        else:
+            invalid = _invalid_proxy_entries(self.FORWARDED_ALLOW_IPS)
+            if invalid:
+                errors.append(
+                    "FORWARDED_ALLOW_IPS must list proxy IP addresses or CIDR networks "
+                    "without wildcards or /0 networks; rejected: " + ", ".join(invalid)
+                )
         if not self.COOKIE_DOMAIN:
             errors.append("COOKIE_DOMAIN is required in production for sibling frontend/API hosts")
         if not self.REDIS_URL:

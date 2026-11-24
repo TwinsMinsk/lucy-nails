@@ -29,7 +29,8 @@
 - **Prodamus:** пусты `PRODAMUS_URL`/`PRODAMUS_SECRET_KEY`/`PRODAMUS_SHOP_ID`; `PRODAMUS_DEMO_MODE` включён в production или выключен в staging.
 - **URL:** `FRONTEND_URL`/`BACKEND_URL` не HTTPS или содержат `localhost`/`127.0.0.1`; в staging они и `COOKIE_DOMAIN` не на изолированном staging-поддомене.
 - **Email:** при `SMTP_REQUIRED_FOR_PAYMENT_EMAIL=True` нет транспорта (`RESEND_API_KEY` или `SMTP_USER` + `SMTP_PASSWORD`); `SMTP_START_TLS=False` в production или в staging вне приватного `*.railway.internal`.
-- **Инфраструктура:** пусты `TRUSTED_HOSTS`, `COOKIE_DOMAIN`, `REDIS_URL`; `FORWARDED_ALLOW_IPS` пуст или равен `*`.
+- **Инфраструктура:** пусты `TRUSTED_HOSTS`, `COOKIE_DOMAIN`, `REDIS_URL`; `FORWARDED_ALLOW_IPS` пуст, равен `*` или содержит запись, которая не является IP-адресом или CIDR-сетью, либо сеть `/0`.
+- **Во всех окружениях** (`validate_no_wildcard_origins`): `*` в `CORS_ORIGINS` (CORS всегда с credentials) или в `TRUSTED_HOSTS`.
 - **Telegram:** пусты `TELEGRAM_BOT_TOKEN`/`TELEGRAM_BOT_USERNAME` или `TELEGRAM_OWNER_CHAT_ID`.
 
 `MONITORING_TOKEN` на старте не проверяется: без него `/health/operations` отвечает 503.
