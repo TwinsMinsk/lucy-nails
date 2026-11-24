@@ -15,7 +15,7 @@ from app.models.audit_log import AuditLog
 from app.models.auth_security import AuthSession
 from app.models.rbac import Permission, Role, UserRoleAssignment
 from app.models.user import User
-from app.services.audit_service import append_audit_log
+from app.services.audit_service import append_audit_log, redact_audit_entry
 from app.services.runtime_settings_service import RuntimeSettingsService
 from app.services.session_service import SessionService
 
@@ -446,4 +446,7 @@ async def list_audit_logs(
     result = await db.execute(
         query.order_by(AuditLog.created_at.desc()).offset(offset).limit(limit)
     )
-    return list(result.scalars().all())
+    entries = list(result.scalars().all())
+    if await user_has_permission(db, auditor, "pii.read"):
+        return entries
+    return [redact_audit_entry(entry) for entry in entries]
