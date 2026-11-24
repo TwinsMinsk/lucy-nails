@@ -755,7 +755,9 @@ async def create_student_with_access(
         reason=data.reason,
     )
     frontend_url = settings.FRONTEND_URL.rstrip("/")
-    if user_created:
+    # An existing guest who never activated the account cannot use a login link,
+    # so the email kind follows email_verified_at, as in the payment webhook.
+    if user_created or user.email_verified_at is None:
         activation_token = create_account_activation_token(user.id, user.token_version)
         notification_kind = "account_activation"
         enqueue_outbox_message(
@@ -769,16 +771,6 @@ async def create_student_with_access(
             },
             dedupe_key=f"admin-student:{entitlement.id}:activation",
         )
-        append_audit_log(
-            db,
-            actor_user_id=admin.id,
-            action="student.create",
-            object_type="user",
-            object_id=str(user.id),
-            reason=data.reason,
-            correlation_id=request.state.correlation_id,
-            new_value={"role": "student", "course_id": str(course.id)},
-        )
     else:
         notification_kind = "access_granted"
         enqueue_outbox_message(
@@ -791,6 +783,17 @@ async def create_student_with_access(
                 "expires_at": entitlement.expires_at.isoformat(),
             },
             dedupe_key=f"admin-student:{entitlement.id}:access",
+        )
+    if user_created:
+        append_audit_log(
+            db,
+            actor_user_id=admin.id,
+            action="student.create",
+            object_type="user",
+            object_id=str(user.id),
+            reason=data.reason,
+            correlation_id=request.state.correlation_id,
+            new_value={"role": "student", "course_id": str(course.id)},
         )
     append_audit_log(
         db,

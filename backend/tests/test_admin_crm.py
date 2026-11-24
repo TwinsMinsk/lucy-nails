@@ -656,6 +656,44 @@ async def test_admin_create_student_reuses_existing_user_case_insensitively(
 
 
 @pytest.mark.asyncio
+async def test_admin_grant_to_unverified_existing_guest_sends_activation_link(
+    client: AsyncClient, db: AsyncSession
+):
+    """A guest who never activated cannot use a login link (audit B12)."""
+    headers = await _admin_headers(client, db)
+    course = Course(title="Guest Gift Course", price_self=5000, price_support=10000)
+    guest = User(
+        email="unverified.guest@example.com",
+        password_hash=get_password_hash("random-unusable-pass"),
+        role="student",
+    )
+    db.add_all([course, guest])
+    await db.commit()
+
+    response = await client.post(
+        "/api/admin/students",
+        json={
+            "email": "unverified.guest@example.com",
+            "course_id": str(course.id),
+            "reason": "Repeat grant after missed email",
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["user_created"] is False
+    messages = (await db.execute(select(OutboxMessage))).scalars().all()
+    assert [message.kind for message in messages] == ["account_activation"]
+    activation_url = messages[0].payload["activation_url"]
+    assert "/auth/activate?token=" in activation_url
+    token = activation_url.split("token=", 1)[1]
+    assert verify_account_activation_token(token) is not None
+    actions = (await db.execute(select(AuditLog.action))).scalars().all()
+    assert "student.create" not in actions
+    assert "entitlement.grant" in actions
+
+
+@pytest.mark.asyncio
 async def test_student_creation_and_login_link_require_permissions(
     client: AsyncClient, db: AsyncSession
 ):
