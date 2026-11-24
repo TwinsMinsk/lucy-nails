@@ -8,6 +8,7 @@ from datetime import datetime
 from uuid import UUID
 
 import pyotp
+from pyotp.utils import strings_equal
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -134,7 +135,10 @@ class MfaService:
         matched = [
             current_step + offset
             for offset in (-1, 0, 1)
-            if hmac.compare_digest(code, totp.at(now, offset))
+            # strings_equal normalises Unicode (NFKC) and compares bytes; a plain
+            # compare_digest on str raises for non-ASCII input such as
+            # full-width digits, which isdigit() lets through.
+            if strings_equal(code, totp.at(now, offset))
         ]
         if not matched:
             return False

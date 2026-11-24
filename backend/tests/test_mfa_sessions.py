@@ -602,3 +602,30 @@ async def test_refresh_rotation_serializes_concurrent_reuse(db: AsyncSession):
 
     assert await first_task is not None
     assert await second_task is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["full_width_wrong", "arabic_indic", "full_width_valid"])
+async def test_unicode_digit_codes_never_cause_a_server_error(
+    client: AsyncClient, db: AsyncSession, kind: str
+):
+    owner, secret = await _owner_with_totp(db)
+    valid = pyotp.TOTP(secret).now()
+    full_width = "".join(chr(ord("０") + int(digit)) for digit in valid)
+    codes = {
+        "full_width_wrong": "１２３４５６" if valid != "123456" else "６５４３２１",
+        "arabic_indic": "١٢٣٤٥٦",
+        "full_width_valid": full_width,
+    }
+
+    response = await client.post(
+        "/api/auth/login",
+        json={"email": owner.email, "password": "StrongOwnerPass1!", "mfa_code": codes[kind]},
+    )
+
+    if kind == "full_width_valid":
+        # NFKC turns full-width digits into the same code, as PyOTP always did.
+        assert response.status_code == 200, response.text
+    else:
+        assert response.status_code == 401, response.text
+        assert response.json()["detail"]["code"] == "mfa_code_invalid"
