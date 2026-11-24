@@ -28,7 +28,7 @@ from app.models.outbox import OutboxMessage
 from app.models.payment_event import PaymentEvent
 from app.models.progress import Progress
 from app.models.purchase import Purchase, paid_financial_filter
-from app.models.rbac import UserRoleAssignment
+from app.models.rbac import UserRoleAssignment, student_account_filter
 from app.models.refund import RefundRequest
 from app.models.user import User
 from app.services.access_service import AccessService
@@ -428,7 +428,7 @@ async def dashboard(
 ):
     now = datetime.utcnow()
     week = now + timedelta(days=7)
-    total_students = await db.scalar(select(func.count(User.id)).where(User.role == "student"))
+    total_students = await db.scalar(select(func.count(User.id)).where(student_account_filter()))
     active_entitlements = await db.scalar(
         select(func.count(Entitlement.id)).where(
             Entitlement.status == "active", Entitlement.expires_at > now

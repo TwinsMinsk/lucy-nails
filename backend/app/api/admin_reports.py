@@ -19,6 +19,7 @@ from app.models.order import Order
 from app.models.outbox import OutboxMessage
 from app.models.progress import Progress
 from app.models.purchase import Purchase, paid_financial_filter
+from app.models.rbac import student_account_filter
 from app.models.refund import RefundRequest
 from app.models.user import User
 
@@ -126,7 +127,7 @@ async def report_overview(
     )
     new_students = await db.scalar(
         select(func.count(User.id)).where(
-            User.role == "student", User.created_at >= start, User.created_at < end
+            student_account_filter(), User.created_at >= start, User.created_at < end
         )
     )
     gross_value = int(gross or 0)
@@ -504,7 +505,7 @@ async def report_cohorts(
             )
             .outerjoin(Certificate, Certificate.user_id == User.id)
             .where(
-                User.role == "student", User.created_at >= start, User.created_at < end
+                student_account_filter(), User.created_at >= start, User.created_at < end
             )
             .group_by(cohort)
             .order_by(cohort)
