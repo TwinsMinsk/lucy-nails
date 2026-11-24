@@ -93,6 +93,9 @@ class CsrfProtectionMiddleware(BaseHTTPMiddleware):
         "/api/auth/activate",
         "/api/auth/mfa/setup",
         "/api/auth/mfa/confirm",
+        # Authenticated by the X-Telegram-Bot-Api-Secret-Token header, never by
+        # cookies: a cookie on the request must not decide anything here.
+        "/api/telegram/webhook",
     }
 
     async def dispatch(self, request: Request, call_next):
@@ -276,7 +279,7 @@ if settings.UPLOAD_STORAGE_DIR:
 
 
 # Подключение роутеров
-from app.api import auth, courses, modules, lessons, purchases, admin, admin_ads, admin_certificates, admin_content, admin_crm, admin_refunds, admin_reports, admin_system, ads_files, ads_internal, analytics, backup_export, upload, payments, landing, admin_landing, certificates, telegram  # noqa: E402
+from app.api import auth, courses, modules, lessons, purchases, admin, admin_ads, admin_certificates, admin_content, admin_crm, admin_refunds, admin_reports, admin_system, ads_files, ads_internal, analytics, backup_export, upload, payments, landing, admin_landing, certificates, telegram, telegram_webhook  # noqa: E402
 from app.api.integrations import kinescope as kinescope_integration  # noqa: E402
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
@@ -287,6 +290,7 @@ app.include_router(purchases.router, prefix="/api/purchases", tags=["Purchases"]
 app.include_router(payments.router, prefix="/api/payments", tags=["Payments"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"])
 app.include_router(telegram.router, prefix="/api/telegram", tags=["Telegram"])
+app.include_router(telegram_webhook.router, prefix="/api/telegram")
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(admin_content.router, prefix="/api/admin", tags=["Admin: Content"])
 app.include_router(admin_crm.router, prefix="/api/admin", tags=["Admin: CRM"])

@@ -21,6 +21,7 @@ from app.models.auth_security import AuthSession, MfaCredential
 from app.models.crm import StudentNote, StudentTag, StudentTagAssignment
 from app.models.analytics_event import AnalyticsEvent
 from app.models.telegram_link import TelegramLinkToken
+from app.models.telegram_helpdesk import HelpdeskMessage, HelpdeskThread, TelegramUpdate
 from app.models.runtime_setting import RuntimeSetting
 from app.models.ad import AdCalendarEntry, AdCampaign, AdComment, AdFile, AdMaterial, AdTask
 
@@ -50,6 +51,9 @@ __all__ = [
     "StudentTagAssignment",
     "AnalyticsEvent",
     "TelegramLinkToken",
+    "TelegramUpdate",
+    "HelpdeskThread",
+    "HelpdeskMessage",
     "RuntimeSetting",
     "AdCampaign",
     "AdMaterial",

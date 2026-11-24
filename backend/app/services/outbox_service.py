@@ -3,6 +3,7 @@
 import re
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 import httpx
@@ -60,7 +61,24 @@ class TelegramApiError(RuntimeError):
 
     The request URL contains the bot token, so httpx exceptions, whose text and
     attributes carry that URL, must not leave _telegram_request.
+
+    ``status_code`` is the HTTP status (None when Telegram was not reached),
+    ``description`` Telegram's own redacted explanation. ``transient`` marks a
+    failure a later retry can fix: network trouble, 429 or a server error.
     """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        description: str = "",
+        transient: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.description = description
+        self.transient = transient
 
 
 def redact_telegram_token(text: str) -> str:
@@ -69,7 +87,18 @@ def redact_telegram_token(text: str) -> str:
     return TELEGRAM_TOKEN_PATTERN.sub(REDACTED, text)
 
 
-async def _telegram_request(method: str, payload: dict) -> None:
+def _telegram_description(response: httpx.Response) -> str:
+    try:
+        body = response.json()
+    except ValueError:
+        return ""
+    if not isinstance(body, dict):
+        return ""
+    return redact_telegram_token(str(body.get("description") or ""))[:200]
+
+
+async def _telegram_request(method: str, payload: dict) -> Any:
+    """Call the Bot API and return its ``result``; raise TelegramApiError otherwise."""
     if not settings.TELEGRAM_BOT_TOKEN:
         raise RuntimeError("Telegram bot is not configured")
     url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/{method}"
@@ -78,14 +107,35 @@ async def _telegram_request(method: str, payload: dict) -> None:
             response = await client.post(url, json=payload)
     except httpx.HTTPError as exc:
         raise TelegramApiError(
-            f"Telegram API {method} failed: {type(exc).__name__}"
+            f"Telegram API {method} failed: {type(exc).__name__}", transient=True
         ) from None
     if not response.is_success:
+        description = _telegram_description(response)
         raise TelegramApiError(
             f"Telegram API {method} failed with HTTP {response.status_code}"
+            + (f": {description}" if description else ""),
+            status_code=response.status_code,
+            description=description,
+            transient=response.status_code == 429 or response.status_code >= 500,
         )
-    if not response.json().get("ok"):
+    try:
+        body = response.json()
+    except ValueError:
+        raise TelegramApiError(
+            f"Telegram API {method} returned an unreadable response", transient=True
+        ) from None
+    if not isinstance(body, dict) or not body.get("ok"):
         raise TelegramApiError(f"Telegram API rejected {method}")
+    return body.get("result")
+
+
+async def call_telegram_api(method: str, payload: dict) -> Any:
+    """Bot API call with the outbox's token redaction and timeout.
+
+    Only the live help desk conversation (app/services/telegram_helpdesk_service.py)
+    calls Telegram outside the outbox; everything else enqueues.
+    """
+    return await _telegram_request(method, payload)
 
 
 async def send_telegram_message(recipient: str, text: str) -> None:

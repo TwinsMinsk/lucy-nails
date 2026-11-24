@@ -14,6 +14,7 @@ from app.models.user import User
 from app.services.analytics_service import AnalyticsService
 from app.services.access_service import AccessService
 from app.services.outbox_service import enqueue_outbox_message
+from app.services.telegram_helpdesk_service import prune_processed_updates
 
 
 class LifecycleService:
@@ -148,6 +149,7 @@ class LifecycleService:
                 )
 
         scheduled += await cls._schedule_owner_alert(db, now=now)
+        await prune_processed_updates(db, now=now)
         return scheduled
 
     @classmethod
