@@ -1,8 +1,9 @@
 import type { MetadataRoute } from "next";
+import { PHASE_PRODUCTION_BUILD } from "next/constants";
 
 import { getPublishedCourses } from "@/lib/api";
 import { getPublicSiteUrl } from "@/lib/env";
-import { getLandingCourseId } from "@/lib/landing/loader";
+import { resolvePrimaryCourseId } from "@/lib/landing/loader";
 import { LEGAL_UPDATED_AT } from "@/lib/seo";
 
 const siteUrl = getPublicSiteUrl();
@@ -37,20 +38,24 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   try {
-    // The landing course page declares "/" as canonical, so only other courses are listed.
-    // getLandingCourseId throws while that course is unknown (landing API down, nothing confirmed
-    // yet), so an outage never lists the landing course under its own URL.
-    const [catalog, landingCourseId] = await Promise.all([getPublishedCourses(), getLandingCourseId()]);
+    // The primary course page declares "/" as canonical, so only other courses are listed.
+    // resolvePrimaryCourseId throws when the primary course cannot be established, so an
+    // outage never lists it under its own URL.
+    const [catalog, primaryCourseId] = await Promise.all([getPublishedCourses(), resolvePrimaryCourseId()]);
     return [
       ...staticRoutes,
-      ...catalog.courses.filter((course) => course.id !== landingCourseId).map((course) => ({
+      ...catalog.courses.filter((course) => course.id !== primaryCourseId).map((course) => ({
         url: `${siteUrl}/courses/${course.id}`,
         lastModified: optionalDate(course.created_at),
         changeFrequency: "weekly" as const,
         priority: 0.8,
       })),
     ];
-  } catch {
-    return staticRoutes;
+  } catch (error) {
+    // The production build has no API: publish the static routes so the build succeeds.
+    if (process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD) return staticRoutes;
+    // At request time (ISR revalidation) a shortened map must not replace a complete one:
+    // throwing keeps Next.js serving the last successfully generated sitemap.
+    throw error;
   }
 }

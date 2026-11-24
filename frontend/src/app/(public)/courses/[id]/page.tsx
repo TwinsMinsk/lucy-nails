@@ -10,19 +10,23 @@ import { ApiError, getPublicCourse, getPublicCourseModules, CourseResponse, Modu
 import { notFound } from "next/navigation";
 import { CoursePaymentCTA } from "@/components/course/CoursePaymentCTA";
 import { landingCourse } from "@/lib/landing/course-content";
-import { getLandingCourseId } from "@/lib/landing/loader";
+import { resolvePrimaryCourseId } from "@/lib/landing/loader";
 import { formatCourseDuration, formatDays, formatLessonDuration } from "@/lib/format";
 import { baseOpenGraph } from "@/lib/seo";
 
 // The API takes a UUID and answers 422 to anything else, so such an id cannot be a course.
 const COURSE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Ends with a 404 before any API request when the id cannot be a course. */
+function assertCourseId(id: string): void {
+    if (!COURSE_ID_PATTERN.test(id)) notFound();
+}
+
 /**
  * Only a 404 from the course request means "no such course". Any other failure is
  * temporary and must reach the error boundary as a server error, not a cached 404.
  */
 async function loadCourse(id: string): Promise<CourseResponse> {
-    if (!COURSE_ID_PATTERN.test(id)) notFound();
     try {
         return await getPublicCourse(id);
     } catch (error) {
@@ -33,16 +37,20 @@ async function loadCourse(id: string): Promise<CourseResponse> {
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
     const { id } = await params;
+    assertCourseId(id);
 
-    // getLandingCourseId throws while the landing course is unknown, so an outage
-    // never flips the canonical of the landing course to its own URL.
-    const [course, landingCourseId] = await Promise.all([loadCourse(id), getLandingCourseId()]);
+    // Both requests start together, but the course result is settled first: an unknown id is
+    // a 404 whatever the primary course lookup does or how fast it fails.
+    const primaryCourseId = resolvePrimaryCourseId();
+    primaryCourseId.catch(() => {});
+    const course = await loadCourse(id);
+    // Throws when the primary course is unknown: a server error, never a canonical that may be wrong.
+    const isPrimaryCourse = course.id === (await primaryCourseId);
+    // The landing page sells the primary course with fuller content, so it is the page to index.
+    const canonical = isPrimaryCourse ? "/" : `/courses/${course.id}`;
     const description = course.description || "Онлайн-курс Люси Смирновой по дизайну ногтей.";
-    const isLandingCourse = landingCourseId === id;
-    // The landing page sells this course with fuller content, so it is the page to index.
-    const canonical = isLandingCourse ? "/" : `/courses/${id}`;
-    // One offer, one link preview: the landing course shares the prepared 1200x630 image of "/".
-    const images = !isLandingCourse && course.cover_image_url ? [course.cover_image_url] : baseOpenGraph.images;
+    // One offer, one link preview: the primary course shares the prepared 1200x630 image of "/".
+    const images = !isPrimaryCourse && course.cover_image_url ? [course.cover_image_url] : baseOpenGraph.images;
     return {
         title: course.title,
         description,
@@ -84,6 +92,7 @@ const mapModules = (apiModules: ModuleResponse[]): Module[] => {
 
 export default async function CoursePage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
+    assertCourseId(id);
 
     const [courseData, modulesData] = await Promise.all([
         loadCourse(id),
