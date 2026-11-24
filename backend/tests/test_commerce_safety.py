@@ -28,6 +28,7 @@ from app.models.purchase import Purchase
 from app.models.user import User
 from app.services.access_service import AccessService
 from app.services.certificate_service import CertificateService
+from app.services.payment_event_service import build_payment_event_data, new_payment_event
 from app.services.prodamus_service import ProdamusService, _make_signature
 from app.services.refund_service import RefundError, RefundService
 from app.services.auth_service import AuthService
@@ -565,12 +566,30 @@ async def _count(db, column, *conditions) -> int:
     return await db.scalar(select(func.count(column)).where(*conditions))
 
 
+def _strict_barrier(parties: int, timeout: float = 5):
+    """Hold every participant until all `parties` have arrived.
+
+    The timeout is mandatory and raises: a participant that never arrives
+    fails the test instead of letting it pass sequentially. Use it at points
+    every participant reaches without waiting for another one.
+    """
+    barrier = asyncio.Barrier(parties)
+    arrivals: list[str] = []
+
+    async def arrive(name: str) -> None:
+        arrivals.append(name)
+        await asyncio.wait_for(barrier.wait(), timeout)
+
+    return arrive, arrivals
+
+
 def _meet_or_pass(parties: int, timeout: float):
     """Hold each caller until `parties` have arrived, or until `timeout`.
 
-    Unfixed code lets concurrent requests reach the same point together, so
-    they all pass at once. When a lock keeps the others out, the first caller
-    gives up waiting and continues.
+    Never the only rendezvous of a test: it runs after a strict barrier has
+    proved that the participants are in flight together. Unfixed code then
+    lets them reach this point together, so they pass at once; when a lock
+    keeps the others out, the first caller gives up waiting and continues.
     """
     arrived = 0
     everyone = asyncio.Event()
@@ -586,6 +605,32 @@ def _meet_or_pass(parties: int, timeout: float):
             pass
 
     return meet
+
+
+def _both_reach_the_course_lock(monkeypatch) -> list[str]:
+    """Two callers must both reach the (user, course) lock before either takes it.
+
+    Then each one reads the current access; on code without the lock both
+    reads happen before either commits, which the tolerant meeting point
+    after the read makes certain.
+    """
+    arrive, arrivals = _strict_barrier(2)
+    lock_access = AccessService.lock_course_access
+    meet = _meet_or_pass(2, timeout=2)
+    read_access = AccessService.get_active_entitlement
+
+    async def arrive_then_lock(session, user_id, course_id):
+        await arrive("course lock")
+        await lock_access(session, user_id, course_id)
+
+    async def read_then_meet(session, user_id, course_id, *, now=None):
+        current = await read_access(session, user_id, course_id, now=now)
+        await meet()
+        return current
+
+    monkeypatch.setattr(AccessService, "lock_course_access", staticmethod(arrive_then_lock))
+    monkeypatch.setattr(AccessService, "get_active_entitlement", staticmethod(read_then_meet))
+    return arrivals
 
 
 @pytest.fixture
@@ -638,6 +683,9 @@ async def test_concurrent_deliveries_of_one_order_queue_instead_of_deadlocking(
         responses
     )
     assert [response.status_code for response in responses] == [200, 200]
+    # The barrier did hold both deliveries; a changed query text must not
+    # turn this into a sequential run.
+    assert arrivals == 2
     # One transaction per delivery: a deadlock hidden by the retry fails here.
     assert len(purchase_attempts) == len(set(purchase_attempts)) == 2
     assert await _count(db, Purchase.id) == 1
@@ -758,15 +806,7 @@ async def test_concurrent_orders_of_one_buyer_add_both_paid_periods(
     await db.commit()
     first_order = await _pending_order(db, course, buyer.email)
     second_order = await _pending_order(db, course, buyer.email)
-    meet = _meet_or_pass(2, timeout=2)
-    read_access = AccessService.get_active_entitlement
-
-    async def read_then_meet(session, user_id, course_id, *, now=None):
-        current = await read_access(session, user_id, course_id, now=now)
-        await meet()
-        return current
-
-    monkeypatch.setattr(AccessService, "get_active_entitlement", staticmethod(read_then_meet))
+    arrivals = _both_reach_the_course_lock(monkeypatch)
 
     responses = await asyncio.gather(
         _deliver(client, _notification(first_order, "renewal-one")),
@@ -778,6 +818,7 @@ async def test_concurrent_orders_of_one_buyer_add_both_paid_periods(
         responses
     )
     assert [response.status_code for response in responses] == [200, 200]
+    assert len(arrivals) == 2
     assert len(purchase_attempts) == 2
     earlier, later = (
         await db.scalars(
@@ -803,15 +844,7 @@ async def test_concurrent_manual_grants_add_both_periods(
     operator = User(email="granter@example.com", password_hash="unused", role="admin")
     db.add_all([student, operator])
     await db.commit()
-    meet = _meet_or_pass(2, timeout=2)
-    read_access = AccessService.get_active_entitlement
-
-    async def read_then_meet(session, user_id, course_id, *, now=None):
-        current = await read_access(session, user_id, course_id, now=now)
-        await meet()
-        return current
-
-    monkeypatch.setattr(AccessService, "get_active_entitlement", staticmethod(read_then_meet))
+    arrivals = _both_reach_the_course_lock(monkeypatch)
 
     async def grant(reason: str) -> None:
         async with production_sessions() as session:
@@ -828,6 +861,7 @@ async def test_concurrent_manual_grants_add_both_periods(
 
     await asyncio.gather(grant("First grant"), grant("Second grant"))
 
+    assert len(arrivals) == 2
     earlier, later = (
         await db.scalars(
             select(Entitlement)
@@ -1388,25 +1422,23 @@ async def test_second_payment_and_refund_of_the_paid_order_both_complete(
     purchase_attempts.clear()
 
     # Hold both sides at the point where each owns one row the other one needs:
-    # the webhook its order lock, the refund its purchase lock.
-    meet = _meet_or_pass(2, timeout=3)
-    holding = {"order": False, "purchase": False}
+    # the webhook its order lock, the refund its purchase lock. Neither waits
+    # for the other to get there, so both must arrive or the test fails.
+    arrive, arrivals = _strict_barrier(2)
     execute, scalar = AsyncSession.execute, AsyncSession.scalar
 
     async def execute_and_hold(session, statement, *args, **kwargs):
         result = await execute(session, statement, *args, **kwargs)
         sql = str(statement)
-        if not holding["order"] and "FROM orders" in sql and "FOR UPDATE" in sql:
-            holding["order"] = True
-            await meet()
+        if "order" not in arrivals and "FROM orders" in sql and "FOR UPDATE" in sql:
+            await arrive("order")
         return result
 
     async def scalar_and_hold(session, statement, *args, **kwargs):
         result = await scalar(session, statement, *args, **kwargs)
         sql = str(statement)
-        if not holding["purchase"] and "FROM purchases" in sql and "FOR UPDATE" in sql:
-            holding["purchase"] = True
-            await meet()
+        if "purchase" not in arrivals and "FROM purchases" in sql and "FOR UPDATE" in sql:
+            await arrive("purchase")
         return result
 
     monkeypatch.setattr(AsyncSession, "execute", execute_and_hold)
@@ -1432,7 +1464,7 @@ async def test_second_payment_and_refund_of_the_paid_order_both_complete(
 
     assert all(not isinstance(result, BaseException) for result in results), results
     assert results[0].status_code == 200, results[0].text
-    assert holding == {"order": True, "purchase": True}
+    assert sorted(arrivals) == ["order", "purchase"]
     # One transaction for the delivery: a deadlock hidden by the retry fails here.
     assert len(purchase_attempts) == 1
     incident = await db.scalar(
@@ -1485,16 +1517,20 @@ async def test_renewal_during_an_extension_counts_both_periods(
     order = await _pending_order(db, course, student.email)
     extension_sessions: list[AsyncSession] = []
     extension_holds_row = asyncio.Event()
+    renewal_at_lock = asyncio.Event()
     renewal_has_read = asyncio.Event()
 
-    # The extension holds its row and waits for the renewal to read the
-    # current access; with the lock the renewal cannot, and the extension
-    # goes on after a short wait.
+    # The extension holds its row and may continue only once the renewal has
+    # reached its attempt to take the (user, course) lock; a renewal that never
+    # gets there fails the test. Then it waits for the renewal to read the
+    # current access: with the lock the renewal cannot, and the extension goes
+    # on after a short wait.
     lock_row = AccessService._lock_for_access_change
 
     async def lock_row_then_wait(session, entitlement):
         await lock_row(session, entitlement)
         extension_holds_row.set()
+        await asyncio.wait_for(renewal_at_lock.wait(), 5)
         try:
             await asyncio.wait_for(renewal_has_read.wait(), 2)
         except asyncio.TimeoutError:
@@ -1506,6 +1542,7 @@ async def test_renewal_during_an_extension_counts_both_periods(
     async def renewal_after_extension(session, user_id, course_id):
         if session not in extension_sessions:
             await asyncio.wait_for(extension_holds_row.wait(), 5)
+            renewal_at_lock.set()
         await lock_access(session, user_id, course_id)
 
     read_access = AccessService.get_active_entitlement
@@ -1538,6 +1575,7 @@ async def test_renewal_during_an_extension_counts_both_periods(
 
     assert all(not isinstance(result, BaseException) for result in results), results
     assert results[1].status_code == 200, results[1].text
+    assert renewal_at_lock.is_set()
     assert len(purchase_attempts) == 1
     access_end = await db.scalar(
         select(func.max(Entitlement.expires_at)).where(
@@ -1568,3 +1606,273 @@ async def test_hashed_and_literal_payment_keys_never_share_an_analytics_event(cl
     # Ids already stored for short keys keep their format.
     assert f"purchase_confirmed:{lookalike_key}" in event_ids
     assert all(len(event_id) <= 128 for event_id in event_ids)
+
+
+# --- One provider payment id belongs to one merchant reference ---
+
+
+def _legacy_notification(reference: str, provider_payment_id: str, **fields) -> dict:
+    return {
+        "order_id": provider_payment_id,
+        "order_num": reference,
+        "customer_email": "legacy-buyer@example.com",
+        "sum": "5900.00",
+        "currency": "rub",
+        "payment_status": "success",
+        **fields,
+    }
+
+
+async def _rejection_alerts(db) -> int:
+    return await _count(db, OutboxMessage.id, OutboxMessage.kind == "owner_payment_rejected")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("other_tariff", ["self", "support"])
+async def test_legacy_payment_naming_another_checkout_link_is_rejected(
+    client, db, owner_chat, other_tariff
+):
+    course = await _course_for_sale(db)
+    first_link = payments_module._build_prodamus_order_id(course.id, "self")
+    second_link = payments_module._build_prodamus_order_id(course.id, other_tariff)
+    paid = await _deliver(client, _legacy_notification(first_link, "legacy-payment"))
+    assert paid.status_code == 200, paid.text
+
+    response = await _deliver(
+        client, _legacy_notification(second_link, "legacy-payment", attempt="2")
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json() == {"detail": "Payment belongs to another order"}
+    assert await _count(db, Purchase.id) == 1
+    assert await _count(db, Entitlement.id) == 1
+    rejected = (
+        await db.scalars(select(PaymentEvent).where(PaymentEvent.processing_status == "rejected"))
+    ).one()
+    assert rejected.order_reference == second_link
+    assert await _count(db, PaymentEvent.id, PaymentEvent.processing_status == "duplicate") == 0
+    assert await _rejection_alerts(db) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("old_field_order", [False, True])
+async def test_redelivery_of_the_same_legacy_link_is_a_duplicate(
+    client, db, owner_chat, old_field_order
+):
+    course = await _course_for_sale(db)
+    link = payments_module._build_prodamus_order_id(course.id, "self")
+    paid = await _deliver(client, _legacy_notification(link, "legacy-redelivered"))
+    assert paid.status_code == 200, paid.text
+    redelivery = _legacy_notification(link, "legacy-redelivered", attempt="2")
+    if old_field_order:
+        # Callbacks of the old field mapping carried the reference in order_id.
+        redelivery["order_id"], redelivery["order_num"] = link, "legacy-redelivered"
+
+    response = await _deliver(client, redelivery)
+
+    assert response.status_code == 200, response.text
+    assert await _count(db, Purchase.id) == 1
+    assert sorted(await db.scalars(select(PaymentEvent.processing_status))) == [
+        "duplicate",
+        "processed",
+    ]
+    assert await _rejection_alerts(db) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("names_paid_link", [True, False])
+async def test_exhausted_retries_acknowledge_only_the_same_legacy_link(
+    client, db, monkeypatch, names_paid_link
+):
+    course = await _course_for_sale(db)
+    paid_link = payments_module._build_prodamus_order_id(course.id, "self")
+    other_link = payments_module._build_prodamus_order_id(course.id, "self")
+    paid = await _deliver(client, _legacy_notification(paid_link, "legacy-retried"))
+    assert paid.status_code == 200, paid.text
+
+    async def always_conflicting(*args, **kwargs):
+        raise IntegrityError("INSERT payment_events", {}, Exception("conflict"))
+
+    monkeypatch.setattr(payments_module, "_record_purchase_once", always_conflicting)
+    payload = _legacy_notification(
+        paid_link if names_paid_link else other_link, "legacy-retried", attempt="2"
+    )
+
+    if names_paid_link:
+        assert (await _deliver(client, payload)).status_code == 200
+    else:
+        with pytest.raises(IntegrityError):
+            await _deliver(client, payload)
+
+
+@pytest.mark.asyncio
+async def test_historical_manual_grant_proves_no_payment(client, db, owner_chat):
+    course = await _course_for_sale(db)
+    student = User(
+        email="legacy-buyer@example.com",
+        password_hash="unused",
+        email_verified_at=datetime.utcnow(),
+        role="student",
+    )
+    db.add(student)
+    await db.flush()
+    db.add(
+        Purchase(
+            user_id=student.id,
+            course_id=course.id,
+            tariff="self",
+            amount_kopecks=590000,
+            transaction_kind="manual_grant",
+            payment_id="historical-grant",
+            payment_status="success",
+            paid_at=datetime.utcnow(),
+            expires_at=datetime.utcnow() + timedelta(days=30),
+        )
+    )
+    await db.commit()
+    link = payments_module._build_prodamus_order_id(course.id, "self")
+
+    response = await _deliver(client, _legacy_notification(link, "historical-grant"))
+
+    assert response.status_code == 422, response.text
+    assert await _count(db, PaymentEvent.id, PaymentEvent.processing_status == "duplicate") == 0
+    assert await _rejection_alerts(db) == 1
+
+
+@pytest.mark.asyncio
+async def test_stored_duplicate_naming_another_order_is_superseded_not_acknowledged(
+    client, db, owner_chat
+):
+    paid_order = await _paid_order(client, db, "duplicate-a@example.com", "old-duplicate")
+    purchase = await db.scalar(select(Purchase).where(Purchase.order_id == paid_order.id))
+    other_course = await _course_for_sale(db)
+    unpaid_order = await _pending_order(db, other_course, "duplicate-b@example.com")
+    payload = _notification(unpaid_order, "old-duplicate", attempt="1")
+    # Shaped like the previous version stored it: acknowledged as a duplicate
+    # of the paid order's purchase although it names the unpaid order.
+    stale = new_payment_event(
+        build_payment_event_data(payload),
+        processing_status="duplicate",
+        order_id=unpaid_order.id,
+        purchase_id=purchase.id,
+    )
+    db.add(stale)
+    await db.commit()
+
+    first = await _deliver(client, payload)
+    replay = await _deliver(client, payload)
+
+    assert first.status_code == replay.status_code == 422
+    assert first.json() == {"detail": "Payment belongs to another order"}
+    await db.refresh(stale)
+    assert stale.processing_status == "duplicate"
+    superseding = (
+        await db.scalars(select(PaymentEvent).where(PaymentEvent.processing_status == "rejected"))
+    ).one()
+    assert superseding.error_code == "payment_belongs_to_another_order"
+    assert superseding.order_id == unpaid_order.id
+    assert str(stale.id) in superseding.error_detail
+    assert await _rejection_alerts(db) == 1
+    await db.refresh(unpaid_order)
+    assert unpaid_order.status == "pending"
+    assert await _count(db, Purchase.id) == 1
+
+
+@pytest.mark.asyncio
+async def test_stored_duplicate_and_incident_replays_stay_acknowledged(
+    client, db, owner_chat
+):
+    order = await _paid_order(client, db, "replays@example.com", "first-payment")
+    purchase = await db.scalar(select(Purchase).where(Purchase.order_id == order.id))
+    duplicate_payload = _notification(order, "first-payment", attempt="5")
+    db.add(
+        new_payment_event(
+            build_payment_event_data(duplicate_payload),
+            processing_status="duplicate",
+            order_id=order.id,
+            purchase_id=purchase.id,
+        )
+    )
+    await db.commit()
+    incident_payload = _notification(order, "second-payment", attempt="1")
+
+    responses = [
+        await _deliver(client, duplicate_payload),
+        await _deliver(client, incident_payload),
+        await _deliver(client, incident_payload),
+        await _deliver(client, {**incident_payload, "attempt": "2"}),
+    ]
+
+    assert [response.status_code for response in responses] == [200, 200, 200, 200]
+    assert await _count(
+        db, PaymentEvent.id, PaymentEvent.processing_status == "financial_incident"
+    ) == 1
+    assert await _count(
+        db, OutboxMessage.id, OutboxMessage.kind == "owner_payment_incident"
+    ) == 1
+    assert await _rejection_alerts(db) == 0
+    assert await _count(db, Purchase.id) == 1
+
+
+@pytest.mark.asyncio
+async def test_payment_recorded_as_incident_cannot_pay_another_order(client, db, owner_chat):
+    paid_order = await _paid_order(client, db, "incident-a@example.com", "first-payment")
+    incident = await _deliver(client, _notification(paid_order, "incident-payment"))
+    assert incident.status_code == 200, incident.text
+    other_course = await _course_for_sale(db)
+    unpaid_order = await _pending_order(db, other_course, "incident-b@example.com")
+
+    response = await _deliver(
+        client, _notification(unpaid_order, "incident-payment", attempt="2")
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json() == {"detail": "Payment belongs to another order"}
+    await db.refresh(unpaid_order)
+    assert unpaid_order.status == "pending"
+    assert await _count(db, Purchase.id) == 1
+    assert await _count(db, Entitlement.id) == 1
+    assert await _rejection_alerts(db) == 1
+
+
+@pytest.mark.asyncio
+async def test_one_provider_payment_naming_two_orders_at_once_is_bound_once(
+    client, db, monkeypatch, owner_chat, production_sessions, purchase_attempts
+):
+    paid_order = await _paid_order(client, db, "bound-a@example.com", "first-payment")
+    other_course = await _course_for_sale(db)
+    unpaid_order = await _pending_order(db, other_course, "bound-b@example.com")
+    purchase_attempts.clear()
+    arrive, arrivals = _strict_barrier(2)
+    lock_payment = payments_module._lock_provider_payment
+
+    async def arrive_then_lock(session, payment_key):
+        # Each delivery holds its own order here; neither waits for the other.
+        await arrive(payment_key)
+        await lock_payment(session, payment_key)
+
+    monkeypatch.setattr(payments_module, "_lock_provider_payment", arrive_then_lock)
+
+    responses = await asyncio.gather(
+        _deliver(client, _notification(paid_order, "contested-payment")),
+        _deliver(client, _notification(unpaid_order, "contested-payment")),
+        return_exceptions=True,
+    )
+
+    assert all(not isinstance(response, BaseException) for response in responses), (
+        responses
+    )
+    assert arrivals == ["contested-payment", "contested-payment"]
+    assert sorted(response.status_code for response in responses) == [200, 422]
+    bound_as_purchase = await _count(
+        db, Purchase.id, Purchase.payment_id == "contested-payment"
+    )
+    bound_as_incident = await _count(
+        db,
+        PaymentEvent.id,
+        PaymentEvent.processing_status == "financial_incident",
+        PaymentEvent.external_event_id == "contested-payment",
+    )
+    assert bound_as_purchase + bound_as_incident == 1
+    assert await _rejection_alerts(db) == 1
+    assert len(purchase_attempts) == 2

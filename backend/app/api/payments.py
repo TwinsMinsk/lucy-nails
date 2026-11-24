@@ -7,6 +7,7 @@ import hmac
 import json
 import logging
 import secrets
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Annotated, Any
 from urllib.parse import urlencode
@@ -23,7 +24,7 @@ from pydantic import (
     WrapValidator,
     field_validator,
 )
-from sqlalchemy import func, select
+from sqlalchemy import Integer, func, literal, or_, select
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
@@ -348,17 +349,197 @@ def _purchase_confirmed_event_id(payment_key: str) -> str:
     return f"purchase_confirmed#sha256:{digest}"
 
 
-def _purchase_matches_reference(
-    purchase: Purchase, order_uuid: UUID | None, course_id_uuid: UUID | None
-) -> bool:
-    """Whether a recorded purchase belongs to the order the notification names.
+def _reference_identity(reference: str | None) -> tuple | None:
+    """A merchant reference in comparable form, or None if it is not one.
 
-    A legacy reference has no order: its purchase has none either and is for
-    the course the reference names.
+    An order reference is identified by its order, a legacy checkout
+    reference by its course, tariff and nonce: two checkouts of one course
+    are two references.
     """
+    reference = (reference or "").strip()
+    order_uuid = _parse_persisted_order_id(reference)
     if order_uuid is not None:
-        return purchase.order_id == order_uuid
-    return purchase.order_id is None and purchase.course_id == course_id_uuid
+        return ("order", order_uuid)
+    if parse_checkout_order_id(reference) is not None:
+        _, course_id, tariff, nonce = reference.split("|")
+        return ("course", UUID(course_id), tariff, nonce)
+    return None
+
+
+def _named_reference(provider_order_id: str | None, merchant_reference: str | None) -> tuple | None:
+    """The reference a notification names, resolved as the webhook resolves it:
+    order_num first, then order_id for callbacks with the old field order."""
+    return _reference_identity(merchant_reference) or _reference_identity(provider_order_id)
+
+
+# Statuses of an event that bound a provider payment to its reference: it
+# created the purchase, or it was a second payment for an already paid order.
+_BINDING_EVENT_STATUSES = ("processed", "financial_incident")
+
+
+@dataclass(frozen=True)
+class PaymentBinding:
+    """How a provider payment id is bound to a merchant reference.
+
+    status: "unknown" (never accepted before), "same" (bound to the reference
+    the notification names) or "other". purchase_id: the purchase the payment
+    created, if any.
+    """
+
+    status: str
+    purchase_id: UUID | None = None
+
+
+def _proves_payment(purchase: Purchase) -> bool:
+    # Historical manual grants were stored as purchases with admin_grant_ ids.
+    return (
+        purchase.transaction_kind == "paid"
+        and purchase.payment_status == "success"
+        and not (purchase.payment_id or "").startswith("admin_grant_")
+    )
+
+
+def _historical_purchase_matches(
+    purchase: Purchase, reference: tuple, paid_kopecks: int | None
+) -> bool:
+    """Compare a purchase recorded without events with the notification."""
+    if paid_kopecks is None or abs(paid_kopecks - purchase.amount_kopecks) > 2:
+        return False
+    if reference[0] == "order":
+        return purchase.order_id == reference[1]
+    _, course_id, tariff, _nonce = reference
+    return (
+        purchase.order_id is None
+        and purchase.course_id == course_id
+        and purchase.tariff == tariff
+    )
+
+
+async def _binding_events(db: AsyncSession, payment_key: str) -> list[PaymentEvent]:
+    """Events that bound this provider payment id, under either field order."""
+    lookups = {payment_key}
+    if payment_key.startswith("order_id:"):
+        lookups.add(payment_key.removeprefix("order_id:"))
+    candidates = await db.scalars(
+        select(PaymentEvent).where(
+            PaymentEvent.processing_status.in_(_BINDING_EVENT_STATUSES),
+            or_(
+                PaymentEvent.external_event_id.in_(lookups),
+                PaymentEvent.order_reference.in_(lookups),
+            ),
+        )
+    )
+    return [
+        event
+        for event in candidates
+        if _resolve_payment_key(event.external_event_id, event.order_reference) == payment_key
+    ]
+
+
+async def _payment_binding(
+    db: AsyncSession,
+    payment_key: str,
+    reference: tuple | None,
+    paid_kopecks: int | None,
+    known_purchase: Purchase | None,
+) -> PaymentBinding:
+    """Check a provider payment id against the reference a notification names.
+
+    A provider payment this shop has accepted belongs to exactly one merchant
+    reference. The proof is the event that processed its purchase, a recorded
+    financial incident, or, for a historical purchase recorded before events,
+    the purchase's own financial attributes. A manual grant proves no payment.
+    """
+    bound: set[tuple | None] = set()
+    purchase_id: UUID | None = None
+    if known_purchase is not None:
+        if not _proves_payment(known_purchase):
+            return PaymentBinding("other")
+        purchase_id = known_purchase.id
+        original = await db.scalar(
+            select(PaymentEvent)
+            .where(
+                PaymentEvent.purchase_id == known_purchase.id,
+                PaymentEvent.processing_status == "processed",
+            )
+            .order_by(PaymentEvent.received_at)
+            .limit(1)
+        )
+        if original is not None:
+            bound.add(_named_reference(original.external_event_id, original.order_reference))
+        elif reference is not None and _historical_purchase_matches(
+            known_purchase, reference, paid_kopecks
+        ):
+            bound.add(reference)
+        else:
+            return PaymentBinding("other", purchase_id)
+    for event in await _binding_events(db, payment_key):
+        bound.add(_named_reference(event.external_event_id, event.order_reference))
+        if purchase_id is None and event.processing_status == "processed":
+            purchase_id = event.purchase_id
+    if not bound:
+        return PaymentBinding("unknown")
+    if reference is None or bound != {reference}:
+        return PaymentBinding("other", purchase_id)
+    return PaymentBinding("same", purchase_id)
+
+
+def provider_payment_lock_keys(payment_key: str) -> tuple[int, int]:
+    """Two signed int4 keys of the per-provider-payment advisory lock."""
+    digest = hashlib.sha256(f"provider-payment:{payment_key}".encode("utf-8")).digest()
+    return (
+        int.from_bytes(digest[:4], byteorder="big", signed=True),
+        int.from_bytes(digest[4:8], byteorder="big", signed=True),
+    )
+
+
+async def _lock_provider_payment(db: AsyncSession, payment_key: str) -> None:
+    """Serialize deliveries of one provider payment id, whatever they name.
+
+    Transaction-scoped; taken after the order lock, so the order stays the
+    first lock a delivery takes.
+    """
+    key_high, key_low = provider_payment_lock_keys(payment_key)
+    await db.execute(
+        select(func.pg_advisory_xact_lock(literal(key_high, Integer), literal(key_low, Integer)))
+    )
+
+
+async def _supersede_duplicate_event(
+    db: AsyncSession,
+    stale: PaymentEvent,
+    event_data: PaymentEventData,
+    order_uuid: UUID | None,
+) -> None:
+    """Append a rejection next to a stored duplicate that does not hold.
+
+    An older version could acknowledge a payment as a duplicate for a
+    reference it does not belong to. That row is kept as it was; a rejected
+    event that supersedes it is appended once, under a hash derived from it.
+    """
+    superseding_hash = hashlib.sha256(
+        f"supersedes:{stale.event_hash}".encode("utf-8")
+    ).hexdigest()
+    if await db.scalar(
+        select(PaymentEvent.id).where(PaymentEvent.event_hash == superseding_hash)
+    ) is not None:
+        return
+    order_id = None
+    if order_uuid is not None:
+        order_id = await db.scalar(select(Order.id).where(Order.id == order_uuid))
+    db.add(
+        new_payment_event(
+            replace(event_data, event_hash=superseding_hash),
+            processing_status="rejected",
+            order_id=order_id,
+            error_code="payment_belongs_to_another_order",
+            error_detail=(
+                f"Supersedes duplicate event {stale.id}: the provider payment "
+                "belongs to another reference"
+            ),
+        )
+    )
+    await db.commit()
 
 
 def _is_retryable_database_error(error: DBAPIError) -> bool:
@@ -449,6 +630,8 @@ async def _record_purchase_once(
     delivery is handled later by the outbox worker.
     """
     webhook_email = _webhook_email_or_none(payload.get("customer_email"))
+    reference = _reference_identity(order_reference)
+    notified_kopecks = parse_amount_kopecks(payload.get("sum"))
     async with async_session_maker() as db:
         existing_event = await db.scalar(
             select(PaymentEvent).where(PaymentEvent.event_hash == event_data.event_hash)
@@ -456,8 +639,24 @@ async def _record_purchase_once(
         if existing_event is not None:
             if existing_event.processing_status not in {"processed", "duplicate", "financial_incident"}:
                 raise HTTPException(status_code=422, detail=existing_event.error_detail or "Payment was rejected")
+            if existing_event.processing_status == "duplicate":
+                # An older version stored duplicates without checking that the
+                # payment belongs to the reference named; this one checks them
+                # again. Processed and incident events are bindings themselves.
+                binding = await _payment_binding(
+                    db,
+                    payment_key,
+                    reference,
+                    notified_kopecks,
+                    await db.scalar(select(Purchase).where(Purchase.payment_id == payment_key)),
+                )
+                if binding.status != "same":
+                    await _supersede_duplicate_event(db, existing_event, event_data, order_uuid)
+                    logger.error("Prodamus webhook: stored duplicate names another reference")
+                    raise HTTPException(status_code=422, detail="Payment belongs to another order")
             return webhook_email or ""
 
+        # Read before any lock: a purchase found here is committed history.
         existing_pay = await db.execute(select(Purchase).where(Purchase.payment_id == payment_key))
         existing_purchase = existing_pay.scalars().first()
 
@@ -479,19 +678,26 @@ async def _record_purchase_once(
             course_id_uuid = order.course_id
             tariff = order.tariff
 
-        if existing_purchase:
-            if not _purchase_matches_reference(existing_purchase, order_uuid, course_id_uuid):
-                # The provider payment is already recorded against another
-                # order (or none): it does not confirm this one.
-                logger.error("Prodamus webhook: known payment for another order")
-                raise HTTPException(status_code=422, detail="Payment belongs to another order")
+        # A provider payment belongs to one reference. Deliveries of the same
+        # payment id queue here, whatever they name, and each one reads the
+        # binding a concurrent one committed (a purchase or an incident).
+        await _lock_provider_payment(db, payment_key)
+        binding = await _payment_binding(
+            db, payment_key, reference, notified_kopecks, existing_purchase
+        )
+        if binding.status == "other":
+            logger.error("Prodamus webhook: known payment for another reference")
+            raise HTTPException(status_code=422, detail="Payment belongs to another order")
+        if binding.status == "same" and binding.purchase_id is not None:
             payment_event = new_payment_event(event_data, order_id=order_uuid)
             db.add(payment_event)
-            payment_event.purchase_id = existing_purchase.id
+            payment_event.purchase_id = binding.purchase_id
             payment_event.processing_status = "duplicate"
             payment_event.processed_at = datetime.utcnow()
             await db.commit()
             return webhook_email or ""
+        # Otherwise the payment is new, or a redelivery of an incident for this
+        # order, which the paid-order check below records as a duplicate.
 
         payment_event = new_payment_event(event_data, order_id=order_uuid)
         db.add(payment_event)
@@ -958,10 +1164,16 @@ async def prodamus_webhook(request: Request) -> dict[str, str]:
             async with async_session_maker() as db:
                 done = await db.scalar(select(Purchase).where(Purchase.payment_id == payment_key))
                 # Answer success only for a notification proven processed: its
-                # payment is recorded, and recorded for the order it names.
-                if done is not None and _purchase_matches_reference(
-                    done, order_uuid, course_id_uuid
-                ):
+                # payment is recorded, and bound to the reference it names.
+                if done is not None and (
+                    await _payment_binding(
+                        db,
+                        payment_key,
+                        _reference_identity(order_reference_raw),
+                        parse_amount_kopecks(payload.get("sum")),
+                        done,
+                    )
+                ).status == "same":
                     logger.info("Prodamus webhook duplicate payment_key=%s", payment_key)
                     return {"status": "ok"}
             logger.error("Prodamus webhook: unresolved database error payment_key=%s", payment_key)
