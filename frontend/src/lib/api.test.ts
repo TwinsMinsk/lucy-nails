@@ -170,11 +170,16 @@ describe("logout", () => {
     it.each([200, 401, 403])("clears the session marker when the server answers %i", async (status) => {
         document.cookie = "auth_session=1; Path=/"
         vi.spyOn(console, "error").mockImplementation(() => undefined)
-        // A 401 first tries a refresh; the rejected refresh confirms that the session is gone.
-        vi.stubGlobal("fetch", vi.fn(async () => answer(status)))
+        // A single answer: any further request (such as a token refresh) would fail the logout.
+        const request = vi.fn()
+            .mockResolvedValueOnce(answer(status))
+            .mockRejectedValue(new TypeError("Unexpected second request"))
+        vi.stubGlobal("fetch", request)
 
         await expect(logout()).resolves.toBeUndefined()
 
         expect(hasSessionMarker()).toBe(false)
+        expect(request).toHaveBeenCalledTimes(1)
+        expect(request.mock.calls.some(([url]) => String(url).endsWith("/auth/refresh"))).toBe(false)
     })
 })

@@ -67,6 +67,8 @@ export function NailsGallery({ items }: NailsGalleryProps) {
 
     const { mode, selected, positions } = carousel;
     const isCarousel = mode === "carousel";
+    // A single position (one work, or everything fits) has nothing to emphasise: the scaled photo would be cut.
+    const emphasise = isCarousel && positions > 1;
     const showNavigation = positions > 1;
     const transition = reduceMotion ? { duration: 0 } : {
         type: "spring" as const,
@@ -82,10 +84,10 @@ export function NailsGallery({ items }: NailsGalleryProps) {
                 <div className="overflow-hidden" ref={emblaRef}>
                     <div className="flex">
                         {items.map((item, index) => {
-                            const isActive = isCarousel && selected === index;
+                            const isActive = emphasise && selected === index;
                             // In carousel mode only the selected work is shown in full, so cut-off neighbour
                             // text never competes with it; in strip mode every work is.
-                            const isShown = !isCarousel || isActive;
+                            const isShown = !emphasise || isActive;
                             const caption = item.caption.trim();
 
                             return (
@@ -105,7 +107,7 @@ export function NailsGallery({ items }: NailsGalleryProps) {
                                         <motion.div
                                             initial={false}
                                             animate={{
-                                                scale: !isCarousel ? 1 : isActive ? 1.1 : 0.85,
+                                                scale: !emphasise ? 1 : isActive ? 1.1 : 0.85,
                                                 zIndex: isActive ? 10 : 0,
                                             }}
                                             transition={transition}
@@ -153,7 +155,7 @@ export function NailsGallery({ items }: NailsGalleryProps) {
                        bottom edge by 10%, so -5% moves the arrows to its visual centre */
                     <div className="pointer-events-none absolute inset-x-0 top-[10vw] sm:top-16 z-20">
                         <div className="relative pt-[calc((70%_-_4px)*4/3)] sm:pt-[calc((50%_-_4px)*4/3)] md:pt-[calc((40%_-_4px)*4/3)] lg:pt-[calc((33.333%_-_4px)*4/3)]">
-                            <div className={`absolute inset-0 flex items-center justify-between gap-4 ${isCarousel ? "-translate-y-[5%]" : ""}`}>
+                            <div className={`absolute inset-0 flex items-center justify-between gap-4 ${emphasise ? "-translate-y-[5%]" : ""}`}>
                                 <Button
                                     onClick={scrollPrev}
                                     variant="outline"

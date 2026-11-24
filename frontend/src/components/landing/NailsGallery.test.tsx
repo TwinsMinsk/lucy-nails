@@ -107,6 +107,18 @@ describe("NailsGallery", () => {
         expect(screen.queryByRole("button", { name: / из / })).not.toBeInTheDocument()
     })
 
+    it("one work: no emphasis and no navigation", async () => {
+        // One work has its own position (carousel rule), but a scaled photo would be cut by the gallery edge.
+        setup([item(1)], 1)
+
+        await waitFor(() => expect(visibleCaptions()).toEqual(["Подпись 1"]))
+        const photo = document.querySelector("figure > div") as HTMLElement
+        expect(photo.style.transform).not.toMatch(/scale\((?!1\))/)
+        expect((document.querySelector("figure") as HTMLElement).style.opacity).toBe("1")
+        expect(screen.queryByRole("button", { name: "Следующая работа" })).not.toBeInTheDocument()
+        expect(screen.queryByRole("button", { name: / из / })).not.toBeInTheDocument()
+    })
+
     it("switches mode when Embla re-initialises with another number of positions", async () => {
         setup([item(1), item(2), item(3)], 3)
         await waitFor(() => expect(visibleCaptions()).toEqual(["Подпись 1"]))
