@@ -60,6 +60,7 @@ from app.services.payment_event_service import (
 from app.services.analytics_service import AnalyticsService
 from app.services.analytics_service import clean_attribution_value
 from app.services.owner_alerts import enqueue_order_created_alert, payment_alert_email_lines
+from app.services.support_links import issue_order_start_param
 
 logger = logging.getLogger(__name__)
 
@@ -1372,4 +1373,6 @@ async def get_order_status(order_id: str, token: str) -> dict[str, str | int | f
         "course_id": str(order.course_id),
         "course_title": order.course_title,
         "tariff": order.tariff,
+        # Signed deep link parameter for the support bot (t.me/<bot>?start=...).
+        "support_start": issue_order_start_param(order.id),
     }

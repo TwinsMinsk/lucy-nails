@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { GuestCheckoutDialog } from "@/components/landing/GuestCheckoutDialog";
 import { captureCheckoutAttribution } from "@/lib/attribution";
 import { sendYandexGoal, trackPublicEvent } from "@/lib/analytics-client";
+import { supportBotUrl } from "@/lib/support";
 
 interface PaymentButtonProps {
   /** Canonical published course ID; null disables checkout. */
@@ -54,6 +55,10 @@ export function PaymentButton({ courseId, tariff, children, className, location 
       } else {
         toast.error("Ошибка при генерации ссылки", {
           description: "Попробуйте позже или напишите нам.",
+          action: {
+            label: "Написать в Telegram",
+            onClick: () => window.open(supportBotUrl(), "_blank", "noopener,noreferrer"),
+          },
         });
       }
     } catch (e) {

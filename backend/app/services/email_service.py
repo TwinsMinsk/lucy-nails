@@ -31,7 +31,20 @@ def _recipient_label(email: str) -> str:
 
 # Moscow has kept UTC+3 all year since 2014; a fixed offset needs no tzdata.
 MOSCOW_TZ = timezone(timedelta(hours=3), "MSK")
-SUPPORT_TELEGRAM_URL = "https://t.me/lucysmirnova_nails"
+# Used while TELEGRAM_BOT_USERNAME is empty.
+DEFAULT_SUPPORT_TELEGRAM_URL = "https://t.me/lucysmirnova_nails"
+
+
+def support_telegram_url() -> str:
+    """The support bot's chat, or the previous personal contact without a bot."""
+    username = settings.TELEGRAM_BOT_USERNAME.strip().lstrip("@")
+    if not username:
+        return DEFAULT_SUPPORT_TELEGRAM_URL
+    return f"https://t.me/{username}"
+
+
+# Resolved at import; emails call support_telegram_url() for the current setting.
+SUPPORT_TELEGRAM_URL = support_telegram_url()
 
 
 def format_msk_datetime(value: datetime | str) -> str:
@@ -328,11 +341,12 @@ class EmailService:
     async def send_access_expired(email: str, course_title: str) -> None:
         safe_title = escape(course_title)
         renew_url = escape(f"{settings.FRONTEND_URL.rstrip('/')}/dashboard", quote=True)
+        support_url = escape(support_telegram_url(), quote=True)
         html = (
             f"<h1>Срок доступа завершён</h1><p>Доступ к курсу «{safe_title}» закончился.</p>"
             f'<p><a href="{renew_url}">Продлить доступ</a> можно в личном кабинете.</p>'
             "<p>Это письмо отправлено автоматически, отвечать на него не нужно. "
-            f'Если это ошибка или нужна помощь, напишите нам в <a href="{SUPPORT_TELEGRAM_URL}">Telegram</a>.</p>'
+            f'Если это ошибка или нужна помощь, напишите нам в <a href="{support_url}">Telegram</a>.</p>'
         )
         await EmailService._send(
             email, "Срок доступа к курсу завершён — Lucy Smirnova", html
