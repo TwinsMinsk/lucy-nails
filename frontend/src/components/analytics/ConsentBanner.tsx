@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useLayoutEffect, useState } from "react"
 import { Cookie } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -15,15 +15,35 @@ const isPublicPage = (pathname: string) =>
     pathname === "/privacy" ||
     pathname === "/terms"
 
+// Set on <html> while the banner is shown. The course page hides its fixed buy bar by it:
+// on phones both sit at the bottom of the screen.
+const CONSENT_OPEN_ATTRIBUTE = "data-consent-open"
+// Marks the course page's fixed buy bar (phones only, hidden from lg).
+const BUY_BAR_ATTRIBUTE = "data-mobile-buy-bar"
+
 export function ConsentBanner() {
     const pathname = usePathname()
     const [ready, setReady] = useState(false)
     const [open, setOpen] = useState(false)
+    const [buyBarOnPage, setBuyBarOnPage] = useState(false)
+    const bannerShown = ready && open && isPublicPage(pathname)
 
     useEffect(() => {
         setOpen(!readConsent())
         setReady(true)
     }, [])
+
+    // Layout effect: the attribute lands before the banner is painted, so the bar never shows under it.
+    useLayoutEffect(() => {
+        if (!bannerShown) return
+        const root = document.documentElement
+        root.setAttribute(CONSENT_OPEN_ATTRIBUTE, "")
+        return () => root.removeAttribute(CONSENT_OPEN_ATTRIBUTE)
+    }, [bannerShown])
+
+    useEffect(() => {
+        setBuyBarOnPage(document.querySelector(`[${BUY_BAR_ATTRIBUTE}]`) !== null)
+    }, [pathname])
 
     if (!ready || !isPublicPage(pathname)) return null
 
@@ -32,7 +52,7 @@ export function ConsentBanner() {
             <button
                 type="button"
                 // On phones the course page has a fixed buy bar at the bottom: sit above it.
-                className="fixed bottom-3 left-3 z-50 max-lg:[body:has([data-mobile-buy-bar])_&]:bottom-24 rounded-full border bg-background/95 p-2.5 text-muted-foreground shadow-sm backdrop-blur hover:text-foreground"
+                className={`fixed ${buyBarOnPage ? "bottom-24 lg:bottom-3" : "bottom-3"} left-3 z-50 rounded-full border bg-background/95 p-2.5 text-muted-foreground shadow-sm backdrop-blur hover:text-foreground`}
                 onClick={() => setOpen(true)}
                 aria-label="Настройки cookies"
                 title="Настройки cookies"
@@ -48,8 +68,7 @@ export function ConsentBanner() {
     }
 
     return (
-        // data-consent-banner hides the course page's fixed buy bar, which shares this spot on phones.
-        <section data-consent-banner className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-3xl max-h-[60svh] overflow-y-auto rounded-2xl border bg-background/98 p-4 shadow-2xl backdrop-blur sm:p-5" aria-label="Согласие на cookies">
+        <section className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-3xl max-h-[60svh] overflow-y-auto rounded-2xl border bg-background/98 p-4 shadow-2xl backdrop-blur sm:p-5" aria-label="Согласие на cookies">
             <div className="flex items-start gap-3">
                 <Cookie className="mt-0.5 hidden h-5 w-5 shrink-0 text-primary sm:block" aria-hidden="true" />
                 <div className="min-w-0 flex-1 space-y-3">
