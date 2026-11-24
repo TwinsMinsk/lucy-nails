@@ -1,4 +1,8 @@
+import os
+import subprocess
+import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
@@ -97,3 +101,50 @@ async def test_password_reset_of_existing_admin_revokes_sessions(db: AsyncSessio
         )
     )
     assert active is None
+
+
+RAILWAY_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "railway" / "create_admin.py"
+
+
+@pytest.mark.asyncio
+async def test_railway_entry_point_revokes_sessions_of_an_existing_account(
+    client: AsyncClient, db: AsyncSession
+):
+    existing = User(
+        email="railway-owner@example.com",
+        password_hash=get_password_hash("OldOwnerPass123!"),
+        role="student",
+    )
+    db.add(existing)
+    await db.commit()
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "railway-owner@example.com", "password": "OldOwnerPass123!"},
+    )
+    old_access = login.json()["access_token"]
+    client.cookies.clear()
+
+    result = subprocess.run(
+        [sys.executable, str(RAILWAY_SCRIPT), "railway-owner@example.com", "NewOwnerPass123!"],
+        env={**os.environ, "DATABASE_URL": db.bind.url.render_as_string(hide_password=False)},
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=120,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "NewOwnerPass123!" not in result.stdout + result.stderr
+    db.expunge_all()
+    stored = await db.scalar(select(User).where(User.email == "railway-owner@example.com"))
+    assert stored.role == "admin"
+    assert stored.token_version == 1
+    assert verify_password("NewOwnerPass123!", stored.password_hash)
+    active = await db.scalar(
+        select(AuthSession.id).where(
+            AuthSession.user_id == stored.id, AuthSession.revoked_at.is_(None)
+        )
+    )
+    assert active is None
+    me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {old_access}"})
+    assert me.status_code == 401

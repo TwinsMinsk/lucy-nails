@@ -19,6 +19,14 @@ from app.core.database import async_session_maker  # noqa: E402
 from app.services.admin_bootstrap import ensure_admin_user  # noqa: E402
 
 
+async def bootstrap_admin(email: str, password: str) -> str:
+    """Create or promote the admin in one transaction; returns the stored email."""
+    async with async_session_maker() as db:
+        user = await ensure_admin_user(db, email, password)
+        await db.commit()
+    return user.email
+
+
 async def main() -> int:
     email = os.getenv("ADMIN_EMAIL", "")
     password = os.getenv("ADMIN_PASSWORD", "")
@@ -27,11 +35,8 @@ async def main() -> int:
         print("ADMIN_EMAIL and ADMIN_PASSWORD are required.", file=sys.stderr)
         return 2
 
-    async with async_session_maker() as db:
-        user = await ensure_admin_user(db, email, password)
-        await db.commit()
-
-    print(f"Admin user is ready: {user.email}")
+    stored_email = await bootstrap_admin(email, password)
+    print(f"Admin user is ready: {stored_email}")
     return 0
 
 
