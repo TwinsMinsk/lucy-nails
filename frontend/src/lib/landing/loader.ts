@@ -16,6 +16,11 @@ export type ResolvedHero = LandingCourse & {
 };
 
 export interface ResolvedLandingContent {
+    /**
+     * false when the landing API could not be reached and the static marketing copy is shown.
+     * Then `course: null` means "unknown", not "no published course".
+     */
+    available: boolean;
     course: LandingCourseSnapshot | null;
     hero: ResolvedHero;
     modules: ProgramModuleContent[];
@@ -28,6 +33,7 @@ const STATIC_HERO: ResolvedHero = {
 };
 
 const STATIC_FALLBACK: ResolvedLandingContent = {
+    available: false,
     course: null,
     hero: STATIC_HERO,
     modules: staticProgramModules,
@@ -43,6 +49,28 @@ function mapGallery(item: ApiGalleryItem): GalleryItem {
     };
 }
 
+export class LandingUnavailableError extends Error {
+    constructor() {
+        super("Landing course is unknown: the landing API is unavailable");
+        this.name = "LandingUnavailableError";
+    }
+}
+
+// The landing course id the API last confirmed in this server process. undefined: never loaded.
+let lastKnownLandingCourseId: string | null | undefined;
+
+/**
+ * Id of the course the landing page sells (null: nothing is published).
+ * While the landing API is down, answers with the last confirmed id; with none yet, throws
+ * LandingUnavailableError so callers never treat an outage as "no published course".
+ */
+export async function getLandingCourseId(): Promise<string | null> {
+    const landing = await getLandingContent();
+    if (landing.available) return landing.course?.id ?? null;
+    if (lastKnownLandingCourseId !== undefined) return lastKnownLandingCourseId;
+    throw new LandingUnavailableError();
+}
+
 export async function getLandingContent(): Promise<ResolvedLandingContent> {
     let payload;
     try {
@@ -53,6 +81,7 @@ export async function getLandingContent(): Promise<ResolvedLandingContent> {
 
     const apiHero = payload.hero;
     const course = payload.course ?? null;
+    lastKnownLandingCourseId = course?.id ?? null;
     const hero: ResolvedHero = {
         ...landingCourse,
         title: apiHero.landing_title ?? course?.title ?? "Курс пока не опубликован",
@@ -79,5 +108,5 @@ export async function getLandingContent(): Promise<ResolvedLandingContent> {
             mistakes: item.landing_mistakes ?? fallback?.mistakes ?? [],
         };
     });
-    return { course, hero, modules, gallery: payload.gallery.map(mapGallery) };
+    return { available: true, course, hero, modules, gallery: payload.gallery.map(mapGallery) };
 }

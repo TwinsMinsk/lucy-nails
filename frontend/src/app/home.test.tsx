@@ -14,7 +14,7 @@ vi.mock("@/components/landing/PaymentButton", () => ({ PaymentButton: ({ courseI
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 it("uses the search snippet for the page and the CMS identity for social cards", async () => {
-    vi.mocked(getLandingContent).mockResolvedValue({ course: { id: "canonical", title: "Canonical", price_self: 7200, access_days: 45, lessons_count: 2, total_duration: 3600 }, hero: { ...landingCourse, title: "Renamed CMS course", description: "Published CMS description", instructorImageUrl: null }, modules: [], gallery: [] })
+    vi.mocked(getLandingContent).mockResolvedValue({ available: true, course: { id: "canonical", title: "Canonical", price_self: 7200, access_days: 45, lessons_count: 2, total_duration: 3600 }, hero: { ...landingCourse, title: "Renamed CMS course", description: "Published CMS description", instructorImageUrl: null }, modules: [], gallery: [] })
     const metadata = await generateMetadata()
     expect(metadata.title).toBe(HOME_TITLE)
     expect(metadata.description).toBe(HOME_DESCRIPTION)
@@ -23,7 +23,7 @@ it("uses the search snippet for the page and the CMS identity for social cards",
 })
 
 it("describes the published course in JSON-LD with its CMS price", async () => {
-    vi.mocked(getLandingContent).mockResolvedValue({ course: { id: "canonical", title: "Canonical", price_self: 7200, access_days: 45, lessons_count: 2, total_duration: 3600 }, hero: { ...landingCourse, title: "Renamed </script> course", instructorImageUrl: null }, modules: [], gallery: [] })
+    vi.mocked(getLandingContent).mockResolvedValue({ available: true, course: { id: "canonical", title: "Canonical", price_self: 7200, access_days: 45, lessons_count: 2, total_duration: 3600 }, hero: { ...landingCourse, title: "Renamed </script> course", instructorImageUrl: null }, modules: [], gallery: [] })
     vi.mocked(getPublicCourseModules).mockResolvedValue([])
     const { container } = render(await Home())
     const script = container.querySelector('script[type="application/ld+json"]')
@@ -33,7 +33,7 @@ it("describes the published course in JSON-LD with its CMS price", async () => {
 })
 
 it("names the subject and the author in the visible hero", async () => {
-    vi.mocked(getLandingContent).mockResolvedValue({ course: null, hero: { ...landingCourse, instructorImageUrl: null }, modules: [], gallery: [] })
+    vi.mocked(getLandingContent).mockResolvedValue({ available: true, course: null, hero: { ...landingCourse, instructorImageUrl: null }, modules: [], gallery: [] })
     render(await Home())
     expect(screen.getByText("Онлайн-курс дизайна ногтей для мастеров маникюра")).toBeVisible()
     expect(screen.getByText(AUTHOR_NAME).closest("figcaption")).toHaveTextContent(`Автор курса — ${AUTHOR_NAME}`)
@@ -41,7 +41,7 @@ it("names the subject and the author in the visible hero", async () => {
 })
 
 it("omits the course from JSON-LD with no publication", async () => {
-    vi.mocked(getLandingContent).mockResolvedValue({ course: null, hero: { ...landingCourse, instructorImageUrl: null }, modules: [], gallery: [] })
+    vi.mocked(getLandingContent).mockResolvedValue({ available: true, course: null, hero: { ...landingCourse, instructorImageUrl: null }, modules: [], gallery: [] })
     const { container } = render(await Home())
     const graph = JSON.parse(container.querySelector('script[type="application/ld+json"]')?.textContent ?? "{}")["@graph"]
     expect(graph.map((item: { "@type": string }) => item["@type"])).toEqual(["Organization", "Person", "WebSite"])
@@ -51,7 +51,7 @@ it("omits the course from JSON-LD with no publication", async () => {
 })
 
 it("binds the canonical CMS course to displayed price access and checkout", async () => {
-    vi.mocked(getLandingContent).mockResolvedValue({ course: { id: "canonical", title: "Canonical", price_self: 7200, access_days: 45, lessons_count: 2, total_duration: 3600 }, hero: { ...landingCourse, instructorImageUrl: null }, modules: [], gallery: [] })
+    vi.mocked(getLandingContent).mockResolvedValue({ available: true, course: { id: "canonical", title: "Canonical", price_self: 7200, access_days: 45, lessons_count: 2, total_duration: 3600 }, hero: { ...landingCourse, instructorImageUrl: null }, modules: [], gallery: [] })
     vi.mocked(getPublishedCourses).mockResolvedValue({ courses: [{ id: "wrong", price_self: 12300, access_days: 20 }], total: 1 } as never)
     vi.mocked(getPublicCourseModules).mockResolvedValue([])
     render(await Home())
@@ -62,7 +62,7 @@ it("binds the canonical CMS course to displayed price access and checkout", asyn
 })
 
 it("does not display fabricated pricing or permit checkout with no publication", async () => {
-    vi.mocked(getLandingContent).mockResolvedValue({ course: null, hero: { ...landingCourse, instructorImageUrl: null }, modules: [], gallery: [] })
+    vi.mocked(getLandingContent).mockResolvedValue({ available: true, course: null, hero: { ...landingCourse, instructorImageUrl: null }, modules: [], gallery: [] })
     vi.mocked(getPublishedCourses).mockResolvedValue({ courses: [], total: 0 })
     render(await Home())
     expect(screen.getByRole("button", { name: "Purchase" })).toBeDisabled()

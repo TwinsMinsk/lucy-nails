@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 
 import { getPublishedCourses } from "@/lib/api";
 import { getPublicSiteUrl } from "@/lib/env";
-import { getLandingContent } from "@/lib/landing/loader";
+import { getLandingCourseId } from "@/lib/landing/loader";
 import { LEGAL_UPDATED_AT } from "@/lib/seo";
 
 const siteUrl = getPublicSiteUrl();
@@ -37,9 +37,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   try {
-    const [catalog, landing] = await Promise.all([getPublishedCourses(), getLandingContent()]);
     // The landing course page declares "/" as canonical, so only other courses are listed.
-    const landingCourseId = landing.course?.id;
+    // getLandingCourseId throws while that course is unknown (landing API down, nothing confirmed
+    // yet), so an outage never lists the landing course under its own URL.
+    const [catalog, landingCourseId] = await Promise.all([getPublishedCourses(), getLandingCourseId()]);
     return [
       ...staticRoutes,
       ...catalog.courses.filter((course) => course.id !== landingCourseId).map((course) => ({

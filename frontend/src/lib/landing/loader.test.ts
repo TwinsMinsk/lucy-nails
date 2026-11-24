@@ -66,5 +66,39 @@ describe("authoritative landing publication", () => {
         const content = await getLandingContent()
         expect(content.modules.length).toBeGreaterThan(0)
         expect(content.course).toBeNull()
+        expect(content.available).toBe(false)
+    })
+})
+
+describe("landing course id", () => {
+    // The last confirmed id lives in module state, so every case starts from a fresh module.
+    const freshLoader = async () => {
+        vi.resetModules()
+        const api = await import("@/lib/api")
+        const loader = await import("@/lib/landing/loader")
+        return { load: vi.mocked(api.getLandingPayload), loader }
+    }
+
+    it("tells a published course from no publication", async () => {
+        const { load, loader } = await freshLoader()
+        load.mockResolvedValue(payload as unknown as LandingPayload)
+        expect(await loader.getLandingCourseId()).toBe("canonical")
+        load.mockResolvedValue({ ...payload, course: null, course_id: null } as unknown as LandingPayload)
+        expect(await loader.getLandingCourseId()).toBeNull()
+        expect((await loader.getLandingContent()).available).toBe(true)
+    })
+
+    it("keeps the last confirmed id while the landing source is down", async () => {
+        const { load, loader } = await freshLoader()
+        load.mockResolvedValue(payload as unknown as LandingPayload)
+        await loader.getLandingContent()
+        load.mockRejectedValue(new Error("API unavailable"))
+        expect(await loader.getLandingCourseId()).toBe("canonical")
+    })
+
+    it("refuses to answer when the source is down and no id was ever confirmed", async () => {
+        const { load, loader } = await freshLoader()
+        load.mockRejectedValue(new Error("API unavailable"))
+        await expect(loader.getLandingCourseId()).rejects.toBeInstanceOf(loader.LandingUnavailableError)
     })
 })
