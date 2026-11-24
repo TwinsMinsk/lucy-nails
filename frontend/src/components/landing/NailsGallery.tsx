@@ -86,20 +86,21 @@ export function NailsGallery({ items }: NailsGalleryProps) {
                                                 className="object-cover select-none"
                                             />
                                         </motion.div>
-                                        {/* Fixed height (tag + two lines) so captions of any length never shift the layout.
+                                        {/* Fixed height (tag + three lines on phones, two from md) so captions never shift the layout.
+                                            As wide as the scaled active photo (-mx-[5%]) to give the text room.
                                             Only the active caption is shown: cut-off neighbour text must not compete with it */}
                                         <motion.figcaption
                                             initial={false}
                                             animate={{ opacity: isActive ? 1 : 0 }}
                                             transition={transition}
-                                            className="mt-4 flex h-[4.5rem] flex-col items-center gap-1.5 px-2 text-center">
+                                            className="-mx-[5%] mt-4 flex h-[5.5rem] flex-col items-center gap-1.5 px-1 text-center md:h-[4.5rem]">
                                             {item.technique && (
                                                 <Badge variant="secondary" className="block max-w-full truncate bg-[#fff1f4] text-text-primary border border-primary/20">
                                                     {item.technique}
                                                 </Badge>
                                             )}
                                             {caption && (
-                                                <p className="line-clamp-2 text-sm leading-5 text-text-secondary">
+                                                <p className="line-clamp-3 text-sm leading-5 text-text-secondary md:line-clamp-2">
                                                     {caption}
                                                 </p>
                                             )}
@@ -112,9 +113,9 @@ export function NailsGallery({ items }: NailsGalleryProps) {
                 </div>
 
                 {/* Navigation Arrows: centred on the photo row (slide top padding to the caption block,
-                    bottom-24 = pb-2 + mt-4 + caption h-[4.5rem]). The active photo grows upward from its bottom edge
+                    bottom = pb-2 + mt-4 + caption height: 7rem on phones, 6rem from md). The active photo grows upward from its bottom edge
                     by 10%, so -5% moves the arrows to its visual centre; -inset-x-4 keeps the old horizontal position */}
-                <div className="absolute top-[10vw] sm:top-16 bottom-24 -left-4 -right-4 -translate-y-[5%] gap-4 flex justify-between items-center px-4 md:px-0 pointer-events-none z-20">
+                <div className="absolute top-[10vw] sm:top-16 bottom-28 md:bottom-24 -left-4 -right-4 -translate-y-[5%] gap-4 flex justify-between items-center px-4 md:px-0 pointer-events-none z-20">
                     <Button
                         onClick={scrollPrev}
                         variant="outline"
