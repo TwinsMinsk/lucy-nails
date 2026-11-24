@@ -33,6 +33,7 @@ from app.models.refund import RefundRequest
 from app.models.user import User
 from app.services.access_service import AccessService
 from app.services.audit_service import append_audit_log
+from app.services.operations_health_service import read_worker_heartbeat
 from app.services.outbox_service import enqueue_outbox_message
 from app.services.runtime_settings_service import RuntimeSettingsService
 
@@ -157,7 +158,16 @@ class SystemStatusResponse(BaseModel):
     environment: str
     integrations: dict[str, bool]
     outbox_pending: int
+    outbox_retry: int
+    outbox_processing: int
     outbox_dead_letter: int
+    # Age of the oldest message still waiting for delivery (pending, retry, processing).
+    oldest_undelivered_seconds: int | None
+    # "alive", "missing" or "unknown" (Redis not configured or unavailable).
+    worker_heartbeat: str
+    # None while the heartbeat is unknown: never reported as healthy.
+    worker_alive: bool | None
+    worker_heartbeat_age_seconds: int | None
     last_payment_event_at: datetime | None
 
 
@@ -475,12 +485,21 @@ async def system_status(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("audit.read")),
 ):
-    pending = await db.scalar(
-        select(func.count(OutboxMessage.id)).where(OutboxMessage.status == "pending")
+    counts = dict(
+        (
+            await db.execute(
+                select(OutboxMessage.status, func.count(OutboxMessage.id)).group_by(
+                    OutboxMessage.status
+                )
+            )
+        ).all()
     )
-    dead = await db.scalar(
-        select(func.count(OutboxMessage.id)).where(OutboxMessage.status == "dead_letter")
+    oldest_undelivered = await db.scalar(
+        select(func.min(OutboxMessage.created_at)).where(
+            OutboxMessage.status.in_(["pending", "retry", "processing"])
+        )
     )
+    heartbeat = await read_worker_heartbeat()
     last_payment = await db.scalar(select(func.max(PaymentEvent.received_at)))
     return SystemStatusResponse(
         checkout_enabled=await RuntimeSettingsService.checkout_enabled(db),
@@ -494,8 +513,18 @@ async def system_status(
             "telegram": bool(settings.TELEGRAM_BOT_TOKEN),
             "redis": bool(settings.REDIS_URL),
         },
-        outbox_pending=int(pending or 0),
-        outbox_dead_letter=int(dead or 0),
+        outbox_pending=int(counts.get("pending", 0)),
+        outbox_retry=int(counts.get("retry", 0)),
+        outbox_processing=int(counts.get("processing", 0)),
+        outbox_dead_letter=int(counts.get("dead_letter", 0)),
+        oldest_undelivered_seconds=(
+            max(0, int((datetime.utcnow() - oldest_undelivered).total_seconds()))
+            if oldest_undelivered
+            else None
+        ),
+        worker_heartbeat=heartbeat.state,
+        worker_alive=None if heartbeat.state == "unknown" else heartbeat.state == "alive",
+        worker_heartbeat_age_seconds=heartbeat.age_seconds,
         last_payment_event_at=last_payment,
     )
 

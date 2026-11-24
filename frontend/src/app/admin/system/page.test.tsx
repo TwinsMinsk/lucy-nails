@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { AdminPermissionsContext } from "@/app/admin/permissions"
 import System from "@/app/admin/system/page"
@@ -35,5 +35,53 @@ describe("team roles", () => {
         await waitFor(() => expect(toast.error).toHaveBeenCalledWith(refusal))
         expect(toast.success).not.toHaveBeenCalled()
         expect(screen.getByRole("dialog")).toBeInTheDocument()
+    })
+})
+
+const baseStatus: api.AdminSystemStatus = {
+    checkout_enabled: true, environment: "production", integrations: { redis: true },
+    outbox_pending: 1, outbox_retry: 3, outbox_processing: 2, outbox_dead_letter: 0,
+    oldest_undelivered_seconds: 120, worker_heartbeat: "alive", worker_alive: true,
+    worker_heartbeat_age_seconds: 20, last_payment_event_at: null,
+}
+
+const renderAuditor = () => render(
+    <AdminPermissionsContext.Provider value={["audit.read"]}>
+        <System />
+    </AdminPermissionsContext.Provider>,
+)
+
+describe("admin system status", () => {
+    beforeEach(() => {
+        vi.mocked(api.adminGetAuditLogs).mockResolvedValue([])
+        vi.mocked(api.adminGetRoles).mockResolvedValue([])
+        vi.mocked(api.adminGetTeamUsers).mockResolvedValue([])
+    })
+
+    it("shows retry and processing counts and a healthy worker without warnings", async () => {
+        vi.mocked(api.adminGetSystemStatus).mockResolvedValue(baseStatus)
+        renderAuditor()
+        expect(await screen.findByText("Retry: 3")).toBeVisible()
+        expect(screen.getByText("Processing: 2")).toBeVisible()
+        expect(screen.getByText(/Worker: работает/)).toBeVisible()
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    })
+
+    it("warns when the worker is not alive", async () => {
+        vi.mocked(api.adminGetSystemStatus).mockResolvedValue({ ...baseStatus, worker_heartbeat: "missing", worker_alive: false, worker_heartbeat_age_seconds: null })
+        renderAuditor()
+        expect(await screen.findByRole("alert")).toHaveTextContent("не присылает heartbeat")
+    })
+
+    it("does not present an unknown heartbeat as healthy", async () => {
+        vi.mocked(api.adminGetSystemStatus).mockResolvedValue({ ...baseStatus, worker_heartbeat: "unknown", worker_alive: null, worker_heartbeat_age_seconds: null })
+        renderAuditor()
+        expect(await screen.findByRole("alert")).toHaveTextContent("Состояние worker уведомлений неизвестно")
+    })
+
+    it("warns when the oldest undelivered message is older than 15 minutes", async () => {
+        vi.mocked(api.adminGetSystemStatus).mockResolvedValue({ ...baseStatus, oldest_undelivered_seconds: 16 * 60 })
+        renderAuditor()
+        expect(await screen.findByRole("alert")).toHaveTextContent("ждёт доставки уже 16 мин")
     })
 })

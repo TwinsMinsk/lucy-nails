@@ -1129,7 +1129,15 @@ export interface AdminSystemStatus {
     environment: string;
     integrations: Record<string, boolean>;
     outbox_pending: number;
+    outbox_retry?: number;
+    outbox_processing?: number;
     outbox_dead_letter: number;
+    /** Age of the oldest pending/retry/processing message. */
+    oldest_undelivered_seconds?: number | null;
+    /** "alive", "missing" or "unknown" (Redis not configured or unavailable). */
+    worker_heartbeat?: "alive" | "missing" | "unknown";
+    worker_alive?: boolean | null;
+    worker_heartbeat_age_seconds?: number | null;
     last_payment_event_at?: string | null;
 }
 
