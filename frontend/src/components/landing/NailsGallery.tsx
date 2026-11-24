@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import useEmblaCarousel from "embla-carousel-react";
+import type { EmblaCarouselType } from "embla-carousel";
 import { motion, useReducedMotion } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,26 @@ interface NailsGalleryProps {
     items: GalleryItem[];
 }
 
+interface CarouselState {
+    /**
+     * "carousel": every work has its own scroll position, the selected one is emphasised.
+     * "strip": Embla could not loop, merged positions or everything fits; all works are shown equally.
+     */
+    mode: "carousel" | "strip";
+    /** Selected scroll position; in carousel mode it is also the work index. */
+    selected: number;
+    positions: number;
+}
+
+function readCarouselState(api: EmblaCarouselType): CarouselState {
+    const positions = api.scrollSnapList().length;
+    return {
+        mode: positions === api.slideNodes().length ? "carousel" : "strip",
+        selected: api.selectedScrollSnap(),
+        positions,
+    };
+}
+
 export function NailsGallery({ items }: NailsGalleryProps) {
     const [emblaRef, emblaApi] = useEmblaCarousel({
         loop: true,
@@ -20,117 +41,168 @@ export function NailsGallery({ items }: NailsGalleryProps) {
         skipSnaps: false,
     });
 
-    const [selectedIndex, setSelectedIndex] = useState(0);
+    const [carousel, setCarousel] = useState<CarouselState>({
+        mode: "carousel",
+        selected: 0,
+        positions: items.length,
+    });
     const reduceMotion = useReducedMotion();
 
     const scrollPrev = useCallback(() => emblaApi && emblaApi.scrollPrev(), [emblaApi]);
     const scrollNext = useCallback(() => emblaApi && emblaApi.scrollNext(), [emblaApi]);
 
-    const onSelect = useCallback(() => {
+    const sync = useCallback(() => {
         if (!emblaApi) return;
-        setSelectedIndex(emblaApi.selectedScrollSnap());
+        setCarousel(readCarouselState(emblaApi));
     }, [emblaApi]);
 
     useEffect(() => {
         if (!emblaApi) return;
-        onSelect();
-        emblaApi.on("select", onSelect);
-        emblaApi.on("reInit", onSelect);
-    }, [emblaApi, onSelect]);
+        sync();
+        emblaApi.on("select", sync).on("reInit", sync).on("resize", sync);
+        return () => {
+            emblaApi.off("select", sync).off("reInit", sync).off("resize", sync);
+        };
+    }, [emblaApi, sync]);
+
+    const { mode, selected, positions } = carousel;
+    const isCarousel = mode === "carousel";
+    // A single position (one work, or everything fits) has nothing to emphasise: the scaled photo would be cut.
+    const emphasise = isCarousel && positions > 1;
+    const showNavigation = positions > 1;
+    const transition = reduceMotion ? { duration: 0 } : {
+        type: "spring" as const,
+        stiffness: 300,
+        damping: 30,
+    };
 
     return (
-        <div className="relative w-full max-w-6xl mx-auto px-4 py-8 group">
-            {/* Container for Embla */}
-            <div className="overflow-hidden" ref={emblaRef}>
-                <div className="flex">
-                    {items.map((item, index) => {
-                        const isActive = selectedIndex === index;
+        <div className="relative w-full max-w-6xl mx-auto px-4 pb-8 group">
+            {/* Slides plus arrows; the dots sit below and outside this box */}
+            <div className="relative">
+                {/* Container for Embla. Slides stretch to the tallest one, so the row keeps its height while sliding */}
+                <div className="overflow-hidden" ref={emblaRef}>
+                    <div className="flex">
+                        {items.map((item, index) => {
+                            const isActive = emphasise && selected === index;
+                            // In carousel mode only the selected work is shown in full, so cut-off neighbour
+                            // text never competes with it; in strip mode every work is.
+                            const isShown = !emphasise || isActive;
+                            const caption = item.caption.trim();
 
-                        return (
-                            <div
-                                key={index}
-                                className="flex-[0_0_70%] sm:flex-[0_0_50%] md:flex-[0_0_40%] lg:flex-[0_0_33.333%] min-w-0 pl-1 py-10"
-                            >
-                                <motion.div
-                                    initial={false}
-                                    animate={{
-                                        scale: isActive ? 1.1 : 0.85,
-                                        opacity: isActive ? 1 : 0.6,
-                                        zIndex: isActive ? 10 : 0,
-                                    }}
-                                    transition={reduceMotion ? { duration: 0 } : {
-                                        type: "spring",
-                                        stiffness: 300,
-                                        damping: 30,
-                                    }}
-                                    className="relative aspect-[3/4] rounded-3xl overflow-hidden shadow-2xl bg-[#EBC8C8]"
+                            return (
+                                <div
+                                    key={index}
+                                    className="flex flex-[0_0_70%] flex-col sm:flex-[0_0_50%] md:flex-[0_0_40%] lg:flex-[0_0_33.333%] min-w-0 pl-1 pt-[10vw] sm:pt-16 pb-2"
                                 >
-                                    <Image
-                                        src={item.src}
-                                        alt={item.alt}
-                                        fill
-                                        sizes="(max-width: 640px) 70vw, (max-width: 1024px) 40vw, 33vw"
-                                        className="object-cover select-none"
-                                    />
-                                    {/* Compact caption: the work itself is the point of the slide */}
-                                    <div className="absolute inset-x-3 bottom-3 rounded-2xl bg-white/90 px-3 py-2.5 border border-white/70">
-                                        <Badge variant="secondary" className="mb-1 bg-[#fff1f4] text-text-primary border border-primary/20">
-                                            {item.technique}
-                                        </Badge>
-                                        <p className="text-sm leading-snug text-text-secondary">
-                                            {item.caption}
-                                        </p>
-                                    </div>
-                                </motion.div>
-                            </div>
-                        );
-                    })}
+                                    {/* Inactive slides fade; only the photo scales, the text never does */}
+                                    <motion.figure
+                                        initial={false}
+                                        animate={{ opacity: isShown ? 1 : 0.6 }}
+                                        transition={transition}
+                                        className="m-0 flex flex-1 flex-col"
+                                    >
+                                        {/* Scales from its bottom edge, so it grows into the top padding (10vw on phones,
+                                            4rem from sm: each covers 10% of the widest photo at that breakpoint) and never reaches the caption below */}
+                                        <motion.div
+                                            initial={false}
+                                            animate={{
+                                                scale: !emphasise ? 1 : isActive ? 1.1 : 0.85,
+                                                zIndex: isActive ? 10 : 0,
+                                            }}
+                                            transition={transition}
+                                            style={{ transformOrigin: "50% 100%" }}
+                                            className="relative aspect-[3/4] rounded-3xl overflow-hidden shadow-2xl bg-[#EBC8C8]"
+                                        >
+                                            <Image
+                                                src={item.src}
+                                                alt={item.alt}
+                                                fill
+                                                sizes="(max-width: 639px) 78vw, (max-width: 767px) 55vw, (max-width: 1023px) 44vw, 420px"
+                                                className="object-cover select-none"
+                                            />
+                                        </motion.div>
+                                        {/* Never wider than its slide; the text wraps in full, and flex-1 makes every
+                                            caption area as tall as the longest one in the row */}
+                                        <motion.figcaption
+                                            initial={false}
+                                            animate={{ opacity: isShown ? 1 : 0 }}
+                                            transition={transition}
+                                            className="mt-4 flex flex-1 flex-col items-center gap-1.5 px-1 text-center"
+                                        >
+                                            {item.technique && (
+                                                <Badge variant="secondary" className="block max-w-full whitespace-normal break-words bg-[#fff1f4] text-text-primary border border-primary/20">
+                                                    {item.technique}
+                                                </Badge>
+                                            )}
+                                            {caption && (
+                                                <p className="w-full break-words text-sm leading-5 text-text-secondary">
+                                                    {caption}
+                                                </p>
+                                            )}
+                                        </motion.figcaption>
+                                    </motion.figure>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
+
+                {showNavigation && (
+                    /* Navigation Arrows, positioned against the photo box rather than the caption: the wrapper starts
+                       at the slide's top padding and its padding-top (a % of the gallery width) equals the photo height
+                       (slide width minus pl-1, times 4/3). In carousel mode the active photo grows upward from its
+                       bottom edge by 10%, so -5% moves the arrows to its visual centre */
+                    <div className="pointer-events-none absolute inset-x-0 top-[10vw] sm:top-16 z-20">
+                        <div className="relative pt-[calc((70%_-_4px)*4/3)] sm:pt-[calc((50%_-_4px)*4/3)] md:pt-[calc((40%_-_4px)*4/3)] lg:pt-[calc((33.333%_-_4px)*4/3)]">
+                            <div className={`absolute inset-0 flex items-center justify-between gap-4 ${emphasise ? "-translate-y-[5%]" : ""}`}>
+                                <Button
+                                    onClick={scrollPrev}
+                                    variant="outline"
+                                    size="icon"
+                                    aria-label="Предыдущая работа"
+                                    className="pointer-events-auto rounded-full size-11 md:size-14 bg-white/95 backdrop-blur-sm border border-black/5 shadow-2xl hover:bg-white text-text-primary -ml-4 md:-ml-11 transition-all hover:scale-110 active:scale-90"
+                                >
+                                    <ChevronLeft className="size-6 md:size-8" />
+                                </Button>
+                                <Button
+                                    onClick={scrollNext}
+                                    variant="outline"
+                                    size="icon"
+                                    aria-label="Следующая работа"
+                                    className="pointer-events-auto rounded-full size-11 md:size-14 bg-white/95 backdrop-blur-sm border border-black/5 shadow-2xl hover:bg-white text-text-primary -mr-4 md:-mr-11 transition-all hover:scale-110 active:scale-90"
+                                >
+                                    <ChevronRight className="size-6 md:size-8" />
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
 
-            {/* Navigation Arrows */}
-            <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 gap-4 flex justify-between items-center px-4 md:px-0 pointer-events-none z-20">
-                <Button
-                    onClick={scrollPrev}
-                    variant="outline"
-                    size="icon"
-                    aria-label="Предыдущая работа"
-                    className="pointer-events-auto rounded-full w-14 h-14 bg-white/95 backdrop-blur-sm border border-black/5 shadow-2xl hover:bg-white text-text-primary -ml-4 md:-ml-7 transition-all hover:scale-110 active:scale-90"
-                >
-                    <ChevronLeft className="w-8 h-8" />
-                </Button>
-                <Button
-                    onClick={scrollNext}
-                    variant="outline"
-                    size="icon"
-                    aria-label="Следующая работа"
-                    className="pointer-events-auto rounded-full w-14 h-14 bg-white/95 backdrop-blur-sm border border-black/5 shadow-2xl hover:bg-white text-text-primary -mr-4 md:-mr-7 transition-all hover:scale-110 active:scale-90"
-                >
-                    <ChevronRight className="w-8 h-8" />
-                </Button>
-            </div>
-
-            {/* Dots / Indicators */}
+            {/* Dots / Indicators: one per work in carousel mode, one per scroll position in strip mode */}
             {/* 24px tall hit area around a 10px dot (WCAG 2.5.8) */}
-            <div className="flex justify-center gap-1 mt-12">
-                {items.map((_, index) => (
-                    <button
-                        key={index}
-                        type="button"
-                        onClick={() => emblaApi?.scrollTo(index)}
-                        className="group/dot flex h-6 items-center px-1"
-                        aria-label={`Работа ${index + 1} из ${items.length}`}
-                        aria-current={selectedIndex === index ? "true" : undefined}
-                    >
-                        <span
-                            className={`block h-2.5 rounded-full transition-all duration-300 ${selectedIndex === index
-                                ? "w-12 bg-primary"
-                                : "w-2.5 bg-primary/30 group-hover/dot:bg-primary/50"
-                                }`}
-                        />
-                    </button>
-                ))}
-            </div>
+            {showNavigation && (
+                <div className="flex justify-center gap-1 mt-6">
+                    {Array.from({ length: positions }, (_, index) => (
+                        <button
+                            key={index}
+                            type="button"
+                            onClick={() => emblaApi?.scrollTo(index)}
+                            className="group/dot flex h-6 items-center px-1"
+                            aria-label={`${isCarousel ? "Работа" : "Страница"} ${index + 1} из ${positions}`}
+                            aria-current={selected === index ? "true" : undefined}
+                        >
+                            <span
+                                className={`block h-2.5 rounded-full transition-all duration-300 ${selected === index
+                                    ? "w-12 bg-primary"
+                                    : "w-2.5 bg-primary/30 group-hover/dot:bg-primary/50"
+                                    }`}
+                            />
+                        </button>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }

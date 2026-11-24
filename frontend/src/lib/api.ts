@@ -369,11 +369,16 @@ export const disconnectTelegram = async (): Promise<void> => {
  */
 export const logout = async (): Promise<void> => {
     try {
-        await apiFetch("/auth/logout", { method: "POST" });
-    } finally {
-        // Удаляем токены из localStorage в любом случае
-        clearTokens();
+        // No refresh on 401: a 401 here already means the session is gone.
+        await apiFetch("/auth/logout", { method: "POST" }, false);
+    } catch (error) {
+        // 401/403 (also after a rejected refresh) means the server session is already gone.
+        // A network error or a 5xx is temporary: keep the session marker so the user can retry.
+        const sessionGone = isAuthError(error)
+            || (error instanceof ApiError && (error.status === 401 || error.status === 403));
+        if (!sessionGone) throw error;
     }
+    clearTokens();
 };
 
 /**

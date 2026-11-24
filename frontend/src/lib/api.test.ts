@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { ApiError, apiFetch, isAuthError, adminGetAccessCourses, adminGetNotifications, adminGetReportSources, adminReportSourcesCsvUrl, resendVerification } from "@/lib/api"
+import { ApiError, apiFetch, isAuthError, adminGetAccessCourses, adminGetNotifications, adminGetReportSources, adminReportSourcesCsvUrl, logout, resendVerification } from "@/lib/api"
 
 
 describe("apiFetch", () => {
@@ -142,5 +142,44 @@ describe("apiFetch", () => {
         expect(error).toBeInstanceOf(ApiError)
         expect(error).toMatchObject({ status })
         expect(storage.get("refresh_token")).toBe("refresh")
+    })
+})
+
+describe("logout", () => {
+    const hasSessionMarker = () => document.cookie.split("; ").includes("auth_session=1")
+    const answer = (status: number) => ({ ok: status < 400, status, json: async () => ({ detail: `HTTP ${status}` }) })
+
+    afterEach(() => {
+        vi.unstubAllGlobals()
+        document.cookie = "auth_session=; Path=/; Max-Age=0"
+    })
+
+    it.each([
+        ["a network error", () => Promise.reject(new TypeError("Failed to fetch"))],
+        ["a 500 answer", async () => answer(500)],
+    ])("keeps the session marker and rejects on %s", async (_case, respond) => {
+        document.cookie = "auth_session=1; Path=/"
+        vi.spyOn(console, "error").mockImplementation(() => undefined)
+        vi.stubGlobal("fetch", vi.fn(respond))
+
+        await expect(logout()).rejects.toBeDefined()
+
+        expect(hasSessionMarker()).toBe(true)
+    })
+
+    it.each([200, 401, 403])("clears the session marker when the server answers %i", async (status) => {
+        document.cookie = "auth_session=1; Path=/"
+        vi.spyOn(console, "error").mockImplementation(() => undefined)
+        // A single answer: any further request (such as a token refresh) would fail the logout.
+        const request = vi.fn()
+            .mockResolvedValueOnce(answer(status))
+            .mockRejectedValue(new TypeError("Unexpected second request"))
+        vi.stubGlobal("fetch", request)
+
+        await expect(logout()).resolves.toBeUndefined()
+
+        expect(hasSessionMarker()).toBe(false)
+        expect(request).toHaveBeenCalledTimes(1)
+        expect(request.mock.calls.some(([url]) => String(url).endsWith("/auth/refresh"))).toBe(false)
     })
 })
