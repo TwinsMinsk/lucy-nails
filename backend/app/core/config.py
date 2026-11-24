@@ -327,9 +327,11 @@ class Settings(BaseSettings):
             errors.append("FRONTEND_URL must be public in production")
         if "localhost" in self.BACKEND_URL or "127.0.0.1" in self.BACKEND_URL:
             errors.append("BACKEND_URL must be public in production")
-        if not self.TRUSTED_HOSTS:
+        # Checked after splitting: a value of spaces or commas would otherwise
+        # count as set while main.py and Uvicorn end up with an empty list.
+        if not _split_list(self.TRUSTED_HOSTS):
             errors.append("TRUSTED_HOSTS is required in production")
-        if not self.FORWARDED_ALLOW_IPS or self.FORWARDED_ALLOW_IPS.strip() == "*":
+        if not _split_list(self.FORWARDED_ALLOW_IPS) or self.FORWARDED_ALLOW_IPS.strip() == "*":
             errors.append("FORWARDED_ALLOW_IPS must list trusted proxy IPs/CIDRs in production")
         else:
             invalid = _invalid_proxy_entries(self.FORWARDED_ALLOW_IPS)

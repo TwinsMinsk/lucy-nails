@@ -299,3 +299,14 @@ def test_production_rejects_proxy_network_with_host_bits(proxies):
     with pytest.raises(ValidationError, match="FORWARDED_ALLOW_IPS must list proxy IP addresses"):
         _valid_prod(FORWARDED_ALLOW_IPS=proxies)
 
+
+@pytest.mark.parametrize("value", ["   ", ",", " , ,"])
+def test_production_requires_a_non_empty_trusted_host_list(value):
+    with pytest.raises(ValidationError, match="TRUSTED_HOSTS is required in production"):
+        _valid_prod(TRUSTED_HOSTS=value)
+
+
+@pytest.mark.parametrize("value", ["   ", ",", " , ,"])
+def test_production_requires_a_non_empty_proxy_list(value):
+    with pytest.raises(ValidationError, match="FORWARDED_ALLOW_IPS must list trusted proxy IPs/CIDRs"):
+        _valid_prod(FORWARDED_ALLOW_IPS=value)
