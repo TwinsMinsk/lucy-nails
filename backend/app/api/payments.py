@@ -975,25 +975,26 @@ async def _record_rejected_webhook(
     )
     async with async_session_maker() as db:
         email_lines = await payment_alert_email_lines(db, matched_order_id, form_email)
-        if processing_status == "ignored":
-            # Declines and cancellations: no money was taken.
-            text = (
-                f"ℹ️ Неуспешная попытка оплаты (статус: {event_data.event_type})\n"
-                + email_lines
-                + f"Заказ: {order_reference}"
-            )
-        else:
-            amount = (
-                format_rub(event_data.amount_kopecks)
-                if event_data.amount_kopecks is not None
-                else "—"
-            )
-            text = (
-                f"⚠️ Платёж не обработан: {error_code}\n"
-                f"Сумма: {amount}\n"
-                + email_lines
-                + f"Заказ: {order_reference}"
-            )
+    if processing_status == "ignored":
+        # Declines and cancellations: no money was taken.
+        text = (
+            f"ℹ️ Неуспешная попытка оплаты (статус: {event_data.event_type})\n"
+            + email_lines
+            + f"Заказ: {order_reference}"
+        )
+    else:
+        amount = (
+            format_rub(event_data.amount_kopecks)
+            if event_data.amount_kopecks is not None
+            else "—"
+        )
+        text = (
+            f"⚠️ Платёж не обработан: {error_code}\n"
+            f"Сумма: {amount}\n"
+            + email_lines
+            + f"Заказ: {order_reference}"
+        )
+    async with async_session_maker() as db:
         try:
             await enqueue_owner_telegram_alert(
                 db,
