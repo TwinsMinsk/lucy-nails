@@ -258,6 +258,53 @@ class AdminPurchaseResponse(BaseModel):
     access_expires_at: Optional[datetime] = None
 
 
+# Commercial terms of a course: content.manage alone must not change them,
+# because an order snapshots them at checkout.
+PRICING_PERMISSION = "commerce.manage_pricing"
+PRICING_FIELDS = ("price_self", "price_support", "access_days")
+
+
+async def _authorize_pricing_changes(
+    db: AsyncSession,
+    admin: User,
+    old_values: dict,
+    new_values: dict,
+) -> dict[str, tuple]:
+    """Return the changed commercial terms after checking the pricing permission."""
+    changes = {
+        field: (old_values.get(field), new_values[field])
+        for field in PRICING_FIELDS
+        if field in new_values and new_values[field] != old_values.get(field)
+    }
+    if changes and not await user_has_permission(db, admin, PRICING_PERMISSION):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Permission required: {PRICING_PERMISSION}",
+        )
+    return changes
+
+
+def _audit_pricing_changes(
+    db: AsyncSession,
+    request: Request,
+    admin: User,
+    course_id: UUID,
+    changes: dict[str, tuple],
+) -> None:
+    if not changes:
+        return
+    append_audit_log(
+        db,
+        actor_user_id=admin.id,
+        action="course.pricing.update",
+        object_type="course",
+        object_id=str(course_id),
+        old_value={field: old for field, (old, _) in changes.items()},
+        new_value={field: new for field, (_, new) in changes.items()},
+        correlation_id=request.state.correlation_id,
+    )
+
+
 def _mask_email(value: str) -> str:
     local, separator, domain = value.partition("@")
     if not separator:
@@ -327,10 +374,16 @@ async def get_all_courses(
 @router.post("/courses", response_model=CourseResponse)
 async def create_course(
     data: CourseCreateRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("content.manage"))
 ):
     """Создать новый курс."""
+    # Default terms need no pricing permission; anything else does.
+    defaults = {
+        field: CourseCreateRequest.model_fields[field].default for field in PRICING_FIELDS
+    }
+    await _authorize_pricing_changes(db, admin, defaults, data.model_dump())
     new_course = Course(
         id=uuid4(),
         title=data.title,
@@ -342,8 +395,15 @@ async def create_course(
         access_days=data.access_days,
         created_at=datetime.utcnow()
     )
-    
+
     db.add(new_course)
+    _audit_pricing_changes(
+        db,
+        request,
+        admin,
+        new_course.id,
+        {field: (None, getattr(new_course, field)) for field in PRICING_FIELDS},
+    )
     await db.commit()
     await db.refresh(new_course)
     
@@ -400,6 +460,7 @@ async def get_course(
 async def update_course(
     course_id: UUID,
     data: CourseUpdateRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("content.manage"))
 ):
@@ -415,9 +476,16 @@ async def update_course(
     
     # Обновляем только переданные поля
     update_data = data.model_dump(exclude_unset=True)
+    pricing_changes = await _authorize_pricing_changes(
+        db,
+        admin,
+        {field: getattr(course, field) for field in PRICING_FIELDS},
+        update_data,
+    )
     for key, value in update_data.items():
         setattr(course, key, value)
-    
+    _audit_pricing_changes(db, request, admin, course.id, pricing_changes)
+
     await db.commit()
     await db.refresh(course)
     
