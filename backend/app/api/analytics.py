@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.rate_limit import limiter
+from app.models.course import Course
 from app.services.analytics_service import (
     AnalyticsService,
     clean_attribution_value,
@@ -142,6 +143,10 @@ async def collect_event(
     data: PublicAnalyticsEvent,
     db: AsyncSession = Depends(get_db),
 ):
+    course_id = data.course_id
+    if course_id is not None and await db.get(Course, course_id) is None:
+        # A tab of a deleted course still reports; keep the event, drop the link.
+        course_id = None
     created = await AnalyticsService.record_event(
         db,
         event_id=str(data.event_id),
@@ -149,7 +154,7 @@ async def collect_event(
         source=data.source,
         happened_at=data.happened_at.replace(tzinfo=None),
         anonymous_id=data.anonymous_id,
-        course_id=data.course_id,
+        course_id=course_id,
         utm_source=data.utm_source,
         utm_medium=data.utm_medium,
         utm_campaign=data.utm_campaign,

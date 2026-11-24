@@ -702,3 +702,41 @@ async def test_event_timestamp_is_normalized_to_utc(client, db):
         select(AnalyticsEvent).where(AnalyticsEvent.event_id == event_id)
     )
     assert event.happened_at == instant.replace(tzinfo=None)
+
+
+@pytest.mark.asyncio
+async def test_public_event_for_unknown_course_is_kept_without_course(
+    client: AsyncClient, db: AsyncSession
+):
+    """A tab of a deleted course must not turn the collector into a 500 (audit B8)."""
+    course = Course(title="Known analytics course", price_self=5000, price_support=10000)
+    db.add(course)
+    await db.commit()
+    unknown_id = str(uuid4())
+    unknown_event = str(uuid4())
+    known_event = str(uuid4())
+    base = {
+        "event_name": "cta_click",
+        "source": "web",
+        "anonymous_id": str(uuid4()),
+        "properties": {"tariff": "self", "location": "pricing"},
+    }
+
+    unknown = await client.post(
+        "/api/analytics/events",
+        json={**base, "event_id": unknown_event, "course_id": unknown_id},
+    )
+    known = await client.post(
+        "/api/analytics/events",
+        json={**base, "event_id": known_event, "course_id": str(course.id)},
+    )
+
+    assert unknown.status_code == 202, unknown.text
+    assert unknown.json() == {"accepted": True, "duplicate": False}
+    assert known.status_code == 202, known.text
+    stored = {
+        row.event_id: row.course_id
+        for row in (await db.execute(select(AnalyticsEvent))).scalars().all()
+    }
+    assert stored[unknown_event] is None
+    assert stored[known_event] == course.id
