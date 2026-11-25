@@ -24,7 +24,7 @@ Write-Host ""
 Write-Host "Запускаю Backend (FastAPI) в новом окне..." -ForegroundColor Cyan
 
 $backendPath = Join-Path $PSScriptRoot "..\backend"
-$backendCommand = "cd '$backendPath'; .\venv\Scripts\Activate.ps1; Write-Host 'Backend запущен на http://127.0.0.1:8000' -ForegroundColor Green; uvicorn app.main:app --reload"
+$backendCommand = "cd '$backendPath'; .\venv\Scripts\Activate.ps1; Write-Host 'Backend запущен на http://127.0.0.1:8000' -ForegroundColor Green; uvicorn app.main:app --reload --no-access-log"
 
 Start-Process powershell -ArgumentList "-NoExit", "-Command", $backendCommand
 

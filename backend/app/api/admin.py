@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +14,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.dependencies import require_permission, user_has_permission
+from app.models.audit_log import AuditLog
 from app.models.user import User
 from app.models.course import Course
 from app.models.module import Module
@@ -23,9 +24,14 @@ from app.models.entitlement import Entitlement
 from app.models.order import Order
 from app.models.certificate import Certificate
 from app.schemas.auth import UserResponse
-from app.services.access_service import AccessService
+from app.services.access_service import (
+    MANUAL_GRANT_KEY_CONFLICT,
+    AccessService,
+    LaterAccessExistsError,
+)
 from app.services.audit_service import append_audit_log
 from app.services.content_audit import audit_content_event, audit_content_update, snapshot
+from app.services.email_service import format_msk_datetime
 
 
 router = APIRouter()
@@ -40,6 +46,10 @@ class GrantAccessRequest(BaseModel):
     tariff: Literal["self", "support"] = "self"
     access_days: int | None = Field(default=None, ge=1, le=3650)
     reason: str = Field(..., min_length=5, max_length=1000)
+    # Generated once per opened form and kept across retries; see extend.
+    idempotency_key: str | None = Field(
+        default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$"
+    )
 
 
 class GrantAccessResponse(BaseModel):
@@ -66,6 +76,12 @@ class EntitlementReasonRequest(BaseModel):
 
 class EntitlementExtendRequest(EntitlementReasonRequest):
     days: int = Field(..., ge=1, le=3650)
+    # Generated when the extension dialog opens; a repeated request with the same
+    # key (double click, network retry) returns the first result instead of
+    # adding the days again.
+    idempotency_key: str | None = Field(
+        default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$"
+    )
 
 
 class EntitlementActionResponse(BaseModel):
@@ -257,6 +273,15 @@ class AdminPurchaseResponse(BaseModel):
     entitlement_id: Optional[UUID] = None
     access_status: str
     access_expires_at: Optional[datetime] = None
+    # "paid" for real payments, "manual" for manual grants (see paid_financial_filter).
+    kind: str = "paid"
+
+
+class AdminPurchasePage(BaseModel):
+    items: list[AdminPurchaseResponse]
+    total: int
+    limit: int
+    offset: int
 
 
 # Commercial terms of a course: content.manage alone must not change them,
@@ -827,24 +852,8 @@ async def delete_lesson(
 
 # === Analytics ===
 
-@router.get("/purchases", response_model=list[AdminPurchaseResponse])
-async def get_all_purchases(
-    db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_permission("commerce.read")),
-):
-    """Получить последние покупки для админ-панели."""
-    query = (
-        select(Purchase)
-        .options(
-            selectinload(Purchase.user),
-            selectinload(Purchase.course),
-            selectinload(Purchase.entitlement),
-        )
-        .order_by(Purchase.created_at.desc())
-        .limit(200)
-    )
-    result = await db.execute(query)
-    purchases = result.scalars().all()
+async def _purchase_rows(db: AsyncSession, admin: User, rows) -> list[AdminPurchaseResponse]:
+    """Serialize (Purchase, is_paid) rows with PII masking for readers without pii.read."""
     can_read_pii = await user_has_permission(db, admin, "pii.read")
     now = datetime.utcnow()
 
@@ -882,9 +891,68 @@ async def get_all_purchases(
             access_expires_at=(
                 purchase.entitlement.expires_at if purchase.entitlement else None
             ),
+            kind="paid" if is_paid else "manual",
         )
-        for purchase in purchases
+        for purchase, is_paid in rows
     ]
+
+
+def _purchase_query(*conditions):
+    return (
+        select(Purchase, paid_financial_filter().label("is_paid"))
+        .where(*conditions)
+        .options(
+            selectinload(Purchase.user),
+            selectinload(Purchase.course),
+            selectinload(Purchase.entitlement),
+        )
+    )
+
+
+@router.get("/purchases", response_model=list[AdminPurchaseResponse])
+async def get_all_purchases(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_permission("commerce.read")),
+):
+    """Последние 200 покупок списком — прежний контракт для открытых старых вкладок.
+
+    Новая страница использует /purchases/page.
+    """
+    rows = (
+        await db.execute(_purchase_query().order_by(Purchase.created_at.desc()).limit(200))
+    ).all()
+    return await _purchase_rows(db, admin, rows)
+
+
+@router.get("/purchases/page", response_model=AdminPurchasePage)
+async def get_purchases_page(
+    kind: Literal["paid", "manual", "all"] = Query(default="paid"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_permission("commerce.read")),
+):
+    """Покупки страницами: по умолчанию только реальные оплаты."""
+    conditions = []
+    if kind == "paid":
+        conditions.append(paid_financial_filter())
+    elif kind == "manual":
+        conditions.append(~paid_financial_filter())
+    total = await db.scalar(select(func.count(Purchase.id)).where(*conditions))
+    rows = (
+        await db.execute(
+            _purchase_query(*conditions)
+            .order_by(Purchase.created_at.desc(), Purchase.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+    ).all()
+    return AdminPurchasePage(
+        items=await _purchase_rows(db, admin, rows),
+        total=int(total or 0),
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/analytics", response_model=AnalyticsResponse)
@@ -968,16 +1036,38 @@ async def grant_course_access(
     
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
-    
+
+    access_days = data.access_days or course.access_days
+    if data.idempotency_key:
+        # A retry after a lost response or a double submit returns the first
+        # grant instead of adding a second period and a second email.
+        previous = await AccessService.find_manual_grant(
+            db, user_id=user.id, course_id=course.id, idempotency_key=data.idempotency_key
+        )
+        if previous is not None:
+            if not AccessService.manual_grant_matches(
+                previous, tariff=data.tariff, access_days=access_days, reason=data.reason
+            ):
+                raise HTTPException(status_code=409, detail=MANUAL_GRANT_KEY_CONFLICT)
+            return GrantAccessResponse(
+                message="Access granted successfully",
+                entitlement_id=UUID(previous.object_id),
+                expires_at=datetime.fromisoformat(previous.new_value["expires_at"]),
+            )
+
     # Manual access is deliberately separate from financial purchase history.
     entitlement = await AccessService.grant_manual_access(
         db,
         user_id=data.user_id,
         course_id=data.course_id,
         tariff=data.tariff,
-        access_days=data.access_days or course.access_days,
+        access_days=access_days,
         granted_by_id=admin.id,
         reason=data.reason,
+    )
+    # Same email choice and dedupe keys as /admin/students, in this transaction.
+    notification_kind = AccessService.enqueue_manual_grant_notification(
+        db, user=user, course=course, entitlement=entitlement
     )
     append_audit_log(
         db,
@@ -991,8 +1081,10 @@ async def grant_course_access(
             "user_id": str(data.user_id),
             "course_id": str(data.course_id),
             "tariff": data.tariff,
-            "access_days": data.access_days or course.access_days,
+            "access_days": access_days,
             "expires_at": entitlement.expires_at.isoformat(),
+            "notification": notification_kind,
+            **({"idempotency_key": data.idempotency_key} if data.idempotency_key else {}),
         },
     )
     await db.commit()
@@ -1012,9 +1104,7 @@ async def revoke_entitlement(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("access.manage")),
 ):
-    entitlement = await db.get(Entitlement, data.entitlement_id)
-    if entitlement is None:
-        raise HTTPException(status_code=404, detail="Entitlement not found")
+    entitlement = await _load_entitlement_for_action(db, data.entitlement_id)
     old_value = {"status": entitlement.status, "expires_at": entitlement.expires_at.isoformat()}
     await AccessService.revoke_entitlement(db, entitlement, reason=data.reason)
     append_audit_log(
@@ -1041,11 +1131,9 @@ async def _load_entitlement_for_action(
     db: AsyncSession,
     entitlement_id: UUID,
 ) -> Entitlement:
-    entitlement = await db.scalar(
-        select(Entitlement)
-        .where(Entitlement.id == entitlement_id)
-        .with_for_update()
-    )
+    # Course-access lock, then purchase, then entitlement: the order a full
+    # refund also follows, so the two never deadlock.
+    entitlement = await AccessService.lock_entitlement_for_change(db, entitlement_id)
     if entitlement is None:
         raise HTTPException(status_code=404, detail="Entitlement not found")
     return entitlement
@@ -1063,6 +1151,32 @@ async def extend_entitlement(
     admin: User = Depends(require_permission("access.manage")),
 ):
     entitlement = await _load_entitlement_for_action(db, entitlement_id)
+    if data.idempotency_key:
+        # The row lock above serializes repeats, so a committed first attempt is
+        # visible here and the days are never added twice.
+        first = await db.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "entitlement.extend",
+                AuditLog.object_id == str(entitlement.id),
+                AuditLog.new_value["idempotency_key"].as_string() == data.idempotency_key,
+            ).order_by(AuditLog.created_at).limit(1)
+        )
+        if first is not None:
+            stored = first.new_value or {}
+            if stored.get("days") != data.days or (first.reason or "") != data.reason.strip():
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Этот запрос на продление уже выполнен с другими параметрами "
+                        f"({stored.get('days')} дн.). Закройте окно и откройте продление заново."
+                    ),
+                )
+            # Exact repeat: answer with the result of the first operation.
+            return EntitlementActionResponse(
+                entitlement_id=entitlement.id,
+                status=stored["status"],
+                expires_at=datetime.fromisoformat(stored["expires_at"]),
+            )
     old_value = {
         "status": entitlement.status,
         "expires_at": entitlement.expires_at.isoformat(),
@@ -1074,6 +1188,15 @@ async def extend_entitlement(
             days=data.days,
             reason=data.reason,
         )
+    except LaterAccessExistsError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "У ученика есть более поздний доступ к этому курсу — до "
+                f"{format_msk_datetime(exc.access_end)}. Продлите этот последний доступ: "
+                "продление этой записи не изменит срок, который видит ученик."
+            ),
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     append_audit_log(
@@ -1089,6 +1212,7 @@ async def extend_entitlement(
             "status": entitlement.status,
             "expires_at": entitlement.expires_at.isoformat(),
             "days": data.days,
+            **({"idempotency_key": data.idempotency_key} if data.idempotency_key else {}),
         },
     )
     await db.commit()
@@ -1168,17 +1292,30 @@ async def revoke_course_access(
     admin: User = Depends(require_permission("refunds.manage")),
 ):
     """Отозвать связанный Entitlement, не изменяя финансовую историю Purchase."""
+    owner = (
+        await db.execute(
+            select(Purchase.user_id, Purchase.course_id).where(Purchase.id == data.purchase_id)
+        )
+    ).one_or_none()
+    if owner is None:
+        raise HTTPException(status_code=404, detail="Purchase not found")
+    # Same lock order as every access change: course access, purchase, entitlement.
+    await AccessService.lock_course_access(db, owner.user_id, owner.course_id)
     purchase_result = await db.execute(
         select(Purchase)
         .where(Purchase.id == data.purchase_id)
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     purchase = purchase_result.scalar_one_or_none()
     if not purchase:
         raise HTTPException(status_code=404, detail="Purchase not found")
 
     entitlement_result = await db.execute(
-        select(Entitlement).where(Entitlement.source_purchase_id == purchase.id)
+        select(Entitlement)
+        .where(Entitlement.source_purchase_id == purchase.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     entitlement = entitlement_result.scalar_one_or_none()
     if entitlement is None:

@@ -166,8 +166,9 @@ export default function AdminLandingPage() {
 
             {selectedCourseId && (
                 <>
-                    <HeroSection courseId={selectedCourseId} />
-                    <ProgramSection courseId={selectedCourseId} />
+                    {/* Keyed by course: switching courses starts from a clean form. */}
+                    <HeroSection key={`hero-${selectedCourseId}`} courseId={selectedCourseId} />
+                    <ProgramSection key={`program-${selectedCourseId}`} courseId={selectedCourseId} />
                 </>
             )}
 
@@ -180,18 +181,64 @@ export default function AdminLandingPage() {
 // HERO
 // =====================================================================
 
+/** The value the API stores for each hero field, as the form would send it. */
+function heroPayload(hero: LandingHeroPayload): LandingHeroPayload {
+    return {
+        landing_title: nullIfBlank(hero.landing_title),
+        landing_subtitle: nullIfBlank(hero.landing_subtitle),
+        landing_description: nullIfBlank(hero.landing_description),
+        landing_audience: nullIfBlank(hero.landing_audience),
+        landing_support_note: nullIfBlank(hero.landing_support_note),
+        landing_hero_stats: arrayOrNull(
+            (hero.landing_hero_stats ?? []).map((s) => ({
+                label: s.label.trim(),
+                value: s.value.trim(),
+            })),
+            (s) => !s.label && !s.value,
+        ),
+        landing_benefits: arrayOrNull(
+            (hero.landing_benefits ?? []).map((b) => b.trim()),
+            (b) => b.length === 0,
+        ),
+        landing_instructor_image_url: nullIfBlank(hero.landing_instructor_image_url),
+    };
+}
+
+/** Only the fields that differ from what was loaded: the API applies a partial update. */
+function changedHeroFields(current: LandingHeroPayload, loaded: LandingHeroPayload): Partial<LandingHeroPayload> {
+    const now = heroPayload(current);
+    const before = heroPayload(loaded);
+    const changes: Partial<LandingHeroPayload> = {};
+    for (const key of Object.keys(now) as (keyof LandingHeroPayload)[]) {
+        if (JSON.stringify(now[key]) !== JSON.stringify(before[key])) {
+            (changes as Record<string, unknown>)[key] = now[key];
+        }
+    }
+    return changes;
+}
+
 function HeroSection({ courseId }: { courseId: string }) {
     const [hero, setHero] = useState<LandingHeroPayload>(emptyHero());
+    // What the form showed right after a successful load; null until then.
+    const [loaded, setLoaded] = useState<LandingHeroPayload | null>(null);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [reloadToken, setReloadToken] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
 
     useEffect(() => {
+        // A late answer for a previously selected course must never fill this form.
+        let current = true;
         const load = async () => {
             setIsLoading(true);
+            setLoadError(null);
+            setLoaded(null);
+            setHero(emptyHero());
             try {
                 const data = await adminGetCourseLandingHero(courseId);
-                setHero({
+                if (!current) return;
+                const form: LandingHeroPayload = {
                     landing_title: data.landing_title ?? staticLandingCourse.title,
                     landing_subtitle: data.landing_subtitle ?? staticLandingCourse.subtitle,
                     landing_description: data.landing_description ?? staticLandingCourse.description,
@@ -206,16 +253,19 @@ function HeroSection({ courseId }: { courseId: string }) {
                             ? padBenefits(data.landing_benefits)
                             : padBenefits(staticLandingCourse.benefits),
                     landing_instructor_image_url: data.landing_instructor_image_url ?? "",
-                });
+                };
+                setHero(form);
+                setLoaded(form);
             } catch (err) {
-                const message = err instanceof Error ? err.message : "Не удалось загрузить hero";
-                toast.error("Ошибка", { description: message });
+                if (!current) return;
+                setLoadError(err instanceof Error ? err.message : "Не удалось загрузить hero");
             } finally {
-                setIsLoading(false);
+                if (current) setIsLoading(false);
             }
         };
         load();
-    }, [courseId]);
+        return () => { current = false; };
+    }, [courseId, reloadToken]);
 
     const handleImageUpload = async (file: File) => {
         setIsUploading(true);
@@ -231,29 +281,21 @@ function HeroSection({ courseId }: { courseId: string }) {
         }
     };
 
+    const canSave = loaded !== null && !isLoading && !isSaving;
+
     const handleSave = async () => {
+        // Never save over a course whose data did not load: the form would hold
+        // empty or another course's values.
+        if (!canSave || loaded === null) return;
+        const changes = changedHeroFields(hero, loaded);
+        if (Object.keys(changes).length === 0) {
+            toast.info("Нет изменений");
+            return;
+        }
         setIsSaving(true);
         try {
-            const payload: LandingHeroPayload = {
-                landing_title: nullIfBlank(hero.landing_title),
-                landing_subtitle: nullIfBlank(hero.landing_subtitle),
-                landing_description: nullIfBlank(hero.landing_description),
-                landing_audience: nullIfBlank(hero.landing_audience),
-                landing_support_note: nullIfBlank(hero.landing_support_note),
-                landing_hero_stats: arrayOrNull(
-                    (hero.landing_hero_stats ?? []).map((s) => ({
-                        label: s.label.trim(),
-                        value: s.value.trim(),
-                    })),
-                    (s) => !s.label && !s.value,
-                ),
-                landing_benefits: arrayOrNull(
-                    (hero.landing_benefits ?? []).map((b) => b.trim()),
-                    (b) => b.length === 0,
-                ),
-                landing_instructor_image_url: nullIfBlank(hero.landing_instructor_image_url),
-            };
-            await adminUpdateCourseLandingHero(courseId, payload);
+            await adminUpdateCourseLandingHero(courseId, changes);
+            setLoaded(hero);
             toast.success("Hero сохранён");
         } catch (err) {
             const message = err instanceof Error ? err.message : "Ошибка сохранения";
@@ -268,6 +310,24 @@ function HeroSection({ courseId }: { courseId: string }) {
             <Card>
                 <CardContent className="flex items-center justify-center min-h-[200px]">
                     <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                </CardContent>
+            </Card>
+        );
+    }
+
+    if (loadError !== null || loaded === null) {
+        return (
+            <Card>
+                <CardHeader>
+                    <CardTitle>Главный блок (Hero)</CardTitle>
+                </CardHeader>
+                <CardContent role="alert" className="flex flex-col items-start gap-3">
+                    <p className="text-sm text-destructive">
+                        Не удалось загрузить hero: {loadError ?? "нет данных"}. Редактирование недоступно, чтобы не затереть тексты курса.
+                    </p>
+                    <Button variant="outline" onClick={() => setReloadToken((token) => token + 1)}>
+                        Повторить загрузку
+                    </Button>
                 </CardContent>
             </Card>
         );
@@ -307,7 +367,7 @@ function HeroSection({ courseId }: { courseId: string }) {
                 </div>
 
                 <div>
-                    <Label>Статистика hero (3 карточки)</Label>
+                    <Label>Статистика hero (обычно 3 карточки)</Label>
                     <div className="space-y-2">
                         {(hero.landing_hero_stats ?? []).map((stat, idx) => (
                             <div key={idx} className="grid grid-cols-2 gap-2">
@@ -335,7 +395,7 @@ function HeroSection({ courseId }: { courseId: string }) {
                 </div>
 
                 <div>
-                    <Label>Преимущества (3 пункта)</Label>
+                    <Label>Преимущества (обычно 3 пункта)</Label>
                     <div className="space-y-2">
                         {(hero.landing_benefits ?? []).map((benefit, idx) => (
                             <Input
@@ -391,7 +451,7 @@ function HeroSection({ courseId }: { courseId: string }) {
                 </div>
 
                 <div className="flex justify-end">
-                    <Button onClick={handleSave} disabled={isSaving}>
+                    <Button onClick={handleSave} disabled={!canSave}>
                         {isSaving ? (
                             <Loader2 className="w-4 h-4 animate-spin mr-2" />
                         ) : (
@@ -405,14 +465,15 @@ function HeroSection({ courseId }: { courseId: string }) {
     );
 }
 
+// Keep every stored item (the API accepts more than three); only pad short lists.
 function padHeroStats(items: HeroStat[]): HeroStat[] {
-    const result = items.slice(0, HERO_STAT_SLOTS);
+    const result = [...items];
     while (result.length < HERO_STAT_SLOTS) result.push({ label: "", value: "" });
     return result;
 }
 
 function padBenefits(items: string[]): string[] {
-    const result = items.slice(0, BENEFIT_SLOTS);
+    const result = [...items];
     while (result.length < BENEFIT_SLOTS) result.push("");
     return result;
 }
@@ -424,13 +485,19 @@ function padBenefits(items: string[]): string[] {
 function ProgramSection({ courseId }: { courseId: string }) {
     const [modules, setModules] = useState<LandingModulePayload[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [reloadToken, setReloadToken] = useState(0);
     const [savingId, setSavingId] = useState<string | null>(null);
 
     useEffect(() => {
+        let current = true;
         const load = async () => {
             setIsLoading(true);
+            setLoadError(null);
+            setModules([]);
             try {
                 const data = await adminGetCourseLandingModules(courseId);
+                if (!current) return;
                 const staticByTitle = new Map(staticProgramModules.map((m) => [m.title, m] as const));
                 const merged = data.map((mod) => {
                     const fb = staticByTitle.get(mod.title);
@@ -452,14 +519,15 @@ function ProgramSection({ courseId }: { courseId: string }) {
                 });
                 setModules(merged);
             } catch (err) {
-                const message = err instanceof Error ? err.message : "Не удалось загрузить модули";
-                toast.error("Ошибка", { description: message });
+                if (!current) return;
+                setLoadError(err instanceof Error ? err.message : "Не удалось загрузить модули");
             } finally {
-                setIsLoading(false);
+                if (current) setIsLoading(false);
             }
         };
         load();
-    }, [courseId]);
+        return () => { current = false; };
+    }, [courseId, reloadToken]);
 
     const handleSave = async (mod: LandingModulePayload) => {
         setSavingId(mod.id);
@@ -492,6 +560,13 @@ function ProgramSection({ courseId }: { courseId: string }) {
                 {isLoading ? (
                     <div className="flex items-center justify-center min-h-[120px]">
                         <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                    </div>
+                ) : loadError !== null ? (
+                    <div role="alert" className="flex flex-col items-start gap-3">
+                        <p className="text-sm text-destructive">Не удалось загрузить программу: {loadError}</p>
+                        <Button variant="outline" onClick={() => setReloadToken((token) => token + 1)}>
+                            Повторить загрузку
+                        </Button>
                     </div>
                 ) : modules.length === 0 ? (
                     <p className="text-text-secondary">У курса нет модулей.</p>

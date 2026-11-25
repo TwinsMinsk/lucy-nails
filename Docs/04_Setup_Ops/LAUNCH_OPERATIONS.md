@@ -17,7 +17,7 @@ Backend, worker and Frontend have no config file in the repository. Railway stop
 
 | Service | Build command | Start command | Healthcheck |
 | --- | --- | --- | --- |
-| Backend | `pip install -r requirements.lock` | `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="${FORWARDED_ALLOW_IPS:-127.0.0.1}"` | `/health`, 30 s |
+| Backend | `pip install -r requirements.lock` | `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT --no-access-log --proxy-headers --forwarded-allow-ips="${FORWARDED_ALLOW_IPS:-127.0.0.1}"` | `/health`, 30 s |
 | Worker | `pip install -r requirements.lock` | `python -m app.workers.outbox` | none |
 | Frontend | `npm ci && npm run build` | `npm start` | `/`, 30 s |
 

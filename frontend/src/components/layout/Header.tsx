@@ -25,6 +25,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { getMe, logout, UserResponse } from "@/lib/api";
+import { useAdminEntry } from "@/lib/admin-access";
 import { cn } from "@/lib/utils";
 
 // Shared look of a tappable row in the mobile drawer: 48px tall, text sits on the 20px inset.
@@ -36,6 +37,8 @@ export function Header() {
     const router = useRouter();
     const [mounted, setMounted] = useState(false);
     const [user, setUser] = useState<UserResponse | null>(null);
+    // Team roles (analyst, curator, ...) keep users.role = student; capabilities decide.
+    const adminHref = useAdminEntry(user);
     const [menuOpen, setMenuOpen] = useState(false);
     const [loggingOut, setLoggingOut] = useState(false);
     // Anchor picked in the drawer; scrolled to once the drawer has closed and released the scroll lock.
@@ -168,7 +171,7 @@ export function Header() {
     const accountLinks = [
         { href: "/dashboard", label: "Мои курсы", icon: BookOpen },
         { href: "/profile", label: "Профиль", icon: User },
-        ...(user?.role === "admin" ? [{ href: "/admin/courses", label: "Админ панель", icon: ShieldCheck }] : []),
+        ...(adminHref ? [{ href: adminHref, label: "Админ панель", icon: ShieldCheck }] : []),
     ];
     // Outside the landing page the main nav already holds "Мои курсы": do not list it twice.
     const drawerAccountLinks = accountLinks.filter((link) => !navLinks.some((nav) => nav.href === link.href));
@@ -217,16 +220,16 @@ export function Header() {
                                 <DropdownMenuContent className="w-56" align="end" forceMount>
                                     <DropdownMenuLabel className="font-normal">
                                         <div className="flex flex-col space-y-1">
-                                            <p className="text-sm font-medium leading-none">{user.role === 'admin' ? 'Администратор' : 'Студент'}</p>
+                                            <p className="text-sm font-medium leading-none">{user.role === 'admin' ? 'Администратор' : adminHref ? 'Команда' : 'Студент'}</p>
                                             <p className="ym-hide-content text-xs leading-none text-muted-foreground">
                                                 {user.email}
                                             </p>
                                         </div>
                                     </DropdownMenuLabel>
                                     <DropdownMenuSeparator />
-                                    {user.role === 'admin' && (
+                                    {adminHref && (
                                         <DropdownMenuItem asChild>
-                                            <Link href="/admin/courses" className="cursor-pointer">
+                                            <Link href={adminHref} className="cursor-pointer">
                                                 <User className="mr-2 h-4 w-4" />
                                                 <span>Админ панель</span>
                                             </Link>
@@ -323,7 +326,7 @@ export function Header() {
                                                         <AvatarFallback className="bg-white text-black font-bold">{user.email[0].toUpperCase()}</AvatarFallback>
                                                     </Avatar>
                                                     <div className="flex min-w-0 flex-col">
-                                                        <span className="text-sm font-medium text-text-primary">{user.role === 'admin' ? 'Администратор' : 'Студент'}</span>
+                                                        <span className="text-sm font-medium text-text-primary">{user.role === 'admin' ? 'Администратор' : adminHref ? 'Команда' : 'Студент'}</span>
                                                         <span className="ym-hide-content truncate text-xs text-text-secondary">{user.email}</span>
                                                     </div>
                                                 </div>

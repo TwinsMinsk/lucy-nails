@@ -646,6 +646,8 @@ export const adminGrantAccess = async (
     tariff: "self" | "support" = "self",
     reason: string,
     accessDays?: number,
+    /** Generated once per opened form and kept across retries: a repeat grants once. */
+    idempotencyKey?: string,
 ): Promise<GrantAccessResponse> => {
     return apiFetch<GrantAccessResponse>("/admin/grant-access", {
         method: "POST",
@@ -655,6 +657,7 @@ export const adminGrantAccess = async (
             tariff,
             reason,
             access_days: accessDays,
+            ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
         }),
     });
 };
@@ -769,6 +772,8 @@ export interface AdminPurchaseResponse {
     entitlement_id?: string | null;
     access_status: "active" | "suspended" | "revoked" | "expired" | "missing";
     access_expires_at?: string | null;
+    /** "paid" for a real payment, "manual" for a manual grant. */
+    kind?: "paid" | "manual";
 }
 
 // --- Course CRUD ---
@@ -919,8 +924,17 @@ export const adminGetAnalytics = async (): Promise<AnalyticsResponse> => {
     return apiFetch<AnalyticsResponse>("/admin/analytics");
 };
 
-export const adminGetPurchases = async (): Promise<AdminPurchaseResponse[]> => {
-    return apiFetch<AdminPurchaseResponse[]>("/admin/purchases");
+export type AdminPurchaseKind = "paid" | "manual" | "all";
+
+export const adminGetPurchases = async (
+    params: { kind?: AdminPurchaseKind; limit?: number; offset?: number } = {},
+): Promise<PageResponse<AdminPurchaseResponse>> => {
+    const query = new URLSearchParams();
+    if (params.kind) query.set("kind", params.kind);
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.offset) query.set("offset", String(params.offset));
+    // Paginated form lives at its own path; /admin/purchases keeps the legacy plain list.
+    return apiFetch<PageResponse<AdminPurchaseResponse>>(`/admin/purchases/page${query.size ? `?${query}` : ""}`);
 };
 
 export const adminCheckVideoHealth = async (courseId?: string): Promise<VideoHealthResponse> => {
@@ -974,6 +988,8 @@ export interface AdminEntitlement {
     expires_at: string;
     reason?: string | null;
     revoked_at?: string | null;
+    /** False when a later active access to the same course exists; only the latest can be extended. */
+    is_latest_access?: boolean;
 }
 
 export interface AdminStudentDetail {
@@ -1025,8 +1041,13 @@ export interface AdminOrder {
     amount_kopecks: number;
     currency: string;
     access_days: number;
+    /** Derived: pending, paid, partially_refunded, refunded, failed, expired. */
     status: string;
+    /** Stored orders.status (pending or paid). */
+    order_status?: string;
     purchase_id?: string | null;
+    refunded_kopecks?: number;
+    refundable_kopecks?: number;
     paid_at?: string | null;
     created_at: string;
     updated_at: string;
@@ -1124,7 +1145,15 @@ export interface AdminSystemStatus {
     environment: string;
     integrations: Record<string, boolean>;
     outbox_pending: number;
+    outbox_retry?: number;
+    outbox_processing?: number;
     outbox_dead_letter: number;
+    /** Age of the oldest pending/retry/processing message. */
+    oldest_undelivered_seconds?: number | null;
+    /** "alive", "missing" or "unknown" (Redis not configured or unavailable). */
+    worker_heartbeat?: "alive" | "missing" | "unknown";
+    worker_alive?: boolean | null;
+    worker_heartbeat_age_seconds?: number | null;
     last_payment_event_at?: string | null;
 }
 
@@ -1179,7 +1208,8 @@ export interface ReportSource {
     orders: number;
     paid_orders: number;
     gross_revenue_kopecks: number;
-    conversion_pct: number;
+    /** Null on the payment basis, where every row is already paid. */
+    conversion_pct: number | null;
 }
 
 export interface ReportTariff {
@@ -1279,6 +1309,29 @@ export const adminGetReportDelivery = (params: ReportDateParams = {}) =>
 export const adminReportSourcesCsvUrl = (params: ReportDateParams & { basis?: "payment" | "acquisition" } = {}) =>
     `${API_BASE_URL}/admin/reports/sources${queryString({ ...params, format: "csv" })}`;
 
+/** Download the sources CSV through the API client, so an expired access cookie is refreshed. */
+export async function adminDownloadReportSourcesCsv(
+    params: ReportDateParams & { basis?: "payment" | "acquisition" } = {},
+): Promise<Blob> {
+    const send = () => {
+        const token = getAuthToken();
+        return fetch(adminReportSourcesCsvUrl(params), {
+            credentials: "include",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+    };
+    let response = await send();
+    if (response.status === 401) {
+        if (!await refreshAccessToken()) throw new Error("Требуется вход в аккаунт");
+        response = await send();
+    }
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
+        throw new ApiError(response.status, errorData.detail, `HTTP ${response.status}`);
+    }
+    return response.blob();
+}
+
 export const adminGetStudents = (params: {
     search?: string; active_access?: boolean; limit?: number; offset?: number;
 } = {}) => apiFetch<PageResponse<AdminStudentListItem>>(`/admin/students${queryString(params)}`);
@@ -1296,6 +1349,8 @@ export interface AdminCreateStudentRequest {
     course_id: string;
     access_days: number;
     reason: string;
+    /** Generated once per opened form and kept across retries: a repeat grants once. */
+    idempotency_key?: string;
 }
 
 export interface AdminCreateStudentResponse {
@@ -1338,10 +1393,11 @@ export const adminRevokeEntitlement = (entitlementId: string, reason: string) =>
         body: JSON.stringify({ entitlement_id: entitlementId, reason }),
     });
 
-export const adminExtendEntitlement = (entitlementId: string, days: number, reason: string) =>
+/** idempotencyKey: generated once per dialog so a repeated submit does not add the days twice. */
+export const adminExtendEntitlement = (entitlementId: string, days: number, reason: string, idempotencyKey?: string) =>
     apiFetch<{ entitlement_id: string; status: string; expires_at: string }>(`/admin/entitlements/${entitlementId}/extend`, {
         method: "POST",
-        body: JSON.stringify({ days, reason }),
+        body: JSON.stringify({ days, reason, ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}) }),
     });
 
 export const adminChangeEntitlementState = (

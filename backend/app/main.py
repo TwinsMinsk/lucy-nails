@@ -7,6 +7,7 @@ import json
 import secrets
 import re
 import time
+import traceback
 import uuid
 from contextlib import asynccontextmanager
 
@@ -19,6 +20,7 @@ from sqlalchemy import select, text
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.requests import Request
+from starlette.routing import Mount
 from starlette.responses import JSONResponse, Response
 
 from app.core.config import settings
@@ -35,6 +37,126 @@ logger = logging.getLogger(__name__)
 # and the polling bot do, it keeps that logger at WARNING).
 logging.getLogger("httpx").setLevel(logging.WARNING)
 _CORRELATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+_APP_LOG_HANDLER_NAME = "lucy-app-stderr"
+
+
+def _exception_summary(error: BaseException) -> str:
+    """Traceback frames and exception classes only, without exception messages.
+
+    A database error's message carries the driver's text, which can include
+    the values of a query (an email from an order search); the stack and the
+    class are enough to find the failing code.
+    """
+    chain: list[BaseException] = []
+    current: BaseException | None = error
+    while current is not None and all(current is not seen for seen in chain):
+        chain.append(current)
+        current = current.__cause__ or (
+            None if current.__suppress_context__ else current.__context__
+        )
+    parts = []
+    for item in reversed(chain):
+        frames = "".join(traceback.format_list(traceback.extract_tb(item.__traceback__)))
+        parts.append(
+            "Traceback (most recent call last):\n"
+            f"{frames}{type(item).__module__}.{type(item).__qualname__}: [message hidden]"
+        )
+    return "\n\nThe exception above led to the one below:\n\n".join(parts)
+
+
+class SafeExceptionFilter(logging.Filter):
+    """Replace a record's exception with a summary that holds no exception message."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.exc_info and record.exc_info[1] is not None:
+            record.exc_text = _exception_summary(record.exc_info[1])
+            record.exc_info = None
+        return True
+
+
+_SAFE_EXCEPTION_FILTER = SafeExceptionFilter()
+
+
+def install_safe_exception_filter() -> None:
+    """Apply the filter to the request log and to Uvicorn's error log."""
+    for name in ("app.main", "uvicorn.error"):
+        target = logging.getLogger(name)
+        if _SAFE_EXCEPTION_FILTER not in target.filters:
+            target.addFilter(_SAFE_EXCEPTION_FILTER)
+
+
+def silence_uvicorn_access_log() -> None:
+    """Drop Uvicorn's access log, whatever command line started the server."""
+    access_logger = logging.getLogger("uvicorn.access")
+    access_logger.disabled = True
+    access_logger.setLevel(logging.CRITICAL + 1)
+    access_logger.propagate = False
+
+
+UNMATCHED_ROUTE = "unmatched"
+
+
+def _route_template(request: Request) -> str:
+    """A label for the request log that never contains anything from the URL.
+
+    The declared template of the matched route (ids as {placeholders}), a
+    constant "<mount>/{path}" for a mounted application such as /uploads (file
+    names may carry an email or a name), and a fixed label when nothing
+    matched, so a 404 on an arbitrary path is not logged either.
+    """
+    scope = request.scope
+    endpoint = scope.get("endpoint")
+    if endpoint is None:
+        return UNMATCHED_ROUTE
+    app_routes = getattr(getattr(scope.get("app"), "router", None), "routes", [])
+    for route in app_routes:
+        if isinstance(route, Mount) and route.app is endpoint:
+            return f"{route.path}/{{path}}"
+    # Routes from included routers: FastAPI keeps the full declared template
+    # (prefix included) in its effective route context.
+    context = (scope.get("fastapi") or {}).get("effective_route_context")
+    template = getattr(context, "path_format", None)
+    if isinstance(template, str) and template:
+        return template
+    # Routes declared on the app itself carry their full template.
+    route = scope.get("route")
+    if route in app_routes:
+        template = getattr(route, "path_format", None)
+        if isinstance(template, str) and template:
+            return template
+    return UNMATCHED_ROUTE
+
+
+def configure_app_logging() -> None:
+    """Emit the application's INFO records (request log with correlation id).
+
+    Uvicorn configures only its own loggers, so without this the root logger's
+    default WARNING level drops them. A handler is added only when the root
+    logger has none, so a host that already configured logging does not print
+    every record twice. Uvicorn's own access log is silenced: it writes the raw
+    query string (order status tokens, searched emails). The application's
+    request log replaces it with method, route template, status, duration and
+    a server-generated correlation id.
+    """
+    silence_uvicorn_access_log()
+    install_safe_exception_filter()
+    app_logger = logging.getLogger("app")
+    app_logger.setLevel(logging.INFO)
+    has_handler = any(
+        handler.get_name() == _APP_LOG_HANDLER_NAME for handler in app_logger.handlers
+    )
+    if not has_handler and not logging.getLogger().handlers:
+        handler = logging.StreamHandler()
+        handler.set_name(_APP_LOG_HANDLER_NAME)
+        handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
+        # Every app.* record printed by this handler gets the same treatment.
+        handler.addFilter(_SAFE_EXCEPTION_FILTER)
+        app_logger.addHandler(handler)
+    # httpx logs full request URLs at INFO, and Telegram URLs contain the bot token.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
+configure_app_logging()
 
 
 def _is_production() -> bool:
@@ -125,8 +247,13 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         started = time.perf_counter()
         supplied = request.headers.get("x-correlation-id", "")
-        correlation_id = supplied if _CORRELATION_ID_PATTERN.fullmatch(supplied) else str(uuid.uuid4())
+        server_id = str(uuid.uuid4())
+        correlation_id = supplied if _CORRELATION_ID_PATTERN.fullmatch(supplied) else server_id
         request.state.correlation_id = correlation_id
+        # A client-supplied id may carry anything the header pattern allows (a
+        # phone number included), so the log only ever carries our own id; it
+        # equals the request's correlation id whenever the client sent none.
+        log_id = server_id
         try:
             response: Response = await call_next(request)
         except Exception:
@@ -134,9 +261,9 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
                 json.dumps(
                     {
                         "event": "http_request",
-                        "correlation_id": correlation_id,
+                        "correlation_id": log_id,
                         "method": request.method,
-                        "path": request.url.path,
+                        "route": _route_template(request),
                         "status": 500,
                         "duration_ms": round((time.perf_counter() - started) * 1000, 2),
                     }
@@ -148,9 +275,9 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
             json.dumps(
                 {
                     "event": "http_request",
-                    "correlation_id": correlation_id,
+                    "correlation_id": log_id,
                     "method": request.method,
-                    "path": request.url.path,
+                    "route": _route_template(request),
                     "status": response.status_code,
                     "duration_ms": round((time.perf_counter() - started) * 1000, 2),
                 }
@@ -161,6 +288,9 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Uvicorn may (re)configure its loggers after importing the app.
+    silence_uvicorn_access_log()
+    install_safe_exception_filter()
     if settings.ENVIRONMENT.lower() == "development":
         async with async_session_maker() as session:
             try:

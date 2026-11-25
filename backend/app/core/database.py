@@ -21,6 +21,9 @@ engine = create_async_engine(
     pool_size=settings.DB_POOL_SIZE,
     max_overflow=settings.DB_MAX_OVERFLOW,
     pool_recycle=settings.DB_POOL_RECYCLE_SECONDS,
+    # Never put bound values (an email from an order search, ...) into the text
+    # of a SQLAlchemy error, which ends up in tracebacks and logs.
+    hide_parameters=True,
 )
 
 async_session_maker = async_sessionmaker(

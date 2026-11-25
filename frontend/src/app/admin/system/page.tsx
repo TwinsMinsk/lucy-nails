@@ -2,7 +2,7 @@
 
 import { formatApiDateTime } from "@/lib/format"
 import { useAdminPermission } from "@/app/admin/permissions"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { CheckCircle2, Loader2, ShieldAlert, XCircle } from "lucide-react"
 import { toast } from "sonner"
 
@@ -18,6 +18,7 @@ import {
     adminGetTeamUsers,
     adminSetCheckoutEnabled,
     adminUpdateTeamRoles,
+    ApiError,
     AdminAuditLog,
     AdminRole,
     AdminSystemStatus,
@@ -25,6 +26,28 @@ import {
 } from "@/lib/api"
 
 const date = formatApiDateTime
+const STALE_QUEUE_SECONDS = 15 * 60
+
+const formatAge = (seconds?: number | null) => {
+    if (seconds === null || seconds === undefined) return "—"
+    if (seconds < 60) return `${seconds} с`
+    if (seconds < 3600) return `${Math.floor(seconds / 60)} мин`
+    return `${Math.floor(seconds / 3600)} ч ${Math.floor((seconds % 3600) / 60)} мин`
+}
+
+const workerLabel = (status: AdminSystemStatus) => {
+    if (status.worker_heartbeat === "alive") return `Worker: работает (сигнал ${formatAge(status.worker_heartbeat_age_seconds)} назад)`
+    if (status.worker_heartbeat === "missing") return "Worker: нет сигнала"
+    return "Worker: состояние неизвестно"
+}
+
+const queueWarnings =(status: AdminSystemStatus): string[] => {
+    const warnings: string[] = []
+    if (status.worker_heartbeat === "missing") warnings.push("Worker уведомлений не присылает heartbeat: письма и сообщения не отправляются.")
+    else if (status.worker_heartbeat !== "alive") warnings.push("Состояние worker уведомлений неизвестно: Redis недоступен или не настроен.")
+    if ((status.oldest_undelivered_seconds ?? 0) > STALE_QUEUE_SECONDS) warnings.push(`Сообщение ждёт доставки уже ${formatAge(status.oldest_undelivered_seconds)}.`)
+    return warnings
+}
 
 export default function AdminSystemPage() {
     const canAudit = useAdminPermission("audit.read")
@@ -39,6 +62,7 @@ export default function AdminSystemPage() {
     const [selectedRoles, setSelectedRoles] = useState<string[]>([])
     const [reason, setReason] = useState("")
     const [switchingCheckout, setSwitchingCheckout] = useState(false)
+    const [loadError, setLoadError] = useState<string | null>(null)
 
     const load = useCallback(async () => {
         setLoading(true)
@@ -52,21 +76,41 @@ export default function AdminSystemPage() {
         if (settled[1].status === "fulfilled") setRoles(settled[1].value)
         if (settled[2].status === "fulfilled") setTeam(settled[2].value)
         if (settled[3].status === "fulfilled") setAudit(settled[3].value)
-        if (settled.some((item) => item.status === "rejected")) toast.warning("Часть системных данных скрыта вашими правами")
+        const failures = settled.flatMap((item) => item.status === "rejected" ? [item.reason as unknown] : [])
+        const forbidden = failures.filter((reason) => reason instanceof ApiError && reason.status === 403)
+        // Only a 403 means "hidden by your rights"; a 5xx or network error is a failure to load.
+        const broken = failures.filter((reason) => !(reason instanceof ApiError && reason.status === 403))
+        if (forbidden.length) toast.warning("Часть системных данных скрыта вашими правами")
+        setLoadError(broken.length ? broken.map((reason) => reason instanceof Error ? reason.message : String(reason)).join("; ") : null)
         setLoading(false)
     }, [canAudit, canManageRoles])
     useEffect(() => { void load() }, [load])
-    const openRoles = (user: AdminTeamUser) => { setEditing(user); setSelectedRoles(user.roles); setReason("") }
+    const [savingRoles, setSavingRoles] = useState(false)
+    const rolesInFlight = useRef(false)
+    const [rolesError, setRolesError] = useState<string | null>(null)
+    const openRoles = (user: AdminTeamUser) => { setEditing(user); setSelectedRoles(user.roles); setReason(""); setRolesError(null) }
     const toggleRole = (role: string) => setSelectedRoles((current) => current.includes(role) ? current.filter((item) => item !== role) : [...current, role])
     const saveRoles = async () => {
-        if (!editing || reason.trim().length < 5) return
+        if (rolesInFlight.current || !editing || reason.trim().length < 5) return
+        rolesInFlight.current = true
+        setSavingRoles(true)
+        setRolesError(null)
+        let saved = false
         try {
             await adminUpdateTeamRoles(editing.id, selectedRoles, reason.trim())
+            saved = true
+            toast.success("Роли обновлены"); setEditing(null)
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Не удалось изменить роли")
-            return
+            // e.g. 409 for an unconfirmed email or when removing the last owner:
+            // shown as a toast and inside the dialog, which stays open.
+            const message = error instanceof Error ? error.message : "Не удалось изменить роли"
+            toast.error(message)
+            setRolesError(message)
+        } finally {
+            rolesInFlight.current = false
+            setSavingRoles(false)
         }
-        toast.success("Роли обновлены"); setEditing(null); await load()
+        if (saved) await load()
     }
     const toggleCheckout = async () => {
         if (!status) return
@@ -91,11 +135,12 @@ export default function AdminSystemPage() {
     return (
         <div className="container max-w-7xl space-y-7 px-4 py-8 md:px-6">
             <div><h1 className="flex items-center gap-2 text-3xl font-bold"><ShieldAlert className="h-7 w-7" />Аудит и система</h1><p className="mt-1 text-muted-foreground">Роли команды, MFA, несекретное состояние интеграций и неизменяемый журнал действий.</p></div>
+            {loadError && <div role="alert" className="flex flex-col items-start gap-2 rounded-lg border border-destructive p-4 text-sm"><p className="text-destructive">Не удалось загрузить часть системных данных: {loadError}</p><Button size="sm" variant="outline" onClick={() => void load()}>Повторить загрузку</Button></div>}
             {status && <Card className={status.checkout_enabled ? "border-green-300" : "border-destructive"}><CardHeader><CardTitle>Экстренное управление оплатами</CardTitle></CardHeader><CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-muted-foreground">Переключатель действует сразу, сохраняется в БД и не требует deploy. Webhook продолжает принимать уже начатые платежи.</p>{canManageOperations && <Button variant={status.checkout_enabled ? "destructive" : "default"} disabled={switchingCheckout} onClick={toggleCheckout}>{switchingCheckout && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{status.checkout_enabled ? "Отключить checkout" : "Включить checkout"}</Button>}</CardContent></Card>}
-            {status && <Card><CardHeader><CardTitle>Состояние production-контура</CardTitle></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(status.integrations).map(([name, configured]) => <div key={name} className="flex items-center justify-between rounded-lg border p-3 text-sm"><span className="capitalize">{name}</span>{configured ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <XCircle className="h-5 w-5 text-destructive" />}</div>)}</div><div className="mt-4 flex flex-wrap gap-3 text-sm"><Badge variant={status.checkout_enabled ? "default" : "destructive"}>Checkout {status.checkout_enabled ? "включён" : "выключен"}</Badge><Badge variant="outline">Среда: {status.environment}</Badge><Badge variant="outline">Outbox pending: {status.outbox_pending}</Badge><Badge variant={status.outbox_dead_letter ? "destructive" : "outline"}>Dead letter: {status.outbox_dead_letter}</Badge><span className="text-muted-foreground">Последний webhook: {date(status.last_payment_event_at)}</span></div></CardContent></Card>}
+            {status && <Card><CardHeader><CardTitle>Состояние production-контура</CardTitle></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(status.integrations).map(([name, configured]) => <div key={name} className="flex items-center justify-between rounded-lg border p-3 text-sm"><span className="capitalize">{name}</span>{configured ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <XCircle className="h-5 w-5 text-destructive" />}</div>)}</div><div className="mt-4 flex flex-wrap gap-3 text-sm"><Badge variant={status.checkout_enabled ? "default" : "destructive"}>Checkout {status.checkout_enabled ? "включён" : "выключен"}</Badge><Badge variant="outline">Среда: {status.environment}</Badge><Badge variant="outline">Outbox pending: {status.outbox_pending}</Badge><Badge variant="outline">Retry: {status.outbox_retry ?? 0}</Badge><Badge variant="outline">Processing: {status.outbox_processing ?? 0}</Badge><Badge variant={status.outbox_dead_letter ? "destructive" : "outline"}>Dead letter: {status.outbox_dead_letter}</Badge><Badge variant={status.worker_alive ? "outline" : "destructive"}>{workerLabel(status)}</Badge><span className="text-muted-foreground">Старейшее недоставленное: {formatAge(status.oldest_undelivered_seconds)}</span><span className="text-muted-foreground">Последний webhook: {date(status.last_payment_event_at)}</span></div>{queueWarnings(status).map((warning) => <p key={warning} role="alert" className="mt-3 rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive">{warning}</p>)}</CardContent></Card>}
             {team.length > 0 && <Card><CardHeader><CardTitle>Команда</CardTitle></CardHeader><CardContent className="space-y-2">{team.map((user) => <div key={user.id} className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="truncate font-medium">{user.full_name || user.email}</p><p className="text-sm text-muted-foreground">{user.email}</p></div><div className="flex flex-wrap gap-1">{user.roles.map((role) => <Badge key={role} variant="secondary">{role}</Badge>)}</div><Badge variant={user.mfa_enabled ? "default" : "destructive"}>MFA {user.mfa_enabled ? "включена" : "не настроена"}</Badge><span className="text-sm text-muted-foreground">Сессий: {user.active_sessions}</span><Button size="sm" variant="outline" onClick={() => openRoles(user)}>Роли</Button></div>)}</CardContent></Card>}
             <Card><CardHeader><CardTitle>Журнал действий</CardTitle></CardHeader><CardContent><div className="max-h-[680px] overflow-auto"><table className="w-full text-sm"><thead><tr className="sticky top-0 border-b bg-background text-left text-muted-foreground"><th className="p-3">Время</th><th className="p-3">Действие</th><th className="p-3">Объект</th><th className="p-3">Причина</th><th className="p-3">Correlation ID</th></tr></thead><tbody>{audit.map((item) => <tr key={item.id} className="border-b align-top"><td className="p-3">{date(item.created_at)}</td><td className="p-3 font-medium">{item.action}</td><td className="p-3">{item.object_type} {item.object_id?.slice(0, 8)}</td><td className="max-w-sm p-3">{item.reason || "—"}</td><td className="p-3 font-mono text-xs">{item.correlation_id}</td></tr>)}</tbody></table></div></CardContent></Card>
-            <Dialog open={Boolean(editing)} onOpenChange={(open) => { if (!open) setEditing(null) }}><DialogContent><DialogHeader><DialogTitle>Роли: {editing?.email}</DialogTitle></DialogHeader><div className="space-y-2">{roles.map((role) => <label key={role.name} className="flex cursor-pointer items-start gap-3 rounded-lg border p-3"><input type="checkbox" checked={selectedRoles.includes(role.name)} onChange={() => toggleRole(role.name)} className="mt-1" /><span><b>{role.name}</b><span className="block text-xs text-muted-foreground">{role.description}</span></span></label>)}</div><Textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Причина изменения ролей" /><DialogFooter><Button variant="outline" onClick={() => setEditing(null)}>Отмена</Button><Button disabled={reason.trim().length < 5} onClick={saveRoles}>Сохранить</Button></DialogFooter></DialogContent></Dialog>
+            <Dialog open={Boolean(editing)} onOpenChange={(open) => { if (!open) setEditing(null) }}><DialogContent><DialogHeader><DialogTitle>Роли: {editing?.email}</DialogTitle></DialogHeader><div className="space-y-2">{roles.map((role) => <label key={role.name} className="flex cursor-pointer items-start gap-3 rounded-lg border p-3"><input type="checkbox" checked={selectedRoles.includes(role.name)} onChange={() => toggleRole(role.name)} className="mt-1" /><span><b>{role.name}</b><span className="block text-xs text-muted-foreground">{role.description}</span></span></label>)}</div><Textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Причина изменения ролей" />{rolesError && <p role="alert" className="text-sm text-destructive">{rolesError}</p>}<DialogFooter><Button variant="outline" onClick={() => setEditing(null)}>Отмена</Button><Button disabled={savingRoles || reason.trim().length < 5} onClick={saveRoles}>{savingRoles && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Сохранить</Button></DialogFooter></DialogContent></Dialog>
         </div>
     )
 }

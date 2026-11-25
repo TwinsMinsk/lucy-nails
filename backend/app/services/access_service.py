@@ -9,6 +9,7 @@ from sqlalchemy import Integer, and_, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.audit_log import AuditLog
 from app.models.course import Course
 from app.models.entitlement import Entitlement
 from app.models.module import Module
@@ -22,6 +23,20 @@ from app.services.support_access_service import (
     has_active_support_entitlement,
     lock_support_membership_state,
 )
+
+
+MANUAL_GRANT_KEY_CONFLICT = (
+    "Эта выдача доступа уже выполнена с другими параметрами. "
+    "Закройте форму и откройте её заново."
+)
+
+
+class LaterAccessExistsError(Exception):
+    """The student has another active access to the course that ends later."""
+
+    def __init__(self, access_end: datetime) -> None:
+        super().__init__("A later access to this course exists")
+        self.access_end = access_end
 
 
 @dataclass(frozen=True)
@@ -67,7 +82,47 @@ class AccessService:
         return int(refunded or 0) >= purchase.amount_kopecks and purchase.amount_kopecks > 0
 
     @staticmethod
+    async def lock_entitlement_for_change(
+        db: AsyncSession, entitlement_id: UUID
+    ) -> Entitlement | None:
+        """Lock an entitlement for an admin action in the one order used everywhere.
+
+        Order: the (user, course) access lock, then the source purchase, then the
+        entitlement. A full refund locks the purchase before the entitlement, so
+        locking the entitlement first deadlocked against it. The returned row is
+        re-read under its lock, so values captured from it are a consistent
+        snapshot for the audit record.
+        """
+        keys = (
+            await db.execute(
+                select(
+                    Entitlement.user_id,
+                    Entitlement.course_id,
+                    Entitlement.source_purchase_id,
+                ).where(Entitlement.id == entitlement_id)
+            )
+        ).one_or_none()
+        if keys is None:
+            return None
+        await AccessService.lock_course_access(db, keys.user_id, keys.course_id)
+        if keys.source_purchase_id is not None:
+            await db.execute(
+                select(Purchase.id)
+                .where(Purchase.id == keys.source_purchase_id)
+                .with_for_update()
+            )
+        return await db.scalar(
+            select(Entitlement)
+            .where(Entitlement.id == entitlement_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+
+    @staticmethod
     async def _lock_for_access_change(db: AsyncSession, entitlement: Entitlement) -> None:
+        # Same order as lock_entitlement_for_change; re-taking a lock this
+        # transaction already holds is a no-op.
+        await AccessService.lock_course_access(db, entitlement.user_id, entitlement.course_id)
         if entitlement.source_purchase_id is not None:
             purchase = await db.scalar(select(Purchase).where(Purchase.id == entitlement.source_purchase_id).with_for_update())
             if purchase is not None and await AccessService.is_purchase_fully_refunded(db, purchase):
@@ -280,6 +335,86 @@ class AccessService:
         return entitlement
 
     @staticmethod
+    async def find_manual_grant(
+        db: AsyncSession, *, user_id: UUID, course_id: UUID, idempotency_key: str
+    ) -> AuditLog | None:
+        """The earlier manual grant made with this operation key, if any.
+
+        Takes the (user, course) access lock first, the same lock the grant
+        itself takes, so a concurrent repeat waits for the first request to
+        commit and then finds its audit record instead of granting again.
+        """
+        await AccessService.lock_course_access(db, user_id, course_id)
+        return await db.scalar(
+            select(AuditLog)
+            .where(
+                AuditLog.action == "entitlement.grant",
+                AuditLog.new_value["idempotency_key"].as_string() == idempotency_key,
+                AuditLog.new_value["user_id"].as_string() == str(user_id),
+                AuditLog.new_value["course_id"].as_string() == str(course_id),
+            )
+            .order_by(AuditLog.created_at)
+            .limit(1)
+        )
+
+    @staticmethod
+    def manual_grant_matches(
+        entry: AuditLog, *, tariff: str, access_days: int, reason: str
+    ) -> bool:
+        """Whether a repeated request asks for exactly what the stored grant did."""
+        stored = entry.new_value or {}
+        return (
+            stored.get("tariff") == tariff
+            and stored.get("access_days") == access_days
+            and (entry.reason or "") == reason.strip()
+        )
+
+    @staticmethod
+    def enqueue_manual_grant_notification(
+        db: AsyncSession,
+        *,
+        user: User,
+        course: Course,
+        entitlement: Entitlement,
+        new_account: bool = False,
+    ) -> str:
+        """Queue the email for a manual grant in the granting transaction.
+
+        Shared by every manual-grant entry point. An account whose email was
+        never verified cannot use a login link, so it gets an activation link,
+        as in the payment webhook. Returns the notification kind.
+        """
+        from app.core.security import create_account_activation_token
+
+        frontend_url = settings.FRONTEND_URL.rstrip("/")
+        if new_account or user.email_verified_at is None:
+            token = create_account_activation_token(user.id, user.token_version)
+            enqueue_outbox_message(
+                db,
+                kind="account_activation",
+                recipient=user.email,
+                payload={
+                    "activation_url": f"{frontend_url}/auth/activate?token={token}",
+                    "course_title": course.title,
+                    "expires_at": entitlement.expires_at.isoformat(),
+                },
+                dedupe_key=f"admin-student:{entitlement.id}:activation",
+            )
+            return "account_activation"
+        enqueue_outbox_message(
+            db,
+            kind="access_granted",
+            recipient=user.email,
+            payload={
+                "login_url": f"{frontend_url}/auth/login",
+                "course_title": course.title,
+                "expires_at": entitlement.expires_at.isoformat(),
+            },
+            dedupe_key=f"admin-student:{entitlement.id}:access",
+        )
+        return "access_granted"
+
+    @staticmethod
     async def revoke_entitlement(
         db: AsyncSession,
         entitlement: Entitlement,
@@ -297,6 +432,28 @@ class AccessService:
         await db.flush()
 
     @staticmethod
+    async def later_access_end(
+        db: AsyncSession, entitlement: Entitlement, *, now: datetime
+    ) -> datetime | None:
+        """End of the student's other access to the course, valid at ``now``, that outlasts this row.
+
+        "Valid" is the notion of get_active_entitlement: status active and
+        ``starts_at <= now < expires_at``. A row still marked active whose end
+        has passed (the lifecycle pass has not run yet) does not count.
+        """
+        return await db.scalar(
+            select(func.max(Entitlement.expires_at)).where(
+                Entitlement.user_id == entitlement.user_id,
+                Entitlement.course_id == entitlement.course_id,
+                Entitlement.id != entitlement.id,
+                Entitlement.status == "active",
+                Entitlement.starts_at <= now,
+                Entitlement.expires_at > now,
+                Entitlement.expires_at > entitlement.expires_at,
+            )
+        )
+
+    @staticmethod
     async def extend_entitlement(
         db: AsyncSession,
         entitlement: Entitlement,
@@ -310,7 +467,15 @@ class AccessService:
         await AccessService._lock_for_access_change(db, entitlement)
         if entitlement.status == "revoked":
             raise ValueError("Revoked access cannot be extended")
+        # Extending a row that a later access already outlasts changes nothing the
+        # student sees; moving it past that access would detach the added days
+        # from their purchase (a refund of the later purchase would leave them).
+        # The operator must extend the latest access instead.
+        # One moment, taken under the locks, for the check and the new expiry.
         now = datetime.utcnow()
+        later_end = await AccessService.later_access_end(db, entitlement, now=now)
+        if later_end is not None:
+            raise LaterAccessExistsError(later_end)
         entitlement.expires_at = max(now, entitlement.expires_at) + timedelta(days=days)
         if entitlement.status == "expired":
             entitlement.status = "active"

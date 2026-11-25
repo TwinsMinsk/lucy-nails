@@ -18,4 +18,4 @@ Write-Host "[OK] Backend запущен на http://127.0.0.1:8000" -ForegroundC
 Write-Host "[OK] Swagger UI: http://127.0.0.1:8000/docs" -ForegroundColor Green
 Write-Host ""
 
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uvicorn app.main:app --reload --no-access-log --host 127.0.0.1 --port 8000

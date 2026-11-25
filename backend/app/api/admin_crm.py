@@ -6,9 +6,10 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
-from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy import String, and_, case, cast, delete, func, literal, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.core.database import get_db
 from app.core.config import settings
@@ -28,11 +29,12 @@ from app.models.outbox import OutboxMessage
 from app.models.payment_event import PaymentEvent
 from app.models.progress import Progress
 from app.models.purchase import Purchase, paid_financial_filter
-from app.models.rbac import UserRoleAssignment
+from app.models.rbac import UserRoleAssignment, student_account_filter
 from app.models.refund import RefundRequest
 from app.models.user import User
-from app.services.access_service import AccessService
+from app.services.access_service import MANUAL_GRANT_KEY_CONFLICT, AccessService
 from app.services.audit_service import append_audit_log
+from app.services.operations_health_service import read_worker_heartbeat
 from app.services.outbox_service import enqueue_outbox_message
 from app.services.runtime_settings_service import RuntimeSettingsService
 
@@ -54,6 +56,154 @@ def _mask_phone(value: str | None) -> str | None:
     return f"***{digits[-4:]}" if digits else "***"
 
 
+# An unpaid order is shown as abandoned after this long. The stored status stays
+# "pending", so a late payment is still accepted by the webhook.
+ORDER_EXPIRES_AFTER = timedelta(hours=24)
+ORDER_DISPLAY_STATUSES = (
+    "pending",
+    "paid",
+    "partially_refunded",
+    "refunded",
+    "failed",
+    "expired",
+)
+
+
+def _order_refunded_kopecks():
+    """Processed refunds of the order's purchase; requires Purchase outer-joined."""
+    return func.coalesce(
+        select(func.sum(RefundRequest.amount_kopecks))
+        .where(
+            RefundRequest.purchase_id == Purchase.id,
+            RefundRequest.status == "processed",
+        )
+        .correlate(Purchase)
+        .scalar_subquery(),
+        0,
+    )
+
+
+def _order_refundable_kopecks():
+    """What a new refund request may still claim (mirrors RefundService.create_refund)."""
+    allocated = func.coalesce(
+        select(func.sum(RefundRequest.amount_kopecks))
+        .where(
+            RefundRequest.purchase_id == Purchase.id,
+            RefundRequest.status != "rejected",
+        )
+        .correlate(Purchase)
+        .scalar_subquery(),
+        0,
+    )
+    return case(
+        (Purchase.id.is_(None), 0),
+        else_=func.greatest(Purchase.amount_kopecks - allocated, 0),
+    )
+
+
+def _order_failed_attempt_exists():
+    """The provider reported an unsuccessful attempt for this order."""
+    reference = literal("order|") + cast(Order.id, String)
+    return (
+        select(PaymentEvent.id)
+        .where(
+            PaymentEvent.processing_status == "ignored",
+            or_(
+                PaymentEvent.order_id == Order.id,
+                PaymentEvent.order_reference == reference,
+                # Callbacks from the old field mapping carried the reference here.
+                PaymentEvent.external_event_id == reference,
+            ),
+        )
+        .correlate(Order)
+        .exists()
+    )
+
+
+PAYMENT_INCIDENT_WINDOW = timedelta(days=30)
+
+
+def _payment_identities(event):
+    """(provider payment id, merchant order reference) of a journaled event.
+
+    Mirrors payments._resolve_payment_key: callbacks from the old field mapping
+    carried the merchant reference ("order|..." / "course|...") in ``order_id``
+    (external_event_id) and the provider payment id in ``order_num``
+    (order_reference). Normalise both before deduplicating.
+    """
+    legacy_order = or_(
+        event.external_event_id.like("order|%"),
+        event.external_event_id.like("course|%"),
+    )
+    payment_id = case(
+        (and_(event.external_event_id.is_not(None), ~legacy_order), event.external_event_id),
+        (legacy_order, event.order_reference),
+        else_=None,
+    )
+    order_reference = case(
+        (legacy_order, event.external_event_id),
+        else_=event.order_reference,
+    )
+    return payment_id, order_reference
+
+
+def _payment_incident_count_query(since: datetime | None = None):
+    """Distinct unresolved payment incidents, not raw journal rows.
+
+    Every provider delivery (with its own ``attempt``) is a separate row, so one
+    rejected payment yields several. An incident is one provider payment id (or,
+    without it, one order reference), both normalised as the webhook does; a
+    rejection is resolved once a later delivery for the same order or payment
+    was processed.
+    """
+    later = aliased(PaymentEvent)
+    payment_id, order_reference = _payment_identities(PaymentEvent)
+    later_payment_id, later_order_reference = _payment_identities(later)
+    resolved = (
+        select(later.id)
+        .where(
+            later.processing_status == "processed",
+            later.received_at > PaymentEvent.received_at,
+            or_(
+                and_(PaymentEvent.order_id.is_not(None), later.order_id == PaymentEvent.order_id),
+                and_(order_reference.is_not(None), later_order_reference == order_reference),
+                and_(payment_id.is_not(None), later_payment_id == payment_id),
+            ),
+        )
+        .correlate(PaymentEvent)
+        .exists()
+    )
+    incident_key = func.coalesce(payment_id, order_reference, cast(PaymentEvent.id, String))
+    conditions = [
+        PaymentEvent.processing_status.in_(["rejected", "financial_incident"]),
+        or_(PaymentEvent.processing_status != "rejected", ~resolved),
+    ]
+    if since is not None:
+        conditions.append(PaymentEvent.received_at >= since)
+    return select(func.count(func.distinct(incident_key))).where(*conditions)
+
+def order_display_status(now: datetime):
+    """Derived order status; requires Purchase outer-joined on Purchase.order_id."""
+    refunded = _order_refunded_kopecks()
+    is_paid = or_(Order.status == "paid", Purchase.payment_status == "success")
+    return case(
+        (
+            is_paid,
+            case(
+                (
+                    and_(refunded > 0, refunded >= Purchase.amount_kopecks),
+                    literal("refunded"),
+                ),
+                (refunded > 0, literal("partially_refunded")),
+                else_=literal("paid"),
+            ),
+        ),
+        (_order_failed_attempt_exists(), literal("failed")),
+        (Order.created_at < now - ORDER_EXPIRES_AFTER, literal("expired")),
+        else_=literal("pending"),
+    )
+
+
 class DashboardResponse(BaseModel):
     total_students: int
     active_entitlements: int
@@ -71,7 +221,16 @@ class SystemStatusResponse(BaseModel):
     environment: str
     integrations: dict[str, bool]
     outbox_pending: int
+    outbox_retry: int
+    outbox_processing: int
     outbox_dead_letter: int
+    # Age of the oldest message still waiting for delivery (pending, retry, processing).
+    oldest_undelivered_seconds: int | None
+    # "alive", "missing" or "unknown" (Redis not configured or unavailable).
+    worker_heartbeat: str
+    # None while the heartbeat is unknown: never reported as healthy.
+    worker_alive: bool | None
+    worker_heartbeat_age_seconds: int | None
     last_payment_event_at: datetime | None
 
 
@@ -182,6 +341,10 @@ class StudentCreateRequest(BaseModel):
     course_id: UUID
     access_days: int = Field(default=settings.COURSE_ACCESS_DAYS, ge=1, le=3650)
     reason: str = Field(..., min_length=5, max_length=1000)
+    # Generated once per opened form and kept across retries.
+    idempotency_key: str | None = Field(
+        default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$"
+    )
 
 
 class StudentCreateResponse(BaseModel):
@@ -219,8 +382,13 @@ class OrderListItem(BaseModel):
     amount_kopecks: int
     currency: str
     access_days: int
+    # Derived display status: pending, paid, partially_refunded, refunded, failed, expired.
     status: str
+    # Raw orders.status as written by checkout and the webhook (pending or paid).
+    order_status: str
     purchase_id: UUID | None
+    refunded_kopecks: int
+    refundable_kopecks: int
     paid_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -239,6 +407,9 @@ class EntitlementListItem(BaseModel):
     expires_at: datetime
     reason: str | None
     revoked_at: datetime | None
+    # False when the student has another active access to the course that ends
+    # later: only the latest access may be extended.
+    is_latest_access: bool = True
 
 
 class EntitlementPage(BaseModel):
@@ -278,6 +449,9 @@ class NotificationPage(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+RETRYABLE_NOTIFICATION_STATUSES = frozenset({"retry", "dead_letter"})
 
 
 class RetryRequest(BaseModel):
@@ -324,7 +498,7 @@ async def dashboard(
 ):
     now = datetime.utcnow()
     week = now + timedelta(days=7)
-    total_students = await db.scalar(select(func.count(User.id)).where(User.role == "student"))
+    total_students = await db.scalar(select(func.count(User.id)).where(student_account_filter()))
     active_entitlements = await db.scalar(
         select(func.count(Entitlement.id)).where(
             Entitlement.status == "active", Entitlement.expires_at > now
@@ -342,21 +516,28 @@ async def dashboard(
             RefundRequest.status == "processed", paid_financial_filter()
         )
     )
-    pending_orders = await db.scalar(select(func.count(Order.id)).where(Order.status == "pending"))
+    pending_orders = await db.scalar(
+        select(func.count(Order.id))
+        .select_from(Order)
+        .outerjoin(Purchase, Purchase.order_id == Order.id)
+        .where(order_display_status(now) == "pending")
+    )
     payment_errors = await db.scalar(
-        select(func.count(PaymentEvent.id)).where(
-            PaymentEvent.processing_status.in_(["rejected", "financial_incident"])
-        )
+        _payment_incident_count_query(since=now - PAYMENT_INCIDENT_WINDOW)
     )
     dead_letters = await db.scalar(
         select(func.count(OutboxMessage.id)).where(OutboxMessage.status == "dead_letter")
     )
+    # After an early renewal a student holds two active rows; only the latest
+    # effective access end per student and course says whether access is ending.
+    latest_access = (
+        select(func.max(Entitlement.expires_at).label("access_end"))
+        .where(Entitlement.status == "active", Entitlement.expires_at > now)
+        .group_by(Entitlement.user_id, Entitlement.course_id)
+        .subquery()
+    )
     expiring = await db.scalar(
-        select(func.count(Entitlement.id)).where(
-            Entitlement.status == "active",
-            Entitlement.expires_at > now,
-            Entitlement.expires_at <= week,
-        )
+        select(func.count()).select_from(latest_access).where(latest_access.c.access_end <= week)
     )
     return DashboardResponse(
         total_students=int(total_students or 0),
@@ -376,12 +557,21 @@ async def system_status(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("audit.read")),
 ):
-    pending = await db.scalar(
-        select(func.count(OutboxMessage.id)).where(OutboxMessage.status == "pending")
+    counts = dict(
+        (
+            await db.execute(
+                select(OutboxMessage.status, func.count(OutboxMessage.id)).group_by(
+                    OutboxMessage.status
+                )
+            )
+        ).all()
     )
-    dead = await db.scalar(
-        select(func.count(OutboxMessage.id)).where(OutboxMessage.status == "dead_letter")
+    oldest_undelivered = await db.scalar(
+        select(func.min(OutboxMessage.created_at)).where(
+            OutboxMessage.status.in_(["pending", "retry", "processing"])
+        )
     )
+    heartbeat = await read_worker_heartbeat()
     last_payment = await db.scalar(select(func.max(PaymentEvent.received_at)))
     return SystemStatusResponse(
         checkout_enabled=await RuntimeSettingsService.checkout_enabled(db),
@@ -395,8 +585,18 @@ async def system_status(
             "telegram": bool(settings.TELEGRAM_BOT_TOKEN),
             "redis": bool(settings.REDIS_URL),
         },
-        outbox_pending=int(pending or 0),
-        outbox_dead_letter=int(dead or 0),
+        outbox_pending=int(counts.get("pending", 0)),
+        outbox_retry=int(counts.get("retry", 0)),
+        outbox_processing=int(counts.get("processing", 0)),
+        outbox_dead_letter=int(counts.get("dead_letter", 0)),
+        oldest_undelivered_seconds=(
+            max(0, int((datetime.utcnow() - oldest_undelivered).total_seconds()))
+            if oldest_undelivered
+            else None
+        ),
+        worker_heartbeat=heartbeat.state,
+        worker_alive=None if heartbeat.state == "unknown" else heartbeat.state == "alive",
+        worker_heartbeat_age_seconds=heartbeat.age_seconds,
         last_payment_event_at=last_payment,
     )
 
@@ -430,7 +630,8 @@ async def list_students(
         .correlate(User)
         .scalar_subquery()
     )
-    conditions = [User.role == "student"]
+    # Team members keep users.role = student; the students list excludes them.
+    conditions = [student_account_filter()]
     if search:
         pattern = f"%{search.strip()}%"
         conditions.append(
@@ -649,6 +850,25 @@ async def create_student_with_access(
                 detail="Пользователь с таким email уже существует — повторите запрос",
             ) from exc
 
+    if data.idempotency_key and not user_created:
+        # A retry after a lost response or a double submit returns the first
+        # grant instead of adding a second period and a second email.
+        previous = await AccessService.find_manual_grant(
+            db, user_id=user.id, course_id=course.id, idempotency_key=data.idempotency_key
+        )
+        if previous is not None:
+            if not AccessService.manual_grant_matches(
+                previous, tariff="self", access_days=data.access_days, reason=data.reason
+            ):
+                raise HTTPException(status_code=409, detail=MANUAL_GRANT_KEY_CONFLICT)
+            stored = previous.new_value or {}
+            return StudentCreateResponse(
+                user_id=user.id,
+                user_created=bool(stored.get("user_created", False)),
+                entitlement_id=UUID(previous.object_id),
+                expires_at=datetime.fromisoformat(stored["expires_at"]),
+            )
+
     entitlement = await AccessService.grant_manual_access(
         db,
         user_id=user.id,
@@ -658,21 +878,10 @@ async def create_student_with_access(
         granted_by_id=admin.id,
         reason=data.reason,
     )
-    frontend_url = settings.FRONTEND_URL.rstrip("/")
+    notification_kind = AccessService.enqueue_manual_grant_notification(
+        db, user=user, course=course, entitlement=entitlement, new_account=user_created
+    )
     if user_created:
-        activation_token = create_account_activation_token(user.id, user.token_version)
-        notification_kind = "account_activation"
-        enqueue_outbox_message(
-            db,
-            kind=notification_kind,
-            recipient=user.email,
-            payload={
-                "activation_url": f"{frontend_url}/auth/activate?token={activation_token}",
-                "course_title": course.title,
-                "expires_at": entitlement.expires_at.isoformat(),
-            },
-            dedupe_key=f"admin-student:{entitlement.id}:activation",
-        )
         append_audit_log(
             db,
             actor_user_id=admin.id,
@@ -682,19 +891,6 @@ async def create_student_with_access(
             reason=data.reason,
             correlation_id=request.state.correlation_id,
             new_value={"role": "student", "course_id": str(course.id)},
-        )
-    else:
-        notification_kind = "access_granted"
-        enqueue_outbox_message(
-            db,
-            kind=notification_kind,
-            recipient=user.email,
-            payload={
-                "login_url": f"{frontend_url}/auth/login",
-                "course_title": course.title,
-                "expires_at": entitlement.expires_at.isoformat(),
-            },
-            dedupe_key=f"admin-student:{entitlement.id}:access",
         )
     append_audit_log(
         db,
@@ -711,6 +907,8 @@ async def create_student_with_access(
             "access_days": data.access_days,
             "expires_at": entitlement.expires_at.isoformat(),
             "notification": notification_kind,
+            "user_created": user_created,
+            **({"idempotency_key": data.idempotency_key} if data.idempotency_key else {}),
         },
     )
     await db.commit()
@@ -877,13 +1075,39 @@ async def list_entitlements(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("users.read")),
 ):
+    now = datetime.utcnow()
+    # An active row whose end has passed is expired, even before the lifecycle
+    # scan rewrites it (same rule as /admin/purchases).
+    effective_status = case(
+        (
+            and_(Entitlement.status == "active", Entitlement.expires_at <= now),
+            literal("expired"),
+        ),
+        else_=Entitlement.status,
+    )
+    # Same predicate as AccessService.later_access_end: only an access valid
+    # now (as in get_active_entitlement) can make another row "not the latest".
+    later = aliased(Entitlement)
+    is_latest = ~(
+        select(later.id)
+        .where(
+            later.user_id == Entitlement.user_id,
+            later.course_id == Entitlement.course_id,
+            later.id != Entitlement.id,
+            later.status == "active",
+            later.starts_at <= now,
+            later.expires_at > now,
+            later.expires_at > Entitlement.expires_at,
+        )
+        .correlate(Entitlement)
+        .exists()
+    )
     conditions = []
     if search:
         conditions.append(User.email.ilike(f"%{search.strip()}%"))
     if status_filter:
-        conditions.append(Entitlement.status == status_filter)
+        conditions.append(effective_status == status_filter)
     if expiring_days:
-        now = datetime.utcnow()
         conditions.extend(
             [Entitlement.expires_at > now, Entitlement.expires_at <= now + timedelta(days=expiring_days)]
         )
@@ -894,7 +1118,7 @@ async def list_entitlements(
     )
     rows = (
         await db.execute(
-            select(Entitlement, User.email, Course.title)
+            select(Entitlement, User.email, Course.title, effective_status.label("effective_status"), is_latest.label("is_latest"))
             .join(User, User.id == Entitlement.user_id)
             .join(Course, Course.id == Entitlement.course_id)
             .where(*conditions)
@@ -913,13 +1137,14 @@ async def list_entitlements(
                 course_title=course_title,
                 source=item.source,
                 tariff=item.tariff,
-                status=item.status,
+                status=row_status,
                 starts_at=item.starts_at,
                 expires_at=item.expires_at,
                 reason=item.reason,
                 revoked_at=item.revoked_at,
+                is_latest_access=bool(latest),
             )
-            for item, email, course_title in rows
+            for item, email, course_title, row_status, latest in rows
         ],
         total=int(total or 0),
         limit=limit,
@@ -944,12 +1169,24 @@ async def list_orders(
         # Masked readers may only look up an address they already know; partial
         # matches would let them recover hidden emails character by character.
         conditions.append(func.lower(Order.customer_email) == search.strip().lower())
+    display_status = order_display_status(datetime.utcnow())
     if status_filter:
-        conditions.append(Order.status == status_filter)
-    total = await db.scalar(select(func.count(Order.id)).where(*conditions))
+        conditions.append(display_status == status_filter)
+    total = await db.scalar(
+        select(func.count(Order.id))
+        .select_from(Order)
+        .outerjoin(Purchase, Purchase.order_id == Order.id)
+        .where(*conditions)
+    )
     rows = (
         await db.execute(
-            select(Order, Purchase.id)
+            select(
+                Order,
+                Purchase.id,
+                display_status.label("display_status"),
+                _order_refunded_kopecks().label("refunded_kopecks"),
+                _order_refundable_kopecks().label("refundable_kopecks"),
+            )
             .outerjoin(Purchase, Purchase.order_id == Order.id)
             .where(*conditions)
             .order_by(Order.created_at.desc(), Order.id.desc())
@@ -977,13 +1214,16 @@ async def list_orders(
                 amount_kopecks=order.amount_kopecks,
                 currency=order.currency,
                 access_days=order.access_days,
-                status=order.status,
+                status=row_status,
+                order_status=order.status,
                 purchase_id=purchase_id,
+                refunded_kopecks=int(refunded or 0),
+                refundable_kopecks=int(refundable or 0),
                 paid_at=order.paid_at,
                 created_at=order.created_at,
                 updated_at=order.updated_at,
             )
-            for order, purchase_id in rows
+            for order, purchase_id, row_status, refunded, refundable in rows
         ],
         total=int(total or 0),
         limit=limit,
@@ -1030,9 +1270,21 @@ async def retry_notification(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("notifications.manage")),
 ):
-    message = await db.get(OutboxMessage, message_id)
+    # Lock the row so a worker cannot claim or finish it between the check and the reset.
+    message = await db.scalar(
+        select(OutboxMessage).where(OutboxMessage.id == message_id).with_for_update()
+    )
     if message is None:
         raise HTTPException(status_code=404, detail="Notification not found")
+    if message.status not in RETRYABLE_NOTIFICATION_STATUSES:
+        # get_db rolls back on the exception, which releases the row lock.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Повтор невозможен: уведомление в статусе «{message.status}». "
+                "Повторить можно только сообщения в статусах retry и dead_letter."
+            ),
+        )
     old_value = {"status": message.status, "attempts": message.attempts}
     message.status = "pending"
     message.attempts = 0
@@ -1083,16 +1335,20 @@ async def reconciliation(
     admin: User = Depends(require_permission("commerce.read")),
 ):
     now = datetime.utcnow()
+    # Same definitions as the orders list: failed and expired orders are settled,
+    # only a genuinely open order without an answer is stale.
     stale = await db.scalar(
-        select(func.count(Order.id)).where(
-            Order.status == "pending", Order.created_at < now - timedelta(hours=2)
+        select(func.count(Order.id))
+        .select_from(Order)
+        .outerjoin(Purchase, Purchase.order_id == Order.id)
+        .where(
+            order_display_status(now) == "pending",
+            Order.created_at < now - timedelta(hours=2),
         )
     )
-    payment_errors = await db.scalar(
-        select(func.count(PaymentEvent.id)).where(
-            PaymentEvent.processing_status.in_(["rejected", "financial_incident"])
-        )
-    )
+    # Same incident definition as the dashboard, without its 30-day window:
+    # an unresolved incident stays on the reconciliation list until handled.
+    payment_errors = await db.scalar(_payment_incident_count_query())
     processed_refund_total = (
         select(func.coalesce(func.sum(RefundRequest.amount_kopecks), 0))
         .where(

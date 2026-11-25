@@ -67,3 +67,23 @@ class UserRoleAssignment(Base):
     )
     role: Mapped[Role] = relationship(back_populates="assignments")
     assigned_by: Mapped["User | None"] = relationship(foreign_keys=[assigned_by_id])
+
+
+def student_account_filter():
+    """Accounts counted as students: no legacy admin role and no team role.
+
+    Staff roles (analyst, curator, content_manager, marketer, admin, owner) are
+    assigned on top of ``users.role == "student"``, so the column alone is not
+    enough to tell a learner from a team member.
+    """
+    from sqlalchemy import and_, select
+
+    from app.models.user import User
+
+    return and_(
+        User.role == "student",
+        ~select(UserRoleAssignment.id)
+        .where(UserRoleAssignment.user_id == User.id)
+        .correlate(User)
+        .exists(),
+    )

@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({
     refresh: vi.fn(),
     getMe: vi.fn(),
     toastError: vi.fn(),
+    capabilities: vi.fn(),
 }))
 
 vi.mock("next/navigation", () => ({
@@ -19,6 +20,9 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/api", async (importOriginal) => ({
     ...(await importOriginal<typeof import("@/lib/api")>()),
     getMe: state.getMe,
+    // The header asks for team capabilities to place the admin link; mocked so
+    // the stubbed fetch below only sees the logout requests.
+    adminGetCapabilities: state.capabilities,
 }))
 vi.mock("sonner", () => ({ toast: { error: state.toastError } }))
 
@@ -35,6 +39,7 @@ const hasSessionMarker = () => document.cookie.split("; ").includes("auth_sessio
 beforeEach(() => {
     state.pathname = "/"
     state.getMe.mockRejectedValue(new Error("401"))
+    state.capabilities.mockResolvedValue({ roles: ["legacy_admin"], permissions: ["*"] })
 })
 
 afterEach(() => {
@@ -132,5 +137,39 @@ describe("logout with a temporary network failure", () => {
         await waitFor(() => expect(state.push).toHaveBeenCalledWith("/"))
         expect(hasSessionMarker()).toBe(false)
         expect(state.toastError).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe("admin entry for signed-in users without admin access", () => {
+    const student = { ...admin, id: "u2", email: "student@example.com", role: "student" as const }
+
+    it("a student gets no admin link, no error toast and no redirect", async () => {
+        state.getMe.mockResolvedValue(student)
+        state.capabilities.mockResolvedValue({ roles: [], permissions: [] })
+        render(<Header />)
+        const { dialog } = await openMenu()
+        expect(await within(dialog).findByText("Студент")).toBeInTheDocument()
+        await waitFor(() => expect(state.capabilities).toHaveBeenCalled())
+        expect(within(dialog).queryByText("Админ панель")).not.toBeInTheDocument()
+        expect(state.toastError).not.toHaveBeenCalled()
+        expect(state.push).not.toHaveBeenCalled()
+    })
+
+    it("a refused privileged session is treated like a user without admin access", async () => {
+        state.getMe.mockResolvedValue({ ...admin, role: "student" as const })
+        state.capabilities.mockRejectedValue(new Error("Требуется вход в аккаунт"))
+        render(<Header />)
+        const { dialog } = await openMenu()
+        await waitFor(() => expect(state.capabilities).toHaveBeenCalled())
+        expect(within(dialog).queryByText("Админ панель")).not.toBeInTheDocument()
+        expect(state.toastError).not.toHaveBeenCalled()
+        expect(state.push).not.toHaveBeenCalled()
+    })
+
+    it("an anonymous visitor never asks for team capabilities", async () => {
+        render(<Header />)
+        await openMenu()
+        expect(state.capabilities).not.toHaveBeenCalled()
+        expect(state.toastError).not.toHaveBeenCalled()
     })
 })

@@ -246,3 +246,46 @@ async def test_lesson_progress_caps_watched_seconds_to_lesson_duration(client: A
 
     assert response.status_code == 200
     assert response.json()["watched_seconds"] == 60
+
+
+@pytest.mark.asyncio
+async def test_completing_a_lesson_keeps_watched_seconds(client: AsyncClient, db: AsyncSession):
+    """Marking done sends only is_completed; the watched time must survive (audit B9)."""
+    course = Course(title="Keep C", price_self=1, price_support=2, is_published=True)
+    db.add(course)
+    await db.flush()
+    module = Module(course_id=course.id, title="M", order_index=1, is_published=True)
+    db.add(module)
+    await db.flush()
+    lesson = Lesson(module_id=module.id, title="Keep L", duration_seconds=600, order_index=1, is_preview=True)
+    db.add(lesson)
+    await db.commit()
+
+    await client.post(
+        "/api/auth/register",
+        json={"email": "keep@t.com", "password": "password123", "password_confirm": "password123", "offer_accepted": True, "personal_data_consent": True},
+    )
+    login = await client.post("/api/auth/login", json={"email": "keep@t.com", "password": "password123"})
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    client.cookies.clear()
+    url = f"/api/lessons/{lesson.id}/progress"
+
+    watched = await client.post(url, json={"watched_seconds": 90}, headers=headers)
+    assert watched.status_code == 200, watched.text
+    assert watched.json()["watched_seconds"] == 90
+    assert watched.json()["is_completed"] is False
+
+    completed = await client.post(url, json={"is_completed": True}, headers=headers)
+    assert completed.status_code == 200, completed.text
+    assert completed.json()["is_completed"] is True
+    assert completed.json()["watched_seconds"] == 90
+
+    # A stale player report never moves the counter backwards or reopens the lesson.
+    stale = await client.post(url, json={"watched_seconds": 30}, headers=headers)
+    assert stale.status_code == 200, stale.text
+    assert stale.json()["watched_seconds"] == 90
+    assert stale.json()["is_completed"] is True
+
+    undone = await client.post(url, json={"is_completed": False}, headers=headers)
+    assert undone.json()["is_completed"] is False
+    assert undone.json()["watched_seconds"] == 90
