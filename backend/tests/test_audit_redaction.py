@@ -154,3 +154,64 @@ async def test_audit_reader_with_pii_read_sees_full_records(
     assert by_action["entitlement.suspend"]["reason"].startswith("Иванова")
     assert by_action["entitlement.grant"]["new_value"]["user_email"] == "мария@пример.рф"
     assert by_action["refund.status.update"]["correlation_id"] == "89991234567"
+
+@pytest.mark.asyncio
+async def test_content_and_pricing_audit_keeps_scalars_and_hides_titles(
+    client: AsyncClient, db: AsyncSession
+):
+    headers = await _staff(client, db, "audit-content@example.com", ["audit.read"])
+    item_id = "21111111-2222-3333-4444-555555555555"
+    db.add_all(
+        [
+            AuditLog(
+                action="course.update",
+                object_type="course",
+                object_id="31111111-2222-3333-4444-555555555555",
+                old_value={"price_self": 5900, "title": "Курс Марии Ивановой", "is_published": False},
+                new_value={
+                    "changed_fields": ["is_published", "price_self", "title"],
+                    "price_self": 6900,
+                    "access_days": 45,
+                    "title": "Курс Марии Ивановой 2.0",
+                    "is_published": True,
+                },
+                correlation_id=SERVER_CORRELATION,
+            ),
+            AuditLog(
+                action="lesson.create",
+                object_type="lesson",
+                object_id="41111111-2222-3333-4444-555555555555",
+                new_value={"module_id": "51111111-2222-3333-4444-555555555555", "title": "Урок для Анны", "is_preview": True, "order_index": 3, "duration_seconds": 600},
+                correlation_id=SERVER_CORRELATION,
+            ),
+            AuditLog(
+                action="gallery_item.reorder",
+                object_type="gallery_item",
+                object_id=None,
+                old_value={"order_index": {item_id: 1}},
+                new_value={"order_index": {item_id: 2}},
+                correlation_id=SERVER_CORRELATION,
+            ),
+        ]
+    )
+    await db.commit()
+
+    response = await client.get("/api/admin/audit-logs", headers=headers)
+    assert response.status_code == 200, response.text
+    by_action = {item["action"]: item for item in response.json()}
+    course = by_action["course.update"]
+    assert course["new_value"] == {
+        "changed_fields": ["is_published", "price_self", "title"],
+        "price_self": 6900,
+        "access_days": 45,
+        "title": REDACTED_FREE_TEXT,
+        "is_published": True,
+    }
+    assert course["old_value"]["price_self"] == 5900
+    assert course["old_value"]["title"] == REDACTED_FREE_TEXT
+    lesson = by_action["lesson.create"]["new_value"]
+    assert lesson["title"] == REDACTED_FREE_TEXT
+    assert (lesson["is_preview"], lesson["order_index"], lesson["duration_seconds"]) == (True, 3, 600)
+    assert by_action["gallery_item.reorder"]["new_value"] == {"order_index": {item_id: 2}}
+    for secret in ("Ивановой", "Анны"):
+        assert secret not in response.text

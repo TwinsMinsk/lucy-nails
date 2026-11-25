@@ -21,6 +21,10 @@ _SAFE_KEYS = frozenset({
     "count", "expires_at", "purchase_expires_at", "revoked_at", "issued_at",
     "user_id", "course_id", "purchase_id", "order_id", "entitlement_id",
     "refund_id", "certificate_id", "outbox_message_id", "session_id",
+    # Content and pricing changes (app/services/content_audit.py). Titles are
+    # free text and stay off this list.
+    "price_self", "price_support", "is_published", "is_preview", "order_index",
+    "duration_seconds", "changed_fields", "module_id",
 })
 _UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 _ISO_DATETIME_RE = re.compile(r"\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?)?")
@@ -48,6 +52,12 @@ def _safe_value(key: str, value: Any) -> Any:
         if _is_safe_scalar(value):
             return value
         if isinstance(value, list) and all(_is_safe_scalar(item) for item in value):
+            return value
+        # e.g. a gallery reorder: {"<item uuid>": <order index>}.
+        if isinstance(value, dict) and all(
+            isinstance(item_key, str) and _UUID_RE.fullmatch(item_key) and _is_safe_scalar(item)
+            for item_key, item in value.items()
+        ):
             return value
     return REDACTED_FREE_TEXT
 
