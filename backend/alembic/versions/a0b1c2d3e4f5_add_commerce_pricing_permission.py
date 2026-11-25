@@ -1,7 +1,7 @@
 """add commerce.manage_pricing permission for course prices and access duration
 
 Revision ID: a0b1c2d3e4f5
-Revises: 9d0e1f2a3b4c
+Revises: a3b4c5d6e7f8
 Create Date: 2026-11-25
 
 Data-only: content.manage no longer changes commercial terms. Only the owner
@@ -15,7 +15,7 @@ from alembic import op
 
 
 revision: str = "a0b1c2d3e4f5"
-down_revision: Union[str, None] = "9d0e1f2a3b4c"
+down_revision: Union[str, None] = "a3b4c5d6e7f8"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
