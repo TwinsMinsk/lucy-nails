@@ -19,6 +19,9 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/api", async (importOriginal) => ({
     ...(await importOriginal<typeof import("@/lib/api")>()),
     getMe: state.getMe,
+    // The header asks for team capabilities to place the admin link; mocked so
+    // the stubbed fetch below only sees the logout requests.
+    adminGetCapabilities: vi.fn().mockResolvedValue({ roles: ["legacy_admin"], permissions: ["*"] }),
 }))
 vi.mock("sonner", () => ({ toast: { error: state.toastError } }))
 

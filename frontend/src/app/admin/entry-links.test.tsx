@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import Dashboard from "@/app/admin/page"
@@ -41,6 +41,17 @@ describe("admin entry from the header", () => {
         const link = await screen.findByRole("menuitem", { name: /Админ панель/ })
         expect(link).toHaveAttribute("href", href)
         expect(screen.getByText("Команда")).toBeVisible()
+    })
+
+    it("links staff to their first admin page from the mobile menu", async () => {
+        vi.mocked(api.adminGetCapabilities).mockResolvedValue({ roles: ["curator"], permissions: ["users.read"] })
+        render(<Header />)
+        await waitFor(() => expect(api.adminGetCapabilities).toHaveBeenCalled())
+        fireEvent.click(await screen.findByRole("button", { name: "Меню" }))
+        const dialog = await screen.findByRole("dialog")
+        const link = await within(dialog).findByRole("link", { name: /Админ панель/ })
+        expect(link).toHaveAttribute("href", "/admin/users")
+        expect(within(dialog).getByText("Команда")).toBeVisible()
     })
 
     it("shows a student no admin link", async () => {
