@@ -30,6 +30,10 @@ from app.models.user import User
 from app.services.operations_health_service import operations_snapshot
 
 logger = logging.getLogger(__name__)
+# httpx logs full request URLs at INFO, and Telegram URLs contain the bot
+# token; the web process calls Telegram for the support bot (as the worker
+# and the polling bot do, it keeps that logger at WARNING).
+logging.getLogger("httpx").setLevel(logging.WARNING)
 _CORRELATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 

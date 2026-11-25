@@ -547,6 +547,35 @@ async def test_failed_payment_alert_names_the_checkout_email_and_the_form_email(
     )
 
 
+@pytest.mark.asyncio
+async def test_failed_payment_alert_names_the_order_in_a_swapped_legacy_callback(
+    client: AsyncClient, db: AsyncSession, owner_alerts
+):
+    course = await _course(db)
+    checkout = await client.post("/api/payments/guest-link", json={
+        "course_id": str(course.id), "tariff": "self", "customer_email": "checkout@example.com",
+        "offer_accepted": True, "personal_data_consent": True,
+    })
+    reference = checkout.json()["order_id"]
+
+    # Older callbacks carried the merchant reference in order_id and the
+    # provider id in order_num.
+    declined = await _signed_webhook(client, {
+        "order_id": reference, "order_num": "prodamus-swapped-1",
+        "customer_email": "form@example.com", "sum": "5900", "currency": "rub",
+        "payment_status": "fail",
+    })
+
+    assert declined.status_code == 422
+    texts = [alert.payload["text"] for alert in await _alerts(db, "owner_payment_rejected")]
+    assert texts == [
+        "ℹ️ Неуспешная попытка оплаты (статус: fail)\n"
+        "Email: checkout@example.com\n"
+        "Email в форме оплаты: form@example.com\n"
+        f"Заказ: {reference}"
+    ]
+
+
 # --- An optional alert never undoes the customer action ----------------------
 
 

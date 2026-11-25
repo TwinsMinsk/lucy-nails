@@ -7,7 +7,7 @@ group is the record of the conversation, the database only routes it.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -54,6 +54,10 @@ class HelpdeskThread(Base):
     last_operator_message_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_ack_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     flood_notice_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Incoming private messages and commands in the current one-minute window,
+    # counted before anything else happens (flood limit).
+    incoming_window_started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    incoming_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -61,10 +65,17 @@ class HelpdeskThread(Base):
 
 
 class HelpdeskMessage(Base):
-    """A relayed message: its id in the customer's chat and in the group topic."""
+    """A relayed message: its id in the customer's chat and in the group topic.
+
+    The row is written before the copy is sent (``sending``) and settled after
+    it (``sent``), keyed by the update it came from, so a redelivered update
+    is never copied a second time. ``uncertain`` means Telegram may or may not
+    have delivered the copy; operators are told instead of copying again.
+    """
 
     __tablename__ = "helpdesk_messages"
     __table_args__ = (
+        UniqueConstraint("update_id", "direction", name="uq_helpdesk_messages_update"),
         UniqueConstraint(
             "thread_id", "direction", "customer_message_id",
             name="uq_helpdesk_messages_customer_side",
@@ -82,6 +93,9 @@ class HelpdeskMessage(Base):
     )
     # "to_operators" (customer -> topic) or "to_customer" (topic -> customer).
     direction: Mapped[str] = mapped_column(String(16), nullable=False)
+    update_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # "sending", "sent" or "uncertain".
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="sent")
     customer_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     group_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     content_type: Mapped[str] = mapped_column(String(32), nullable=False)

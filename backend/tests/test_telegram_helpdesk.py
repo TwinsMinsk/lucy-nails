@@ -7,13 +7,13 @@ that talks to Telegram.
 import hashlib
 import itertools
 import json
+import logging
 import os
 import secrets
 import subprocess
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from types import SimpleNamespace
 from uuid import uuid4
 
 import httpx
@@ -35,6 +35,7 @@ from app.models.refund import RefundRequest
 from app.models.telegram_helpdesk import HelpdeskMessage, HelpdeskThread, TelegramUpdate
 from app.models.telegram_link import TelegramLinkToken
 from app.models.user import User
+from app.services.auth_service import AuthService
 from app.services.support_links import (
     is_account_link_param,
     issue_order_start_param,
@@ -103,21 +104,25 @@ def _error(status: int, description: str) -> httpx.Response:
     )
 
 
+class HttpxWithMockTransport:
+    """outbox_service's view of httpx: every client answers through ``handler``."""
+
+    def __init__(self, handler) -> None:
+        self._handler = handler
+        self._real_client = httpx.AsyncClient
+
+    def __getattr__(self, name: str):
+        return getattr(httpx, name)
+
+    def AsyncClient(self, **kwargs):  # noqa: N802 - mirrors httpx.AsyncClient
+        return self._real_client(transport=httpx.MockTransport(self._handler), **kwargs)
+
+
 @pytest.fixture
 def telegram(monkeypatch: pytest.MonkeyPatch) -> FakeTelegram:
     fake = FakeTelegram()
-    real_client = httpx.AsyncClient
-    monkeypatch.setattr(
-        outbox_service,
-        "httpx",
-        SimpleNamespace(
-            AsyncClient=lambda **kwargs: real_client(
-                transport=httpx.MockTransport(fake.handler), **kwargs
-            ),
-            HTTPError=httpx.HTTPError,
-            Response=httpx.Response,
-        ),
-    )
+    # Resolved per request, so a test can swap fake.handler.
+    monkeypatch.setattr(outbox_service, "httpx", HttpxWithMockTransport(lambda request: fake.handler(request)))
     monkeypatch.setattr(settings, "TELEGRAM_BOT_TOKEN", BOT_TOKEN)
     monkeypatch.setattr(settings, "TELEGRAM_BOT_USERNAME", "lucynails_test_bot")
     monkeypatch.setattr(settings, "TELEGRAM_WEBHOOK_SECRET", SECRET)
@@ -225,16 +230,33 @@ async def test_webhook_is_off_without_a_secret(client: AsyncClient, telegram: Fa
 async def test_webhook_rejects_missing_or_wrong_secret_before_reading_the_body(
     client: AsyncClient, db: AsyncSession, telegram: FakeTelegram
 ):
-    missing = await client.post(WEBHOOK, content=b"not json at all")
+    reads: list[str] = []
+
+    def body(label: str):
+        async def stream():
+            # Runs only when the application asks the server for the body.
+            reads.append(label)
+            yield json.dumps(private_update()).encode()
+
+        return stream()
+
+    missing = await client.post(WEBHOOK, content=body("missing"))
     wrong = await client.post(
-        WEBHOOK, content=b"not json at all",
+        WEBHOOK, content=body("wrong"),
         headers={"X-Telegram-Bot-Api-Secret-Token": SECRET[:-1] + "x"},
     )
 
     assert missing.status_code == 403
     assert wrong.status_code == 403
+    assert reads == []
     assert await db.scalar(select(func.count()).select_from(TelegramUpdate)) == 0
     assert telegram.calls == []
+
+    right = await client.post(
+        WEBHOOK, content=body("right"), headers={"X-Telegram-Bot-Api-Secret-Token": SECRET}
+    )
+    assert right.status_code == 200
+    assert reads == ["right"]
 
 
 @pytest.mark.asyncio
@@ -332,11 +354,110 @@ async def test_a_temporary_telegram_failure_asks_for_redelivery(
     failed = await deliver(client, update)
     assert failed.status_code == 503
     assert await db.get(TelegramUpdate, update["update_id"]) is None
+    # The topic was created before the failure and its binding is kept.
+    assert len(telegram.of("createForumTopic")) == 1
+    assert (await _thread(db)).topic_id is not None
+    assert await db.scalar(select(func.count()).select_from(HelpdeskMessage)) == 0
 
     retried = await deliver(client, update)
     assert retried.status_code == 200
     db.expire_all()
-    assert await db.scalar(select(func.count()).select_from(HelpdeskMessage)) == 1
+    # No second topic and no second card; the copy is sent once more.
+    assert len(telegram.of("createForumTopic")) == 1
+    thread = await _thread(db)
+    cards = [p for p in telegram.of("sendMessage") if p.get("message_thread_id") == thread.topic_id]
+    assert len(cards) == 1
+    assert len(telegram.of("copyMessage")) == 2
+    record = await db.scalar(select(HelpdeskMessage))
+    assert (record.status, record.update_id) == ("sent", update["update_id"])
+
+    again = await deliver(client, update)
+    assert again.status_code == 200
+    assert len(telegram.of("copyMessage")) == 2
+
+
+@pytest.mark.asyncio
+async def test_an_uncertain_copy_is_never_repeated_and_operators_are_told(
+    client: AsyncClient, db: AsyncSession, telegram: FakeTelegram
+):
+    topic_id = (await _open_topic(client, db, telegram)).topic_id
+
+    def lost_answer(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("timed out after sending", request=request)
+
+    original = telegram.handler
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/copyMessage"):
+            telegram.calls.append(("copyMessage", json.loads(request.content)))
+            return lost_answer(request)
+        return original(request)
+
+    telegram.handler = handler
+    update = private_update("Это сообщение могло потеряться")
+
+    first = await deliver(client, update)
+    second = await deliver(client, update)
+
+    assert first.status_code == second.status_code == 200
+    copies = [p for p in telegram.of("copyMessage") if p.get("message_thread_id") == topic_id]
+    assert len(copies) == 2  # the first message of _open_topic and this one, once
+    notices = [p["text"] for p in telegram.of("sendMessage") if p.get("message_thread_id") == topic_id]
+    assert helpdesk.UNCERTAIN_TO_OPERATORS_TEXT in notices
+    db.expire_all()
+    record = await db.scalar(
+        select(HelpdeskMessage).where(HelpdeskMessage.update_id == update["update_id"])
+    )
+    assert record.status == "uncertain"
+
+
+@pytest.mark.asyncio
+async def test_a_relay_left_half_done_is_not_copied_again_on_redelivery(
+    client: AsyncClient, db: AsyncSession, telegram: FakeTelegram
+):
+    # As if the copy went out and the commit of its outcome then failed.
+    thread = await _open_topic(client, db, telegram)
+    update = private_update("Сообщение, которое уже ушло")
+    db.add(HelpdeskMessage(
+        thread_id=thread.id, update_id=update["update_id"], direction=helpdesk.TO_OPERATORS,
+        customer_message_id=update["message"]["message_id"], content_type="text", status="sending",
+    ))
+    await db.commit()
+    copies_before = len(telegram.of("copyMessage"))
+
+    assert (await deliver(client, update)).status_code == 200
+
+    assert len(telegram.of("copyMessage")) == copies_before
+    assert telegram.of("sendMessage")[-1] == {
+        "chat_id": GROUP_ID,
+        "text": helpdesk.UNCERTAIN_TO_OPERATORS_TEXT,
+        "message_thread_id": thread.topic_id,
+    }
+
+
+@pytest.mark.asyncio
+async def test_an_uncertain_operator_reply_is_not_sent_twice(
+    client: AsyncClient, db: AsyncSession, telegram: FakeTelegram
+):
+    thread = await _open_topic(client, db, telegram)
+    original = telegram.handler
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        if request.url.path.endswith("/copyMessage") and payload.get("chat_id") == CUSTOMER_ID:
+            telegram.calls.append(("copyMessage", payload))
+            raise httpx.RemoteProtocolError("connection dropped", request=request)
+        return original(request)
+
+    telegram.handler = handler
+    reply = group_update(thread.topic_id, "Ответ, который мог потеряться")
+
+    assert (await deliver(client, reply)).status_code == 200
+    assert (await deliver(client, reply)).status_code == 200
+
+    to_customer = [p for p in telegram.of("copyMessage") if p["chat_id"] == CUSTOMER_ID]
+    assert len(to_customer) == 1
+    assert telegram.of("sendMessage")[-1]["text"] == helpdesk.UNCERTAIN_TO_CUSTOMER_TEXT
 
 
 @pytest.mark.asyncio
@@ -557,7 +678,7 @@ async def test_customer_message_without_helpdesk_points_to_email(
 
 
 @pytest.mark.asyncio
-async def test_a_relay_the_group_refuses_is_reported_to_the_customer(
+async def test_a_relay_the_group_refuses_is_reported_to_the_customer_and_in_general(
     client: AsyncClient, db: AsyncSession, telegram: FakeTelegram
 ):
     telegram.responders["createForumTopic"] = lambda _p: _error(400, "Bad Request: not enough rights")
@@ -566,6 +687,36 @@ async def test_a_relay_the_group_refuses_is_reported_to_the_customer(
 
     assert response.status_code == 200
     assert telegram.texts_to(CUSTOMER_ID) == [helpdesk.RELAY_FAILED_TEXT]
+    # No topic to speak in: the General topic of the group.
+    assert telegram.of("sendMessage")[-1] == {
+        "chat_id": GROUP_ID,
+        "text": helpdesk.RELAY_REFUSED_GENERAL_TEXT.format(
+            name="Анна Петрова", telegram_id=CUSTOMER_ID, reason="Bad Request: not enough rights"
+        ),
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_copy_refused_into_an_existing_topic_is_reported_there(
+    client: AsyncClient, db: AsyncSession, telegram: FakeTelegram
+):
+    thread = await _open_topic(client, db, telegram)
+    telegram.responders["copyMessage"] = lambda payload: (
+        _error(400, "Bad Request: message can't be copied")
+        if payload.get("message_thread_id") == thread.topic_id else None
+    )
+
+    assert (await deliver(client, private_update("Опрос, который нельзя скопировать"))).status_code == 200
+
+    assert telegram.texts_to(CUSTOMER_ID)[-1] == helpdesk.RELAY_FAILED_TEXT
+    assert telegram.of("sendMessage")[-1] == {
+        "chat_id": GROUP_ID,
+        "text": helpdesk.RELAY_REFUSED_TEXT.format(reason="Bad Request: message can't be copied"),
+        "message_thread_id": thread.topic_id,
+    }
+    db.expire_all()
+    # The failed attempt leaves no relay record behind.
+    assert await db.scalar(select(func.count()).select_from(HelpdeskMessage)) == 1
 
 
 @pytest.mark.asyncio
@@ -734,6 +885,121 @@ async def test_info_reposts_the_card_and_unknown_commands_get_help(
     assert texts[0].startswith("🪪 Карточка клиента")
     assert texts[1] == helpdesk.OPERATOR_HELP_TEXT
     assert all(c["chat_id"] != CUSTOMER_ID for c in telegram.of("copyMessage"))
+
+
+@pytest.mark.asyncio
+async def test_repeating_the_order_link_does_not_repost_the_card(
+    client: AsyncClient, db: AsyncSession, telegram: FakeTelegram
+):
+    course = await _course(db)
+    order = await _order(db, course, "buyer@example.com")
+    await db.commit()
+    param = issue_order_start_param(order.id)
+    thread = await _open_topic(client, db, telegram)
+
+    for _ in range(3):
+        assert (await deliver(client, private_update(f"/start {param}"))).status_code == 200
+
+    cards = [p for p in telegram.of("sendMessage")
+             if p.get("message_thread_id") == thread.topic_id and p["text"].startswith("🪪")]
+    assert len(cards) == 2  # the card of the new topic and one for the new order context
+    assert telegram.texts_to(CUSTOMER_ID).count(helpdesk.ORDER_GREETING_TEXT) == 3
+
+
+@pytest.mark.asyncio
+async def test_commands_count_towards_the_flood_limit(
+    client: AsyncClient, db: AsyncSession, telegram: FakeTelegram
+):
+    for _ in range(helpdesk.FLOOD_LIMIT + 2):
+        assert (await deliver(client, private_update("/start"))).status_code == 200
+    await deliver(client, private_update("/chatid"))
+
+    texts = telegram.texts_to(CUSTOMER_ID)
+    assert texts.count(helpdesk.GREETING_TEXT) == helpdesk.FLOOD_LIMIT
+    assert texts.count(helpdesk.FLOOD_TEXT) == 1
+    assert not any(text.startswith("ID чата") for text in texts)
+
+
+@pytest.mark.asyncio
+async def test_chatid_in_private_is_counted_and_silenced_for_a_blocked_customer(
+    client: AsyncClient, db: AsyncSession, telegram: FakeTelegram
+):
+    await deliver(client, private_update("/chatid"))
+    assert telegram.texts_to(CUSTOMER_ID) == [f"ID чата: {CUSTOMER_ID}"]
+    thread = await _open_topic(client, db, telegram)
+    await deliver(client, group_update(thread.topic_id, "/block"))
+    before = len(telegram.calls)
+
+    await deliver(client, private_update("/chatid"))
+
+    assert telegram.calls[before:] == []
+    assert (await _thread(db)).incoming_count == 2  # the blocked one is not counted
+
+
+@pytest.mark.asyncio
+async def test_disconnecting_telegram_unlinks_the_support_thread(
+    client: AsyncClient, db: AsyncSession, telegram: FakeTelegram
+):
+    course = await _course(db)
+    user = User(email="linked@example.com", email_verified_at=datetime.utcnow(),
+                password_hash=get_password_hash("linked-password-123"), role="student",
+                telegram_id=CUSTOMER_ID)
+    db.add(user)
+    await db.flush()
+    await _order(db, course, "linked@example.com", status="paid", user_id=user.id)
+    await db.commit()
+    user_id, token_version = user.id, user.token_version
+    thread = await _open_topic(client, db, telegram)
+    topic_id = thread.topic_id
+    assert thread.user_id == user_id
+    token = AuthService.create_tokens(user_id, token_version).access_token
+
+    response = await client.delete("/api/telegram/link", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 204, response.text
+    await db.commit()  # the request ran in the test session (get_db override)
+
+    assert (await _thread(db)).user_id is None
+    await deliver(client, group_update(topic_id, "/info"))
+    card = telegram.of("sendMessage")[-1]["text"]
+    assert "Аккаунт не найден" in card
+    assert "linked@example.com" not in card and "оплачен" not in card
+
+
+@pytest.mark.asyncio
+async def test_the_card_follows_the_current_telegram_link(
+    client: AsyncClient, db: AsyncSession, telegram: FakeTelegram
+):
+    user = User(email="linked@example.com", email_verified_at=datetime.utcnow(),
+                password_hash=get_password_hash("linked-password-123"), role="student",
+                telegram_id=CUSTOMER_ID)
+    db.add(user)
+    await db.commit()
+    thread = await _open_topic(client, db, telegram)
+    # Cleared outside the disconnect endpoint (for example by a mailbox check).
+    user.telegram_id = None
+    await db.commit()
+
+    await deliver(client, group_update(thread.topic_id, "/info"))
+
+    card = telegram.of("sendMessage")[-1]["text"]
+    assert "Аккаунт не найден" in card and "linked@example.com" not in card
+    assert (await _thread(db)).user_id is None
+
+
+@pytest.mark.asyncio
+async def test_the_web_process_never_logs_the_bot_token(
+    telegram: FakeTelegram, caplog: pytest.LogCaptureFixture
+):
+    import app.main  # noqa: F401 - configures logging for the web process
+
+    assert logging.getLogger("httpx").level == logging.WARNING
+    caplog.set_level(logging.DEBUG)
+
+    await outbox_service.call_telegram_api("sendMessage", {"chat_id": 1, "text": "hello"})
+
+    assert telegram.of("sendMessage") == [{"chat_id": 1, "text": "hello"}]
+    assert BOT_TOKEN not in caplog.text
+    assert BOT_TOKEN.split(":", 1)[1] not in caplog.text
 
 
 # --- Customer card -----------------------------------------------------------

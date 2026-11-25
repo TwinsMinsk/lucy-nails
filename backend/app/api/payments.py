@@ -973,6 +973,9 @@ async def _record_rejected_webhook(
         or _parse_persisted_order_id(event_data.order_reference or "")
         or _parse_persisted_order_id(event_data.external_event_id or "")
     )
+    if matched_order_id is not None:
+        # Name the order itself, not whatever field the provider put it in.
+        order_reference = f"order|{matched_order_id}"
     async with async_session_maker() as db:
         email_lines = await payment_alert_email_lines(db, matched_order_id, form_email)
     if processing_status == "ignored":

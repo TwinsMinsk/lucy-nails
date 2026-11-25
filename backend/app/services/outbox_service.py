@@ -65,6 +65,9 @@ class TelegramApiError(RuntimeError):
     ``status_code`` is the HTTP status (None when Telegram was not reached),
     ``description`` Telegram's own redacted explanation. ``transient`` marks a
     failure a later retry can fix: network trouble, 429 or a server error.
+    ``uncertain`` marks a failure after the request may already have reached
+    Telegram (a read timeout, a dropped connection, an unreadable answer): the
+    call may have taken effect, so repeating it blindly can duplicate it.
     """
 
     def __init__(
@@ -74,11 +77,13 @@ class TelegramApiError(RuntimeError):
         status_code: int | None = None,
         description: str = "",
         transient: bool = False,
+        uncertain: bool = False,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.description = description
         self.transient = transient
+        self.uncertain = uncertain
 
 
 def redact_telegram_token(text: str) -> str:
@@ -106,8 +111,13 @@ async def _telegram_request(method: str, payload: dict) -> Any:
         async with httpx.AsyncClient(timeout=TELEGRAM_API_TIMEOUT_SECONDS) as client:
             response = await client.post(url, json=payload)
     except httpx.HTTPError as exc:
+        # Nothing was sent when the connection was never made; otherwise
+        # Telegram may have acted on the request before the answer was lost.
+        not_sent = isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout))
         raise TelegramApiError(
-            f"Telegram API {method} failed: {type(exc).__name__}", transient=True
+            f"Telegram API {method} failed: {type(exc).__name__}",
+            transient=True,
+            uncertain=not not_sent,
         ) from None
     if not response.is_success:
         description = _telegram_description(response)
@@ -122,7 +132,9 @@ async def _telegram_request(method: str, payload: dict) -> Any:
         body = response.json()
     except ValueError:
         raise TelegramApiError(
-            f"Telegram API {method} returned an unreadable response", transient=True
+            f"Telegram API {method} returned an unreadable response",
+            transient=True,
+            uncertain=True,
         ) from None
     if not isinstance(body, dict) or not body.get("ok"):
         raise TelegramApiError(f"Telegram API rejected {method}")

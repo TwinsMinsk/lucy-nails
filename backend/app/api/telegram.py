@@ -5,13 +5,14 @@ import secrets
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.core.rate_limit import limiter
+from app.models.telegram_helpdesk import HelpdeskThread
 from app.models.telegram_link import TelegramLinkToken
 from app.models.user import User
 
@@ -79,6 +80,13 @@ async def disconnect_telegram(
             TelegramLinkToken.user_id == current_user.id,
             TelegramLinkToken.used_at.is_(None),
         )
+    )
+    # The support chat no longer speaks for this account: operators must not
+    # see its orders as belonging to the person in that chat.
+    await db.execute(
+        update(HelpdeskThread)
+        .where(HelpdeskThread.user_id == current_user.id)
+        .values(user_id=None)
     )
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
