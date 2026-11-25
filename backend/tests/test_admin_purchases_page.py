@@ -13,6 +13,7 @@ from app.core.security import get_password_hash
 from app.models.course import Course
 from app.models.purchase import Purchase
 from app.models.user import User
+from conftest import mfa_login
 
 
 @pytest.mark.asyncio
@@ -72,9 +73,7 @@ async def test_purchases_are_paginated_and_default_to_real_payments(
     )
     db.add_all([*paid, *manual, legacy_grant])
     await db.commit()
-    login = await client.post(
-        "/api/auth/login", json={"email": admin.email, "password": "adminpass1"}
-    )
+    login = await mfa_login(client, db, admin.email, "adminpass1")
     client.cookies.clear()
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 

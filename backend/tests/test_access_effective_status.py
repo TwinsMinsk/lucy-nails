@@ -10,6 +10,7 @@ from app.core.security import get_password_hash
 from app.models.course import Course
 from app.models.entitlement import Entitlement
 from app.models.user import User
+from conftest import mfa_login
 
 
 async def _admin_headers(client: AsyncClient, db: AsyncSession) -> dict[str, str]:
@@ -21,9 +22,7 @@ async def _admin_headers(client: AsyncClient, db: AsyncSession) -> dict[str, str
     )
     db.add(admin)
     await db.commit()
-    response = await client.post(
-        "/api/auth/login", json={"email": admin.email, "password": "adminpass1"}
-    )
+    response = await mfa_login(client, db, admin.email, "adminpass1")
     client.cookies.clear()
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 

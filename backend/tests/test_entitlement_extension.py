@@ -15,7 +15,7 @@ from app.models.purchase import Purchase
 from app.models.refund import RefundRequest
 from app.models.user import User
 from app.services.email_service import format_msk_datetime
-from conftest import TestingSessionLocal
+from conftest import TestingSessionLocal, mfa_login
 
 
 async def _setup(client: AsyncClient, db: AsyncSession):
@@ -55,9 +55,7 @@ async def _setup(client: AsyncClient, db: AsyncSession):
     )
     db.add_all([old, renewed])
     await db.commit()
-    login = await client.post(
-        "/api/auth/login", json={"email": admin.email, "password": "adminpass1"}
-    )
+    login = await mfa_login(client, db, admin.email, "adminpass1")
     client.cookies.clear()
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
     return headers, old, renewed
@@ -229,9 +227,7 @@ async def _two_purchases(client: AsyncClient, db: AsyncSession):
     )
     db.add(refund)
     await db.commit()
-    login = await client.post(
-        "/api/auth/login", json={"email": admin.email, "password": "adminpass1"}
-    )
+    login = await mfa_login(client, db, admin.email, "adminpass1")
     client.cookies.clear()
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
     return headers, rows, refund.id

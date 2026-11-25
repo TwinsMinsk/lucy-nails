@@ -557,7 +557,7 @@ async def test_explicit_manual_grant_and_its_refund_do_not_change_financial_repo
 @pytest.mark.parametrize("report", ["overview", "sources", "timeseries", "cohorts"])
 async def test_report_dates_outside_bounds_are_rejected(client, db, report, query):
     """date_to=9999-12-31 used to overflow end_date + 1 day into a 500 (audit M3)."""
-    _, _, _, _, headers = await _report_fixture(db)
+    _, _, _, _, headers = await _report_fixture(client, db)
     response = await client.get(f"/api/admin/reports/{report}?{query}", headers=headers)
     assert response.status_code == 422, response.text
 
@@ -568,7 +568,7 @@ async def test_payment_basis_sources_leave_conversion_empty(client, db):
     import csv
     import io
 
-    now, admin, student, course, headers = await _report_fixture(db)
+    now, admin, student, course, headers = await _report_fixture(client, db)
     order = Order(
         user_id=student.id,
         course_id=course.id,

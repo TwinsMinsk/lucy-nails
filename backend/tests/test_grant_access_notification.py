@@ -12,6 +12,7 @@ from app.models.audit_log import AuditLog
 from app.models.course import Course
 from app.models.outbox import OutboxMessage
 from app.models.user import User
+from conftest import mfa_login
 
 
 async def _grant(client: AsyncClient, db: AsyncSession, *, verified: bool):
@@ -30,7 +31,7 @@ async def _grant(client: AsyncClient, db: AsyncSession, *, verified: bool):
     course = Course(title="Grant Course", price_self=5000, price_support=10000, access_days=30)
     db.add_all([admin, student, course])
     await db.commit()
-    login = await client.post("/api/auth/login", json={"email": admin.email, "password": "adminpass1"})
+    login = await mfa_login(client, db, admin.email, "adminpass1")
     client.cookies.clear()
     response = await client.post(
         "/api/admin/grant-access",

@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.security import get_password_hash
 from app.models.outbox import OutboxMessage
 from app.models.user import User
+from conftest import mfa_login
 from app.services import operations_health_service as health
 
 
@@ -23,9 +24,7 @@ async def _admin_headers(client: AsyncClient, db: AsyncSession) -> dict[str, str
     )
     db.add(admin)
     await db.commit()
-    response = await client.post(
-        "/api/auth/login", json={"email": admin.email, "password": "adminpass1"}
-    )
+    response = await mfa_login(client, db, admin.email, "adminpass1")
     assert response.status_code == 200, response.text
     client.cookies.clear()
     return {"Authorization": f"Bearer {response.json()['access_token']}"}

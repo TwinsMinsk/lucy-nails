@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import get_password_hash
 from app.models.payment_event import PaymentEvent
 from app.models.user import User
+from conftest import mfa_login
 
 
 def _event(key: str, status: str, received_at: datetime, *, external: str | None, reference: str | None) -> PaymentEvent:
@@ -55,9 +56,7 @@ async def test_payment_errors_count_unresolved_incidents_in_last_30_days(
         ]
     )
     await db.commit()
-    login = await client.post(
-        "/api/auth/login", json={"email": admin.email, "password": "adminpass1"}
-    )
+    login = await mfa_login(client, db, admin.email, "adminpass1")
     client.cookies.clear()
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
@@ -94,9 +93,7 @@ async def test_legacy_field_order_is_normalised_before_deduplication(
         ]
     )
     await db.commit()
-    login = await client.post(
-        "/api/auth/login", json={"email": admin.email, "password": "adminpass1"}
-    )
+    login = await mfa_login(client, db, admin.email, "adminpass1")
     client.cookies.clear()
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 

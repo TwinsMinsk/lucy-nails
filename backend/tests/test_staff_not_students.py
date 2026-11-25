@@ -13,6 +13,7 @@ from app.models.module import Module
 from app.models.progress import Progress
 from app.models.rbac import Role, UserRoleAssignment
 from app.models.user import User
+from conftest import mfa_login
 
 
 @pytest.mark.asyncio
@@ -40,9 +41,7 @@ async def test_staff_with_student_role_are_excluded_from_student_counts(
         [UserRoleAssignment(user_id=user.id, role_id=role.id) for user, role in zip(staff, roles)]
     )
     await db.commit()
-    login = await client.post(
-        "/api/auth/login", json={"email": admin.email, "password": "adminpass1"}
-    )
+    login = await mfa_login(client, db, admin.email, "adminpass1")
     client.cookies.clear()
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
@@ -86,9 +85,7 @@ async def test_staff_are_excluded_from_active_students_and_the_students_list(
     for user in (admin, learner, curator):
         db.add(Progress(user_id=user.id, lesson_id=lesson.id, watched_seconds=10, is_completed=False, updated_at=now))
     await db.commit()
-    login = await client.post(
-        "/api/auth/login", json={"email": admin.email, "password": "adminpass1"}
-    )
+    login = await mfa_login(client, db, admin.email, "adminpass1")
     client.cookies.clear()
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 

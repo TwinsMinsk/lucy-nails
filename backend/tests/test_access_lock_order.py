@@ -22,7 +22,7 @@ from app.models.entitlement import Entitlement
 from app.models.purchase import Purchase
 from app.models.refund import RefundRequest
 from app.models.user import User
-from conftest import TestingSessionLocal, engine
+from conftest import TestingSessionLocal, engine, mfa_login
 
 BARRIER_TIMEOUT_SECONDS = 5
 
@@ -135,9 +135,7 @@ async def _seed(client: AsyncClient, db: AsyncSession):
     )
     db.add_all([entitlement, refund])
     await db.commit()
-    login = await client.post(
-        "/api/auth/login", json={"email": admin.email, "password": "adminpass1"}
-    )
+    login = await mfa_login(client, db, admin.email, "adminpass1")
     client.cookies.clear()
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
     return headers, entitlement.id, refund.id, purchase.id
