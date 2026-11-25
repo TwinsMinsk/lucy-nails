@@ -162,6 +162,29 @@ def _order(course: Course, email: str, *, status: str = "pending", created_at: d
     )
 
 
+async def _real_payment(
+    db: AsyncSession, course: Course, email: str, *, created_at: datetime, paid_at: datetime
+) -> Order:
+    """A paid order the way the payment webhook leaves it: paid_at and a Purchase."""
+    user = await db.scalar(select(User).where(func.lower(User.email) == email.lower()))
+    if user is None:
+        user = User(email=email.lower(), password_hash="not-a-real-hash", role="student")
+        db.add(user)
+        await db.flush()
+    order = _order(course, email, status="paid", created_at=created_at)
+    order.paid_at = paid_at
+    order.user_id = user.id
+    db.add(order)
+    await db.flush()
+    db.add(Purchase(
+        user_id=user.id, course_id=course.id, order_id=order.id, tariff="self",
+        amount_kopecks=590000, payment_id=f"prodamus-{order.id}", payment_status="success",
+        paid_at=paid_at, expires_at=paid_at + timedelta(days=30),
+    ))
+    await db.flush()
+    return order
+
+
 # --- Routing -----------------------------------------------------------------
 
 
@@ -361,11 +384,13 @@ async def test_abandoned_order_alert_once_and_only_for_recent_unpaid_orders(
     paid = _order(course, "paid@example.com", status="paid", created_at=now - 90 * minutes)
     ancient = _order(course, "old@example.com", created_at=now - timedelta(days=2))
     retried = _order(course, "retry@example.com", created_at=now - 100 * minutes)
-    retried_paid = _order(course, "Retry@Example.com", status="paid", created_at=now - 80 * minutes)
+    await _real_payment(db, course, "Retry@Example.com",
+                        created_at=now - 80 * minutes, paid_at=now - 75 * minutes)
     # Paying for another course does not cover the unpaid one.
     switched = _order(course, "switch@example.com", created_at=now - 95 * minutes)
-    switched_paid = _order(other_course, "switch@example.com", status="paid", created_at=now - 85 * minutes)
-    db.add_all([abandoned, fresh, later, backlog, paid, ancient, retried, retried_paid, switched, switched_paid])
+    await _real_payment(db, other_course, "switch@example.com",
+                        created_at=now - 85 * minutes, paid_at=now - 84 * minutes)
+    db.add_all([abandoned, fresh, later, backlog, paid, ancient, retried, switched])
     await db.commit()
     abandoned_id, later_id, switched_id = abandoned.id, later.id, switched.id
 
@@ -739,6 +764,64 @@ async def test_a_failing_order_lookup_keeps_the_planned_answer_to_a_declined_pay
         "Email: form@example.com\n"
         f"Заказ: {reference}"
     ]
+
+
+# --- Payment order and recovery of pending orders only ----------------------
+
+
+@pytest.mark.asyncio
+async def test_a_payment_made_after_the_checkout_hides_it_even_from_an_older_link(
+    db: AsyncSession, owner_alerts
+):
+    # Link A at 10:00, link B for the same course at 10:05, A paid at 10:10:
+    # at 11:10 nothing is left unpaid.
+    ten = datetime(2026, 11, 25, 10, 0)
+    course = await _course(db)
+    await _real_payment(db, course, "buyer@example.com",
+                        created_at=ten, paid_at=ten + timedelta(minutes=10))
+    db.add(_order(course, "Buyer@Example.com", created_at=ten + timedelta(minutes=5)))
+    await db.commit()
+
+    assert await schedule_abandoned_order_alerts(db, now=ten + timedelta(hours=1, minutes=10)) == 0
+    assert await _alerts(db, "owner_order_abandoned") == []
+
+
+@pytest.mark.asyncio
+async def test_a_payment_made_before_the_checkout_does_not_hide_it(
+    db: AsyncSession, owner_alerts
+):
+    # Paid at 9:10, then a new checkout for the same course at 9:30 left unpaid.
+    nine = datetime(2026, 11, 25, 9, 0)
+    course = await _course(db)
+    await _real_payment(db, course, "buyer@example.com",
+                        created_at=nine, paid_at=nine + timedelta(minutes=10))
+    pending = _order(course, "buyer@example.com", created_at=nine + timedelta(minutes=30))
+    db.add(pending)
+    await db.commit()
+    pending_id = pending.id
+
+    assert await schedule_abandoned_order_alerts(db, now=nine + timedelta(hours=1, minutes=40)) == 1
+    await db.commit()
+    alerts = await _alerts(db, "owner_order_abandoned")
+    assert [alert.dedupe_key for alert in alerts] == [f"order:{pending_id}:abandoned"]
+
+
+@pytest.mark.asyncio
+async def test_a_paid_order_without_a_creation_alert_is_not_recovered(
+    db: AsyncSession, owner_alerts
+):
+    now = datetime(2026, 11, 25, 12, 0)
+    course = await _course(db)
+    await _real_payment(db, course, "paid@example.com",
+                        created_at=now - timedelta(hours=2), paid_at=now - timedelta(hours=1))
+    pending = _order(course, "waiting@example.com", created_at=now - timedelta(hours=2))
+    db.add(pending)
+    await db.commit()
+
+    assert await schedule_missing_order_created_alerts(db, now=now) == 1
+    await db.commit()
+    alerts = await _alerts(db, "owner_order_created")
+    assert len(alerts) == 1 and "Email: waiting@example.com" in alerts[0].payload["text"]
 
 
 # --- Optional lifecycle steps never undo the customer emails -----------------

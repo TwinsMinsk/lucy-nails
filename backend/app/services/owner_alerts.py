@@ -113,7 +113,9 @@ async def schedule_missing_order_created_alerts(
     """Queue «🧾 Новый заказ» for recent orders whose alert is missing.
 
     The checkout queues it with the order; when that failed, the order is
-    still committed and this pass finds it by the alert's dedupe key.
+    still committed and this pass finds it by the alert's dedupe key. Only
+    orders still waiting for payment are recovered: a paid one is already
+    reported by the payment alert.
     """
     if owner_alert_target() is None:
         return 0
@@ -121,6 +123,7 @@ async def schedule_missing_order_created_alerts(
     rows = await db.execute(
         select(Order)
         .where(
+            Order.status == "pending",
             Order.created_at > now - ORDER_ALERT_RECOVERY_WINDOW,
             ~exists().where(OutboxMessage.dedupe_key == dedupe_key),
         )
@@ -146,8 +149,9 @@ async def schedule_abandoned_order_alerts(
     scan intervals, so consecutive scans leave no gap. The first scan after
     the feature is deployed therefore never reports the backlog of older
     unpaid orders. The selection happens in the database and is bounded:
-    already reported orders and orders whose buyer has since paid for the
-    same course are excluded there, so they never fill the batch.
+    already reported orders and orders whose buyer has since really paid
+    (`paid_at` at or after this order's creation) for the same course are
+    excluded there, so they never fill the batch.
     """
     minutes = settings.ORDER_ABANDONED_ALERT_MINUTES
     if minutes <= 0 or owner_alert_target() is None:
@@ -165,12 +169,18 @@ async def schedule_abandoned_order_alerts(
             Order.created_at <= cutoff,
             Order.created_at > oldest,
             ~exists().where(OutboxMessage.dedupe_key == dedupe_key),
+            # The buyer paid for the same course since opening this checkout:
+            # what counts is when that payment happened, not when its link
+            # was created (link A at 10:00, link B at 10:05, A paid at 10:10
+            # leaves nothing to report about B).
             ~exists().where(
                 and_(
                     func.lower(later_order.customer_email) == func.lower(Order.customer_email),
                     later_order.course_id == Order.course_id,
                     later_order.status == "paid",
-                    later_order.created_at >= Order.created_at,
+                    later_order.paid_at >= Order.created_at,
+                    Purchase.order_id == later_order.id,
+                    paid_financial_filter(),
                 )
             ),
         )
