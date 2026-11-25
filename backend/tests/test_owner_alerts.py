@@ -16,14 +16,18 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.services.lifecycle_service as lifecycle_module
 import app.services.outbox_service as outbox_service
 import app.services.owner_alerts as owner_alerts_module
+import app.workers.outbox as outbox_worker
 from app.core.config import Settings, settings
 from app.core.security import create_account_activation_token, get_password_hash
 from app.models.course import Course
+from app.models.entitlement import Entitlement
 from app.models.order import Order
 from app.models.outbox import OutboxMessage
 from app.models.purchase import Purchase
+from app.models.telegram_helpdesk import TelegramUpdate
 from app.models.user import User
 from app.services.auth_service import AuthService
 from app.services.lifecycle_service import LifecycleService
@@ -735,3 +739,100 @@ async def test_a_failing_order_lookup_keeps_the_planned_answer_to_a_declined_pay
         "Email: form@example.com\n"
         f"Заказ: {reference}"
     ]
+
+
+# --- Optional lifecycle steps never undo the customer emails -----------------
+
+
+OPTIONAL_STEPS = {
+    "recovery": "schedule_missing_order_created_alerts",
+    "abandoned": "schedule_abandoned_order_alerts",
+    "prune": "prune_processed_updates",
+}
+
+
+async def _fails_at_statement(_db: AsyncSession, *, now: datetime) -> int:
+    raise OperationalError("SELECT orders", {}, Exception("lock timeout"))
+
+
+async def _fails_at_flush(db: AsyncSession, *, now: datetime) -> int:
+    # Accepted by the session, refused by the database once flushed.
+    db.add(OutboxMessage(kind="owner_order_abandoned", channel="telegram", recipient="1",
+                         payload={}, dedupe_key=None))
+    return 1
+
+
+async def _lifecycle_pass_with_due_work(db: AsyncSession, now: datetime) -> dict:
+    """A reminder due today, an unpaid order in the window, an old update id."""
+    course = await _course(db)
+    student = User(email="student@example.com", email_verified_at=now,
+                   password_hash="not-a-real-hash", role="student")
+    db.add(student)
+    await db.flush()
+    entitlement = Entitlement(user_id=student.id, course_id=course.id, source="manual",
+                              tariff="self", status="active", starts_at=now - timedelta(days=27),
+                              expires_at=now + timedelta(days=3) - timedelta(hours=1))
+    order = _order(course, "slow@example.com", created_at=now - timedelta(minutes=90))
+    db.add_all([entitlement, order, TelegramUpdate(update_id=1, received_at=now - timedelta(days=8))])
+    await db.commit()
+    return {
+        "reminder": f"entitlement:{entitlement.id}:reminder:3:email",
+        "recovery": f"order:{order.id}:created",
+        "abandoned": f"order:{order.id}:abandoned",
+    }
+
+
+async def _run_worker_scan(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def no_delivery(_db) -> int:
+        return 0
+
+    monkeypatch.setattr(outbox_worker, "async_session_maker", TestingSessionLocal)
+    monkeypatch.setattr(outbox_worker, "process_outbox_batch", no_delivery)
+    monkeypatch.setattr(settings, "LIFECYCLE_SCAN_SECONDS", 0)
+    await outbox_worker.run_iteration(0.0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [_fails_at_statement, _fails_at_flush], ids=["statement", "flush"])
+@pytest.mark.parametrize("step", list(OPTIONAL_STEPS))
+async def test_a_failing_optional_lifecycle_step_keeps_the_customer_emails(
+    db: AsyncSession, owner_alerts, monkeypatch: pytest.MonkeyPatch, caplog, step, failure
+):
+    keys = await _lifecycle_pass_with_due_work(db, datetime.utcnow())
+    monkeypatch.setattr(lifecycle_module, OPTIONAL_STEPS[step], failure)
+    caplog.set_level(logging.WARNING)
+
+    await _run_worker_scan(monkeypatch)
+
+    # The worker's catch-all never fired: the scan itself did not raise.
+    assert "Lifecycle scheduling failed" not in caplog.text
+    assert "Lifecycle step" in caplog.text and "@" not in caplog.text
+    async with TestingSessionLocal() as fresh:
+        stored = set((await fresh.execute(select(OutboxMessage.dedupe_key))).scalars())
+        old_update_left = await fresh.get(TelegramUpdate, 1) is not None
+    assert keys["reminder"] in stored
+    # The other optional steps still ran; the failing one left nothing behind.
+    assert (keys["recovery"] in stored) == (step != "recovery")
+    assert (keys["abandoned"] in stored) == (step != "abandoned")
+    assert old_update_left == (step == "prune")
+    assert None not in stored
+
+
+@pytest.mark.asyncio
+async def test_a_refused_alert_insert_keeps_the_reminder_of_the_same_pass(
+    db: AsyncSession, owner_alerts, owner_alert_outage, monkeypatch: pytest.MonkeyPatch, caplog
+):
+    break_inserts, _restore = owner_alert_outage
+    keys = await _lifecycle_pass_with_due_work(db, datetime.utcnow())
+    await break_inserts()
+    caplog.set_level(logging.WARNING)
+
+    await _run_worker_scan(monkeypatch)
+
+    assert "Lifecycle scheduling failed" not in caplog.text
+    async with TestingSessionLocal() as fresh:
+        stored = set((await fresh.execute(select(OutboxMessage.dedupe_key))).scalars())
+        old_update_left = await fresh.get(TelegramUpdate, 1) is not None
+    assert keys["reminder"] in stored
+    assert keys["recovery"] not in stored and keys["abandoned"] not in stored
+    assert not old_update_left
