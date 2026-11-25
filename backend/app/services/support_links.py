@@ -77,6 +77,10 @@ def verify_order_start_param(param: str) -> UUID | None:
         return None
     if len(raw) != _TOKEN_BYTES:
         return None
+    # The last of the 43 characters carries two unused bits, so several
+    # spellings decode to the same bytes; only the one we issue is accepted.
+    if base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=") != token:
+        return None
     order_bytes, supplied = raw[:16], raw[16:]
     if not hmac.compare_digest(supplied, _signature(order_bytes)):
         return None

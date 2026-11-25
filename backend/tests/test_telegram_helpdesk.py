@@ -1110,6 +1110,13 @@ def test_order_start_param_round_trip_and_tampering():
     assert verify_order_start_param(param[:-1]) is None
     assert verify_order_start_param("o_" + "!" * 43) is None
     assert verify_order_start_param(param.replace("o_", "x_", 1)) is None
+    # The last character carries two unused bits: every other spelling of it,
+    # even one that decodes to the same bytes, is refused.
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+    for _ in range(20):
+        sample = issue_order_start_param(uuid4())
+        for char in alphabet.replace(sample[-1], ""):
+            assert verify_order_start_param(sample[:-1] + char) is None
     # A 43-character account token that starts with "o_" still links an account.
     assert is_account_link_param("o_" + "a" * 41)
     assert not is_account_link_param(param)
