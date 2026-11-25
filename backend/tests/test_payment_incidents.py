@@ -68,3 +68,39 @@ async def test_payment_errors_count_unresolved_incidents_in_last_30_days(
     reconciliation = await client.get("/api/admin/reconciliation", headers=headers)
     assert reconciliation.status_code == 200, reconciliation.text
     assert reconciliation.json()["processed_payment_errors"] == 4
+
+
+@pytest.mark.asyncio
+async def test_legacy_field_order_is_normalised_before_deduplication(
+    client: AsyncClient, db: AsyncSession
+):
+    """Old callbacks put the order reference in order_id and the payment id in order_num."""
+    admin = User(
+        email_verified_at=datetime.utcnow(),
+        email="legacy-incidents-admin@example.com",
+        password_hash=get_password_hash("adminpass1"),
+        role="admin",
+    )
+    db.add(admin)
+    now = datetime.utcnow()
+    db.add_all(
+        [
+            # Two separate extra payments for one order, old field order.
+            _event("l1", "financial_incident", now - timedelta(hours=5), external="order|X", reference="P-1"),
+            _event("l2", "financial_incident", now - timedelta(hours=4), external="order|X", reference="P-2"),
+            # An old-order rejection later resolved by a new-order processed delivery.
+            _event("l3", "rejected", now - timedelta(hours=3), external="order|Y", reference="P-3"),
+            _event("l4", "processed", now - timedelta(hours=2), external="P-4", reference="order|Y"),
+        ]
+    )
+    await db.commit()
+    login = await client.post(
+        "/api/auth/login", json={"email": admin.email, "password": "adminpass1"}
+    )
+    client.cookies.clear()
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    dashboard = await client.get("/api/admin/dashboard", headers=headers)
+    assert dashboard.json()["payment_errors"] == 2
+    reconciliation = await client.get("/api/admin/reconciliation", headers=headers)
+    assert reconciliation.json()["processed_payment_errors"] == 2

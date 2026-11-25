@@ -123,15 +123,42 @@ def _order_failed_attempt_exists():
 PAYMENT_INCIDENT_WINDOW = timedelta(days=30)
 
 
+def _payment_identities(event):
+    """(provider payment id, merchant order reference) of a journaled event.
+
+    Mirrors payments._resolve_payment_key: callbacks from the old field mapping
+    carried the merchant reference ("order|..." / "course|...") in ``order_id``
+    (external_event_id) and the provider payment id in ``order_num``
+    (order_reference). Normalise both before deduplicating.
+    """
+    legacy_order = or_(
+        event.external_event_id.like("order|%"),
+        event.external_event_id.like("course|%"),
+    )
+    payment_id = case(
+        (and_(event.external_event_id.is_not(None), ~legacy_order), event.external_event_id),
+        (legacy_order, event.order_reference),
+        else_=None,
+    )
+    order_reference = case(
+        (legacy_order, event.external_event_id),
+        else_=event.order_reference,
+    )
+    return payment_id, order_reference
+
+
 def _payment_incident_count_query(since: datetime | None = None):
     """Distinct unresolved payment incidents, not raw journal rows.
 
     Every provider delivery (with its own ``attempt``) is a separate row, so one
     rejected payment yields several. An incident is one provider payment id (or,
-    without it, one order reference); a rejection is resolved once a later
-    delivery for the same order or payment was processed.
+    without it, one order reference), both normalised as the webhook does; a
+    rejection is resolved once a later delivery for the same order or payment
+    was processed.
     """
     later = aliased(PaymentEvent)
+    payment_id, order_reference = _payment_identities(PaymentEvent)
+    later_payment_id, later_order_reference = _payment_identities(later)
     resolved = (
         select(later.id)
         .where(
@@ -139,24 +166,14 @@ def _payment_incident_count_query(since: datetime | None = None):
             later.received_at > PaymentEvent.received_at,
             or_(
                 and_(PaymentEvent.order_id.is_not(None), later.order_id == PaymentEvent.order_id),
-                and_(
-                    PaymentEvent.order_reference.is_not(None),
-                    later.order_reference == PaymentEvent.order_reference,
-                ),
-                and_(
-                    PaymentEvent.external_event_id.is_not(None),
-                    later.external_event_id == PaymentEvent.external_event_id,
-                ),
+                and_(order_reference.is_not(None), later_order_reference == order_reference),
+                and_(payment_id.is_not(None), later_payment_id == payment_id),
             ),
         )
         .correlate(PaymentEvent)
         .exists()
     )
-    incident_key = func.coalesce(
-        PaymentEvent.external_event_id,
-        PaymentEvent.order_reference,
-        cast(PaymentEvent.id, String),
-    )
+    incident_key = func.coalesce(payment_id, order_reference, cast(PaymentEvent.id, String))
     conditions = [
         PaymentEvent.processing_status.in_(["rejected", "financial_incident"]),
         or_(PaymentEvent.processing_status != "rejected", ~resolved),
@@ -164,7 +181,6 @@ def _payment_incident_count_query(since: datetime | None = None):
     if since is not None:
         conditions.append(PaymentEvent.received_at >= since)
     return select(func.count(func.distinct(incident_key))).where(*conditions)
-
 
 def order_display_status(now: datetime):
     """Derived order status; requires Purchase outer-joined on Purchase.order_id."""
