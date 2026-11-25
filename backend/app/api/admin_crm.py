@@ -626,7 +626,8 @@ async def list_students(
         .correlate(User)
         .scalar_subquery()
     )
-    conditions = [User.role == "student"]
+    # Team members keep users.role = student; the students list excludes them.
+    conditions = [student_account_filter()]
     if search:
         pattern = f"%{search.strip()}%"
         conditions.append(

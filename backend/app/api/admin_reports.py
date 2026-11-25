@@ -564,7 +564,13 @@ async def report_progress(
         )
         .subquery()
     )
-    active_students = await db.scalar(select(func.count()).select_from(active_ids))
+    # Staff who open lessons (for example an admin checking a video) are not students.
+    active_students = await db.scalar(
+        select(func.count())
+        .select_from(active_ids)
+        .join(User, User.id == active_ids.c.user_id)
+        .where(student_account_filter())
+    )
     completed_lessons = await db.scalar(
         select(func.count(Progress.id)).where(
             Progress.is_completed.is_(True),
