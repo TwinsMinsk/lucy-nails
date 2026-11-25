@@ -18,7 +18,10 @@ from app.services.outbox_service import (
     enqueue_owner_telegram_alert,
     owner_alert_target,
 )
-from app.services.owner_alerts import schedule_abandoned_order_alerts
+from app.services.owner_alerts import (
+    schedule_abandoned_order_alerts,
+    schedule_missing_order_created_alerts,
+)
 from app.services.telegram_helpdesk_service import prune_processed_updates
 
 
@@ -154,6 +157,7 @@ class LifecycleService:
                 )
 
         scheduled += await cls._schedule_owner_alert(db, now=now)
+        scheduled += await schedule_missing_order_created_alerts(db, now=now)
         scheduled += await schedule_abandoned_order_alerts(db, now=now)
         await prune_processed_updates(db, now=now)
         return scheduled

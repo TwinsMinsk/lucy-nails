@@ -1,18 +1,23 @@
 """Order and payment alerts for the owner: routing, new kinds, dedupe, emails."""
 
 import json
+import logging
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
 import httpx
 import pytest
+import pytest_asyncio
+from conftest import TestingSessionLocal
 from httpx import AsyncClient
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.services.outbox_service as outbox_service
+import app.services.owner_alerts as owner_alerts_module
 from app.core.config import Settings, settings
 from app.core.security import create_account_activation_token, get_password_hash
 from app.models.course import Course
@@ -21,12 +26,69 @@ from app.models.outbox import OutboxMessage
 from app.models.user import User
 from app.services.auth_service import AuthService
 from app.services.lifecycle_service import LifecycleService
-from app.services.owner_alerts import schedule_abandoned_order_alerts
+from app.services.owner_alerts import (
+    schedule_abandoned_order_alerts,
+    schedule_missing_order_created_alerts,
+)
 from app.services.prodamus_service import _make_signature
 
 OWNER_CHAT = 555000111
 GROUP_ID = -1001234567890
 ALERTS_TOPIC = 77
+
+# A database-side failure of exactly one kind of write: owner alert inserts.
+BREAK_OWNER_ALERT_INSERTS = (
+    """
+    CREATE OR REPLACE FUNCTION test_break_owner_alerts() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+        IF NEW.kind LIKE 'owner_%' THEN
+            RAISE EXCEPTION 'outbox_messages is unavailable';
+        END IF;
+        RETURN NEW;
+    END $$
+    """,
+    "CREATE TRIGGER test_break_owner_alerts BEFORE INSERT ON outbox_messages "
+    "FOR EACH ROW EXECUTE FUNCTION test_break_owner_alerts()",
+)
+RESTORE_OWNER_ALERT_INSERTS = (
+    "DROP TRIGGER IF EXISTS test_break_owner_alerts ON outbox_messages",
+    "DROP FUNCTION IF EXISTS test_break_owner_alerts()",
+)
+
+
+async def _run_ddl(statements: tuple[str, ...]) -> None:
+    async with TestingSessionLocal() as session:
+        for statement in statements:
+            await session.execute(text(statement))
+        await session.commit()
+
+
+@pytest_asyncio.fixture
+async def owner_alert_outage(db: AsyncSession):
+    """Returns (break, restore); a trigger left in place is dropped afterwards.
+
+    Dropping the trigger needs an exclusive lock on outbox_messages, so the
+    test session's open transaction is ended first.
+    """
+    broken = False
+
+    async def break_inserts() -> None:
+        nonlocal broken
+        await _run_ddl(BREAK_OWNER_ALERT_INSERTS)
+        broken = True
+
+    async def restore_inserts() -> None:
+        nonlocal broken
+        await db.rollback()
+        await _run_ddl(RESTORE_OWNER_ALERT_INSERTS)
+        broken = False
+
+    try:
+        yield break_inserts, restore_inserts
+    finally:
+        if broken:
+            await restore_inserts()
 
 
 @pytest.fixture
@@ -412,5 +474,144 @@ async def test_failed_payment_alert_names_the_checkout_email_and_the_form_email(
         "Email: checkout@example.com\n"
         f"Заказ: {reference}"
     ) in texts
-    assert any(text.startswith("ℹ️ Неуспешная попытка оплаты (статус: fail)\nEmail: stranger@example.com\nЗаказ: order|")
-               for text in texts)
+    assert any(
+        alert_text.startswith(
+            "ℹ️ Неуспешная попытка оплаты (статус: fail)\nEmail: stranger@example.com\nЗаказ: order|"
+        )
+        for alert_text in texts
+    )
+
+
+# --- An optional alert never undoes the customer action ----------------------
+
+
+@pytest.mark.asyncio
+async def test_a_failing_order_alert_keeps_every_checkout_and_is_recovered_once(
+    client: AsyncClient, db: AsyncSession, owner_alerts, owner_alert_outage, caplog
+):
+    break_inserts, restore_inserts = owner_alert_outage
+    course = await _course(db)
+    member = User(email="member@example.com", email_verified_at=datetime.utcnow(),
+                  password_hash=get_password_hash("member-password-1"), role="student")
+    db.add(member)
+    await db.commit()
+    headers = {"Authorization": f"Bearer {AuthService.create_tokens(member.id, member.token_version).access_token}"}
+    await break_inserts()
+    caplog.set_level(logging.WARNING, logger="app.services.owner_alerts")
+
+    guest = await client.post("/api/payments/guest-link", json={
+        "course_id": str(course.id), "tariff": "self", "customer_email": "guest@example.com",
+        "offer_accepted": True, "personal_data_consent": True,
+    })
+    link = await client.post("/api/payments/link",
+                             json={"course_id": str(course.id), "tariff": "self"}, headers=headers)
+    created = await client.post("/api/purchases/create",
+                                json={"course_id": str(course.id), "tariff": "self"}, headers=headers)
+    assert guest.status_code == link.status_code == created.status_code == 200
+    # purchases/create runs in the test session (get_db override): commit it like get_db would.
+    await db.commit()
+
+    references = {guest.json()["order_id"], link.json()["order_id"], created.json()["order_id"]}
+    async with TestingSessionLocal() as fresh:
+        stored = {f"order|{order_id}" for order_id in (await fresh.execute(select(Order.id))).scalars()}
+        assert stored == references
+        assert await fresh.scalar(select(func.count()).select_from(OutboxMessage)) == 0
+    assert "Owner alert not queued" in caplog.text
+    assert "@" not in caplog.text
+
+    await restore_inserts()
+    now = datetime.utcnow()
+    assert await schedule_missing_order_created_alerts(db, now=now) == 3
+    await db.commit()
+    assert await schedule_missing_order_created_alerts(db, now=now + timedelta(minutes=5)) == 0
+    await LifecycleService.schedule(db, now=now + timedelta(minutes=10))
+    await db.commit()
+
+    alerts = await _alerts(db, "owner_order_created")
+    assert {alert.payload["text"].rsplit("Заказ: ", 1)[1] for alert in alerts} == references
+    assert len(alerts) == 3
+
+
+@pytest.mark.asyncio
+async def test_order_alert_recovery_skips_old_orders_and_needs_an_alert_chat(
+    db: AsyncSession, owner_alerts, monkeypatch: pytest.MonkeyPatch
+):
+    now = datetime(2026, 11, 25, 12, 0)
+    course = await _course(db)
+    db.add_all([
+        _order(course, "recent@example.com", created_at=now - timedelta(hours=23)),
+        _order(course, "old@example.com", created_at=now - timedelta(hours=25)),
+    ])
+    await db.commit()
+
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", None)
+    assert await schedule_missing_order_created_alerts(db, now=now) == 0
+    monkeypatch.setattr(settings, "TELEGRAM_OWNER_CHAT_ID", OWNER_CHAT)
+    assert await schedule_missing_order_created_alerts(db, now=now) == 1
+    await db.commit()
+
+    alerts = await _alerts(db, "owner_order_created")
+    assert len(alerts) == 1 and "Email: recent@example.com" in alerts[0].payload["text"]
+
+
+@pytest.mark.asyncio
+async def test_a_failing_activation_alert_keeps_the_new_password(
+    client: AsyncClient, db: AsyncSession, owner_alerts, owner_alert_outage
+):
+    break_inserts, _restore_inserts = owner_alert_outage
+    course = await _course(db)
+    checkout = await client.post("/api/payments/guest-link", json={
+        "course_id": str(course.id), "tariff": "self", "customer_email": "buyer@example.com",
+        "offer_accepted": True, "personal_data_consent": True,
+    })
+    paid = await _signed_webhook(client, {
+        "order_id": "prodamus-outage-1", "order_num": checkout.json()["order_id"],
+        "customer_email": "buyer@example.com", "sum": "5900", "currency": "rub",
+        "payment_status": "success",
+    })
+    assert paid.status_code == 200, paid.text
+    user_id = await db.scalar(select(User.id).where(User.email == "buyer@example.com"))
+    version = (await db.get(User, user_id)).token_version
+    token = create_account_activation_token(user_id, version)
+    await break_inserts()
+
+    response = await client.post("/api/auth/activate", json={
+        "token": token, "new_password": "buyer-password-123",
+    })
+
+    assert response.status_code == 200, response.text
+    async with TestingSessionLocal() as fresh:
+        activated = await fresh.get(User, user_id)
+        assert activated.email_verified_at is not None
+        assert activated.token_version == version + 1
+    assert await _alerts(db, "owner_account_activated") == []
+
+
+@pytest.mark.asyncio
+async def test_a_failing_order_lookup_keeps_the_planned_answer_to_a_declined_payment(
+    client: AsyncClient, db: AsyncSession, owner_alerts, monkeypatch: pytest.MonkeyPatch
+):
+    course = await _course(db)
+    checkout = await client.post("/api/payments/guest-link", json={
+        "course_id": str(course.id), "tariff": "self", "customer_email": "checkout@example.com",
+        "offer_accepted": True, "personal_data_consent": True,
+    })
+    reference = checkout.json()["order_id"]
+
+    def unavailable(*_args, **_kwargs):
+        raise OperationalError("SELECT orders", {}, Exception("lock timeout"))
+
+    monkeypatch.setattr(owner_alerts_module, "select", unavailable)
+    declined = await _signed_webhook(client, {
+        "order_id": "prodamus-lookup-1", "order_num": reference,
+        "customer_email": "form@example.com", "sum": "5900", "currency": "rub",
+        "payment_status": "fail",
+    })
+
+    assert declined.status_code == 422
+    texts = [alert.payload["text"] for alert in await _alerts(db, "owner_payment_rejected")]
+    assert texts == [
+        "ℹ️ Неуспешная попытка оплаты (статус: fail)\n"
+        "Email: form@example.com\n"
+        f"Заказ: {reference}"
+    ]
