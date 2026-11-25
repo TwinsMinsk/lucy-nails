@@ -14,6 +14,7 @@ from app.models.user import User
 from app.services.auth_service import AuthService
 from app.services.mfa_service import MfaService
 from app.services.session_service import SessionService, hash_refresh_token
+from conftest import mfa_headers
 
 
 async def _owner(db: AsyncSession) -> User:
@@ -422,12 +423,12 @@ async def test_owner_can_force_logout_team_session(client: AsyncClient, db: Asyn
     sessions = await client.get("/api/auth/sessions", headers=student_headers)
     session_id = sessions.json()[0]["id"]
 
-    owner_token = AuthService.create_tokens(owner.id, owner.token_version).access_token
+    owner_headers = await mfa_headers(client, db, owner, "StrongOwnerPass1!")
     response = await client.request(
         "DELETE",
         f"/api/admin/team/users/{student.id}/sessions/{session_id}",
         json={"reason": "Security incident investigation"},
-        headers={"Authorization": f"Bearer {owner_token}"},
+        headers=owner_headers,
     )
     assert response.status_code == 204, response.text
     assert (await client.get("/api/auth/me", headers=student_headers)).status_code == 401
@@ -457,11 +458,11 @@ async def test_privileged_role_promotion_revokes_existing_sessions(
     old_token_version = target.token_version
     client.cookies.clear()
 
-    owner_token = AuthService.create_tokens(owner.id, owner.token_version).access_token
+    owner_headers = await mfa_headers(client, db, owner, "StrongOwnerPass1!")
     promoted = await client.put(
         f"/api/admin/team/users/{target.id}/roles",
         json={"roles": ["admin"], "reason": "Operations team promotion"},
-        headers={"Authorization": f"Bearer {owner_token}"},
+        headers=owner_headers,
     )
     assert promoted.status_code == 200, promoted.text
 
@@ -492,11 +493,11 @@ async def test_team_role_requires_confirmed_email(client: AsyncClient, db: Async
     db.add_all([curator_role, squatter])
     await db.commit()
 
-    owner_token = AuthService.create_tokens(owner.id, owner.token_version).access_token
+    owner_headers = await mfa_headers(client, db, owner, "StrongOwnerPass1!")
     response = await client.put(
         f"/api/admin/team/users/{squatter.id}/roles",
         json={"roles": ["curator"], "reason": "New support curator"},
-        headers={"Authorization": f"Bearer {owner_token}"},
+        headers=owner_headers,
     )
 
     assert response.status_code == 409
@@ -526,11 +527,11 @@ async def test_any_role_change_revokes_target_sessions(client: AsyncClient, db: 
     old_access_token = login.json()["access_token"]
     client.cookies.clear()
 
-    owner_token = AuthService.create_tokens(owner.id, owner.token_version).access_token
+    owner_headers = await mfa_headers(client, db, owner, "StrongOwnerPass1!")
     response = await client.put(
         f"/api/admin/team/users/{target.id}/roles",
         json={"roles": ["curator"], "reason": "New support curator"},
-        headers={"Authorization": f"Bearer {owner_token}"},
+        headers=owner_headers,
     )
 
     assert response.status_code == 200, response.text
@@ -680,3 +681,81 @@ async def test_unicode_digit_codes_never_cause_a_server_error(
     else:
         assert response.status_code == 401, response.text
         assert response.json()["detail"]["code"] == "mfa_code_invalid"
+
+
+@pytest.mark.asyncio
+async def test_privileged_access_token_without_session_is_refused(
+    client: AsyncClient, db: AsyncSession
+):
+    owner = await _owner(db)
+    sessionless = AuthService.create_tokens(owner.id, owner.token_version).access_token
+    headers = {"Authorization": f"Bearer {sessionless}"}
+
+    assert (await client.get("/api/auth/me", headers=headers)).status_code == 401
+    changed = await client.post(
+        "/api/auth/change-password",
+        json={"current_password": "StrongOwnerPass1!", "new_password": "AnotherPass2!"},
+        headers=headers,
+    )
+    assert changed.status_code == 401
+    sessions = await db.scalar(select(AuthSession.id).where(AuthSession.user_id == owner.id))
+    assert sessions is None
+
+
+@pytest.mark.asyncio
+async def test_student_access_token_without_session_is_still_served(
+    client: AsyncClient, db: AsyncSession
+):
+    student = User(email="sessionless-student@example.com", password_hash="x", role="student")
+    db.add(student)
+    await db.commit()
+    token = AuthService.create_tokens(student.id, student.token_version).access_token
+
+    me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.status_code == 200, me.text
+
+
+@pytest.mark.asyncio
+async def test_password_change_session_inherits_mfa_state_and_never_upgrades_it(
+    client: AsyncClient, db: AsyncSession
+):
+    student = User(
+        email="inherit-student@example.com",
+        password_hash=get_password_hash("StudentPass1!"),
+        role="student",
+    )
+    db.add(student)
+    await db.commit()
+    login = await client.post(
+        "/api/auth/login", json={"email": student.email, "password": "StudentPass1!"}
+    )
+    assert login.status_code == 200, login.text
+    changed = await client.post(
+        "/api/auth/change-password",
+        json={"current_password": "StudentPass1!", "new_password": "StudentPass2!"},
+        headers={"x-csrf-token": client.cookies.get("csrf_token")},
+    )
+    assert changed.status_code == 200, changed.text
+    client.cookies.clear()
+
+    owner, secret = await _owner_with_totp(db)
+    owner_login = await client.post(
+        "/api/auth/login",
+        json={"email": owner.email, "password": "StrongOwnerPass1!", "mfa_code": pyotp.TOTP(secret).now()},
+    )
+    assert owner_login.status_code == 200, owner_login.text
+    owner_changed = await client.post(
+        "/api/auth/change-password",
+        json={"current_password": "StrongOwnerPass1!", "new_password": "OwnerPass2!!"},
+        headers={"x-csrf-token": client.cookies.get("csrf_token")},
+    )
+    assert owner_changed.status_code == 200, owner_changed.text
+
+    db.expunge_all()
+    active = {
+        row.user_id: row.mfa_verified
+        for row in (
+            await db.execute(select(AuthSession).where(AuthSession.revoked_at.is_(None)))
+        ).scalars()
+    }
+    assert active == {student.id: False, owner.id: True}

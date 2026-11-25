@@ -396,9 +396,13 @@ async def change_password(
             detail="Current password is incorrect",
         )
     await SessionService.revoke_all(db, current_user.id)
-    # get_current_user only serves a privileged account from a session that
-    # passed MFA, so the replacement session inherits that state.
-    mfa_verified = await MfaService.requires_mfa(db, current_user.id)
+    # The replacement session inherits the MFA state of the session that made
+    # this request and never upgrades it: a password alone proves no factor.
+    current_session_id = getattr(request.state, "auth_session_id", None)
+    current_session = (
+        await db.get(AuthSession, current_session_id) if current_session_id else None
+    )
+    mfa_verified = bool(current_session and current_session.mfa_verified)
     # The bumped token_version invalidated every prior session (incl. this one),
     # so re-issue fresh cookies to keep the current device logged in while other
     # devices are logged out.

@@ -11,13 +11,13 @@ from app.core.security import get_password_hash
 from app.models.audit_log import AuditLog
 from app.models.rbac import Permission, Role, UserRoleAssignment
 from app.models.user import User
-from app.services.auth_service import AuthService
+from conftest import mfa_headers
 
 LESSON_HTML = "<p>Секретный конспект урока</p>"
 COURSE_HTML = "<p>Длинное описание курса</p>"
 
 
-async def _editor(db: AsyncSession) -> tuple[User, dict[str, str]]:
+async def _editor(client: AsyncClient, db: AsyncSession) -> tuple[User, dict[str, str]]:
     user = User(email="editor@example.com", password_hash=get_password_hash("x" * 12), role="student")
     role = Role(name="owner", description="owner", is_system=True)
     role.permissions = [
@@ -28,8 +28,7 @@ async def _editor(db: AsyncSession) -> tuple[User, dict[str, str]]:
     await db.flush()
     db.add(UserRoleAssignment(user_id=user.id, role_id=role.id))
     await db.commit()
-    token = AuthService.create_tokens(user.id, user.token_version).access_token
-    return user, {"Authorization": f"Bearer {token}"}
+    return user, await mfa_headers(client, db, user)
 
 
 async def _entries(db: AsyncSession, action: str) -> list[AuditLog]:
@@ -48,7 +47,7 @@ def _no_bodies(entries: list[AuditLog]) -> None:
 
 @pytest.mark.asyncio
 async def test_course_module_and_lesson_crud_is_audited(client: AsyncClient, db: AsyncSession):
-    editor, headers = await _editor(db)
+    editor, headers = await _editor(client, db)
 
     course = await client.post("/api/admin/courses", json={"title": "Course A"}, headers=headers)
     assert course.status_code == 200, course.text
@@ -112,7 +111,7 @@ async def test_course_module_and_lesson_crud_is_audited(client: AsyncClient, db:
 
 @pytest.mark.asyncio
 async def test_landing_and_gallery_changes_are_audited(client: AsyncClient, db: AsyncSession):
-    editor, headers = await _editor(db)
+    editor, headers = await _editor(client, db)
     course = await client.post("/api/admin/courses", json={"title": "Landing course"}, headers=headers)
     course_id = course.json()["id"]
     db.expunge_all()

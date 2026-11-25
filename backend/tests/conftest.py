@@ -80,6 +80,24 @@ async def mfa_login(
     )
 
 
+async def mfa_headers(client: AsyncClient, db: AsyncSession, user, password: str | None = None) -> dict[str, str]:
+    """Bearer headers of a session obtained through the real login with MFA.
+
+    Privileged accounts are served only from such a session. Without a known
+    password the helper sets one, so fixtures may keep placeholder hashes.
+    """
+    from app.core.security import get_password_hash
+
+    if password is None:
+        password = "test-mfa-login-password"
+        user.password_hash = get_password_hash(password)
+        await db.commit()
+    response = await mfa_login(client, db, user.email, password)
+    assert response.status_code == 200, response.text
+    client.cookies.clear()
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
 @pytest.fixture(scope="session")
 def event_loop() -> Generator:
     """Create an instance of the default event loop for each test case."""

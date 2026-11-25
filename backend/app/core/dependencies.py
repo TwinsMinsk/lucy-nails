@@ -87,6 +87,12 @@ async def get_current_user(
             raise credentials_exception
         request.state.auth_session_id = parsed_session_id
     else:
+        from app.services.mfa_service import MfaService
+
+        # A token without a session id never passed a session-bound MFA check;
+        # refresh already refuses it for privileged accounts, so do requests.
+        if await MfaService.requires_mfa(db, user.id):
+            raise credentials_exception
         request.state.auth_session_id = None
     return user
 

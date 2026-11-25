@@ -10,11 +10,11 @@ from app.models.audit_log import AuditLog
 from app.models.course import Course
 from app.models.rbac import Permission, Role, UserRoleAssignment
 from app.models.user import User
-from app.services.auth_service import AuthService
 from app.core.security import get_password_hash
+from conftest import mfa_headers
 
 
-async def _staff(db: AsyncSession, email: str, role_name: str, permissions: list[Permission]) -> dict[str, str]:
+async def _staff(client: AsyncClient, db: AsyncSession, email: str, role_name: str, permissions: list[Permission]) -> dict[str, str]:
     user = User(email=email, password_hash=get_password_hash("staffpass1"), role="student")
     role = Role(name=role_name, description=role_name, is_system=True)
     role.permissions = permissions
@@ -22,8 +22,7 @@ async def _staff(db: AsyncSession, email: str, role_name: str, permissions: list
     await db.flush()
     db.add(UserRoleAssignment(user_id=user.id, role_id=role.id))
     await db.commit()
-    token = AuthService.create_tokens(user.id, user.token_version).access_token
-    return {"Authorization": f"Bearer {token}"}
+    return await mfa_headers(client, db, user, "staffpass1")
 
 
 @pytest_asyncio.fixture
@@ -50,7 +49,7 @@ async def permissions(db: AsyncSession) -> dict[str, Permission]:
 async def test_content_manager_cannot_change_price_or_duration(
     client: AsyncClient, db: AsyncSession, course: Course, permissions
 ):
-    headers = await _staff(db, "editor@example.com", "content_manager", [permissions["content"]])
+    headers = await _staff(client, db, "editor@example.com", "content_manager", [permissions["content"]])
 
     for change in ({"price_self": 100}, {"price_support": 100}, {"access_days": 3650}):
         response = await client.put(f"/api/admin/courses/{course.id}", json=change, headers=headers)
@@ -65,7 +64,7 @@ async def test_content_manager_cannot_change_price_or_duration(
 async def test_content_manager_edits_course_when_terms_are_unchanged(
     client: AsyncClient, db: AsyncSession, course: Course, permissions
 ):
-    headers = await _staff(db, "editor@example.com", "content_manager", [permissions["content"]])
+    headers = await _staff(client, db, "editor@example.com", "content_manager", [permissions["content"]])
 
     response = await client.put(
         f"/api/admin/courses/{course.id}",
@@ -85,7 +84,7 @@ async def test_content_manager_edits_course_when_terms_are_unchanged(
 async def test_content_manager_creates_course_only_with_default_terms(
     client: AsyncClient, db: AsyncSession, permissions
 ):
-    headers = await _staff(db, "editor@example.com", "content_manager", [permissions["content"]])
+    headers = await _staff(client, db, "editor@example.com", "content_manager", [permissions["content"]])
 
     cheap = await client.post(
         "/api/admin/courses", json={"title": "Cheap", "price_self": 1}, headers=headers
@@ -104,7 +103,7 @@ async def test_pricing_change_is_audited_with_old_and_new_values(
     client: AsyncClient, db: AsyncSession, course: Course, permissions
 ):
     headers = await _staff(
-        db, "owner@example.com", "owner", [permissions["content"], permissions["pricing"]]
+        client, db, "owner@example.com", "owner", [permissions["content"], permissions["pricing"]]
     )
 
     response = await client.put(

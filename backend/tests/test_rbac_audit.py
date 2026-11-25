@@ -13,7 +13,7 @@ from app.models.audit_log import AuditLog
 from app.models.course import Course
 from app.models.rbac import Permission, Role, UserRoleAssignment
 from app.models.user import User
-from app.services.auth_service import AuthService
+from conftest import mfa_headers
 
 
 async def _staff_user(
@@ -150,8 +150,7 @@ async def test_cannot_remove_last_owner(client: AsyncClient, db: AsyncSession):
         role_name="owner",
         permissions=["system.manage_roles"],
     )
-    token = AuthService.create_tokens(owner.id, owner.token_version).access_token
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = await mfa_headers(client, db, owner, "staffpass1")
 
     team = await client.get("/api/admin/team/users", headers=headers)
     assert team.status_code == 200, team.text
@@ -244,12 +243,12 @@ async def test_only_legacy_admin_cannot_drop_their_team_management(
     legacy = await _verified_legacy_admin(db, "only-manager@example.com")
     db.add(Role(name="curator", description="Curator", is_system=True))
     await db.commit()
-    token = AuthService.create_tokens(legacy.id, legacy.token_version).access_token
+    headers = await mfa_headers(client, db, legacy, "legacypass1")
 
     response = await client.put(
         f"/api/admin/team/users/{legacy.id}/roles",
         json={"roles": roles, "reason": "Trying a narrower role"},
-        headers={"Authorization": f"Bearer {token}"},
+        headers=headers,
     )
 
     assert response.status_code == 422, response.text
@@ -272,12 +271,12 @@ async def test_dropping_legacy_admin_role_revokes_sessions_when_another_manager_
         db, email="owner@example.com", role_name="owner", permissions=["system.manage_roles"]
     )
     legacy = await _verified_legacy_admin(db, "legacy@example.com")
-    token = AuthService.create_tokens(owner.id, owner.token_version).access_token
+    headers = await mfa_headers(client, db, owner, "staffpass1")
 
     response = await client.put(
         f"/api/admin/team/users/{legacy.id}/roles",
         json={"roles": [], "reason": "Legacy admin leaves the team"},
-        headers={"Authorization": f"Bearer {token}"},
+        headers=headers,
     )
 
     assert response.status_code == 200, response.text
@@ -301,11 +300,11 @@ async def test_manager_keeping_team_management_can_change_own_roles(
     await db.commit()
     owner.email_verified_at = datetime.utcnow()
     await db.commit()
-    token = AuthService.create_tokens(owner.id, owner.token_version).access_token
+    headers = await mfa_headers(client, db, owner, "staffpass1")
 
     response = await client.put(
         f"/api/admin/team/users/{owner.id}/roles",
         json={"roles": ["owner", "curator"], "reason": "Owner also curates"},
-        headers={"Authorization": f"Bearer {token}"},
+        headers=headers,
     )
     assert response.status_code == 200, response.text
