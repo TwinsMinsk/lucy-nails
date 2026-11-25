@@ -172,6 +172,11 @@ async def test_database_failure_traceback_holds_no_query_values(client: AsyncCli
             route for route in main.app.router.routes
             if getattr(route, "path", None) != "/api/__test_db_failure"
         ]
+        # Do not leave a pooled connection bound to this test's event loop
+        # for later tests that use the application engine (/health).
+        from app.core.database import engine as app_engine
+
+        await app_engine.dispose()
     # What Uvicorn logs for an unhandled exception in the ASGI app.
     logging.getLogger("uvicorn.error").error(
         "Exception in ASGI application\n", exc_info=raised.value
