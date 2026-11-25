@@ -9,7 +9,6 @@ import re
 import time
 import uuid
 from contextlib import asynccontextmanager
-from urllib.parse import unquote
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,6 +19,7 @@ from sqlalchemy import select, text
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.requests import Request
+from starlette.routing import Mount
 from starlette.responses import JSONResponse, Response
 
 from app.core.config import settings
@@ -47,18 +47,38 @@ def silence_uvicorn_access_log() -> None:
     access_logger.propagate = False
 
 
+UNMATCHED_ROUTE = "unmatched"
+
+
 def _route_template(request: Request) -> str:
-    """The matched route's path template (ids as {placeholders}), never the raw URL."""
-    # The route object FastAPI leaves in the scope carries its router-relative
-    # path, so rebuild the full template from the URL path and the path params.
-    if request.scope.get("endpoint") is None:
-        return "(unmatched)"
-    params = {str(value): name for name, value in (request.scope.get("path_params") or {}).items()}
-    segments = request.url.path.split("/")
-    return "/".join(
-        f"{{{params[unquote(segment)]}}}" if unquote(segment) in params else segment
-        for segment in segments
-    )
+    """A label for the request log that never contains anything from the URL.
+
+    The declared template of the matched route (ids as {placeholders}), a
+    constant "<mount>/{path}" for a mounted application such as /uploads (file
+    names may carry an email or a name), and a fixed label when nothing
+    matched, so a 404 on an arbitrary path is not logged either.
+    """
+    scope = request.scope
+    endpoint = scope.get("endpoint")
+    if endpoint is None:
+        return UNMATCHED_ROUTE
+    app_routes = getattr(getattr(scope.get("app"), "router", None), "routes", [])
+    for route in app_routes:
+        if isinstance(route, Mount) and route.app is endpoint:
+            return f"{route.path}/{{path}}"
+    # Routes from included routers: FastAPI keeps the full declared template
+    # (prefix included) in its effective route context.
+    context = (scope.get("fastapi") or {}).get("effective_route_context")
+    template = getattr(context, "path_format", None)
+    if isinstance(template, str) and template:
+        return template
+    # Routes declared on the app itself carry their full template.
+    route = scope.get("route")
+    if route in app_routes:
+        template = getattr(route, "path_format", None)
+        if isinstance(template, str) and template:
+            return template
+    return UNMATCHED_ROUTE
 
 
 def configure_app_logging() -> None:

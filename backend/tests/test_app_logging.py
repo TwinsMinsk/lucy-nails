@@ -7,6 +7,9 @@ from uuid import uuid4
 import pytest
 from httpx import AsyncClient
 
+from fastapi.staticfiles import StaticFiles
+from starlette.routing import Mount
+
 from app import main
 
 
@@ -16,7 +19,9 @@ class _Collector(logging.Handler):
         self.records: list[logging.LogRecord] = []
 
     def emit(self, record: logging.LogRecord) -> None:
-        self.records.append(record)
+        # Attached to several loggers: a propagated record arrives more than once.
+        if not any(seen is record for seen in self.records):
+            self.records.append(record)
 
 
 @pytest.fixture
@@ -107,3 +112,31 @@ async def test_logged_correlation_id_matches_the_response_when_the_client_sent_n
     entries = [json.loads(m) for m in _messages(collected) if '"http_request"' in m]
     assert entries[-1]["correlation_id"] == response.headers["X-Correlation-ID"]
     assert entries[-1]["route"] == "/api/courses"
+
+
+def _formatted(collector: _Collector) -> str:
+    formatter = logging.Formatter("%(levelname)s:%(name)s:%(message)s")
+    return "\n".join(formatter.format(record) for record in collector.records)
+
+
+@pytest.mark.asyncio
+async def test_mounted_uploads_and_unknown_paths_are_logged_by_label_only(
+    client: AsyncClient, collected, tmp_path
+):
+    """A file name may carry an email or a name; a 404 path is arbitrary text."""
+    mount = Mount("/uploads", app=StaticFiles(directory=str(tmp_path)), name="uploads-test")
+    main.app.router.routes.append(mount)
+    try:
+        missing = await client.get("/uploads/anna.petrova@example.com-passport.jpg")
+        unknown = await client.get("/maria-ivanova@example.com/profile")
+    finally:
+        main.app.router.routes.remove(mount)
+
+    assert missing.status_code == 404
+    assert unknown.status_code == 404
+    text = _formatted(collected)
+    assert "anna.petrova" not in text
+    assert "passport" not in text
+    assert "maria-ivanova" not in text
+    routes = [json.loads(m)["route"] for m in _messages(collected) if '"http_request"' in m]
+    assert routes == ["/uploads/{path}", main.UNMATCHED_ROUTE]
