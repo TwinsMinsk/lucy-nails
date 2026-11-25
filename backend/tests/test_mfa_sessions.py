@@ -759,3 +759,45 @@ async def test_password_change_session_inherits_mfa_state_and_never_upgrades_it(
         ).scalars()
     }
     assert active == {student.id: False, owner.id: True}
+
+
+@pytest.mark.asyncio
+async def test_session_mfa_check_query_budget(db: AsyncSession):
+    """Extra SELECTs the per-request session check adds."""
+    from sqlalchemy import event
+
+    owner = await _owner(db)
+    student = User(email="budget-student@example.com", password_hash="x", role="student")
+    staff = User(email="budget-staff@example.com", password_hash="x", role="student")
+    curator = Role(name="curator", description="Curator", is_system=True)
+    db.add_all([student, staff, curator])
+    await db.flush()
+    db.add(UserRoleAssignment(user_id=staff.id, role_id=curator.id))
+    await db.commit()
+
+    statements: list[str] = []
+
+    def count(conn, cursor, statement, *args):
+        statements.append(statement)
+
+    engine = db.bind.sync_engine
+    event.listen(engine, "before_cursor_execute", count)
+    try:
+        async def queries(user: User, flag) -> tuple[int, bool]:
+            statements.clear()
+            accepted = await MfaService.session_satisfies_mfa(
+                db, user, AuthSession(user_id=user.id, mfa_verified=flag)
+            )
+            return len(statements), accepted
+
+        assert await queries(student, None) == (0, True)
+        assert await queries(student, False) == (0, True)
+        assert await queries(staff, None) == (0, True)
+        assert await queries(owner, True) == (0, True)
+        assert await queries(owner, None) == (1, False)
+        assert await queries(owner, False) == (1, False)
+        statements.clear()
+        assert await MfaService.requires_mfa(db, owner.id) is True
+        assert len(statements) == 1
+    finally:
+        event.remove(engine, "before_cursor_execute", count)

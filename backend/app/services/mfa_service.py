@@ -10,13 +10,16 @@ from uuid import UUID
 import pyotp
 from pyotp.utils import strings_equal
 from cryptography.fernet import Fernet, InvalidToken
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.auth_security import MfaCredential
 from app.models.rbac import Role, UserRoleAssignment
 from app.models.user import User
+
+
+PRIVILEGED_ROLES = ("owner", "admin")
 
 
 def _key_material() -> bytes:
@@ -32,43 +35,61 @@ def _backup_hash(code: str) -> str:
 class MfaService:
     @staticmethod
     async def requires_mfa(db: AsyncSession, user_id: UUID) -> bool:
-        role_name = await db.scalar(
-            select(Role.name)
-            .join(UserRoleAssignment, UserRoleAssignment.role_id == Role.id)
-            .where(
-                UserRoleAssignment.user_id == user_id,
-                Role.name.in_(("owner", "admin")),
+        """RBAC owner/admin, or a legacy administrator (role="admin" without any
+        RBAC assignment, who gets every permission through the fallback in
+        user_has_permission). One query."""
+        row = (
+            await db.execute(
+                select(
+                    User.role,
+                    func.count(UserRoleAssignment.id),
+                    func.bool_or(Role.name.in_(PRIVILEGED_ROLES)),
+                )
+                .select_from(User)
+                .outerjoin(UserRoleAssignment, UserRoleAssignment.user_id == User.id)
+                .outerjoin(Role, Role.id == UserRoleAssignment.role_id)
+                .where(User.id == user_id)
+                .group_by(User.id, User.role)
             )
-            .limit(1)
-        )
-        if role_name is not None:
-            return True
-        # A legacy administrator (role="admin" without any RBAC assignment) gets
-        # every permission through the fallback in user_has_permission, so it
-        # needs the same second factor as an RBAC owner/admin.
-        assignment_exists = await db.scalar(
-            select(UserRoleAssignment.id)
-            .where(UserRoleAssignment.user_id == user_id)
-            .limit(1)
-        )
-        if assignment_exists is not None:
+        ).one_or_none()
+        if row is None:
             return False
-        legacy_role = await db.scalar(select(User.role).where(User.id == user_id))
-        return legacy_role == "admin"
+        legacy_role, assignments, privileged = row
+        return bool(privileged) or (assignments == 0 and legacy_role == "admin")
 
     @staticmethod
     async def session_satisfies_mfa(db: AsyncSession, user: User, auth_session) -> bool:
         """Whether this session may act for the account under the MFA policy.
 
         For an account that requires MFA only a session that passed MFA
-        (mfa_verified true) is accepted. NULL (issued before the state was
-        recorded) and false are refused: whether an old session passed MFA
-        cannot be reconstructed, so every administrator signs in once more.
-        Other accounts are served whatever the flag says.
+        (mfa_verified true) is accepted; NULL (issued before the state was
+        recorded) and false are refused. Other accounts are served whatever the
+        flag says.
+
+        Runs on every authenticated request, so it costs at most one query:
+        none for a session that passed MFA, none for an account whose loaded
+        role is not "admin" (every writer of an owner/admin assignment also sets
+        role="admin": the RBAC migration, the team role API, ensure_admin_user,
+        the dev seed), and one assignment lookup otherwise.
         """
         if auth_session.mfa_verified:
             return True
-        return not await MfaService.requires_mfa(db, user.id)
+        if user.role != "admin":
+            return True
+        row = (
+            await db.execute(
+                select(
+                    func.count(UserRoleAssignment.id),
+                    func.bool_or(Role.name.in_(PRIVILEGED_ROLES)),
+                )
+                .select_from(UserRoleAssignment)
+                .join(Role, Role.id == UserRoleAssignment.role_id)
+                .where(UserRoleAssignment.user_id == user.id)
+            )
+        ).one()
+        assignments, privileged = row
+        requires = bool(privileged) or assignments == 0
+        return not requires
 
     @staticmethod
     async def get_credential(
