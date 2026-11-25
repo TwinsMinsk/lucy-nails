@@ -1044,9 +1044,7 @@ async def revoke_entitlement(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("access.manage")),
 ):
-    entitlement = await db.get(Entitlement, data.entitlement_id)
-    if entitlement is None:
-        raise HTTPException(status_code=404, detail="Entitlement not found")
+    entitlement = await _load_entitlement_for_action(db, data.entitlement_id)
     old_value = {"status": entitlement.status, "expires_at": entitlement.expires_at.isoformat()}
     await AccessService.revoke_entitlement(db, entitlement, reason=data.reason)
     append_audit_log(
@@ -1073,11 +1071,9 @@ async def _load_entitlement_for_action(
     db: AsyncSession,
     entitlement_id: UUID,
 ) -> Entitlement:
-    entitlement = await db.scalar(
-        select(Entitlement)
-        .where(Entitlement.id == entitlement_id)
-        .with_for_update()
-    )
+    # Course-access lock, then purchase, then entitlement: the order a full
+    # refund also follows, so the two never deadlock.
+    entitlement = await AccessService.lock_entitlement_for_change(db, entitlement_id)
     if entitlement is None:
         raise HTTPException(status_code=404, detail="Entitlement not found")
     return entitlement
@@ -1217,17 +1213,30 @@ async def revoke_course_access(
     admin: User = Depends(require_permission("refunds.manage")),
 ):
     """Отозвать связанный Entitlement, не изменяя финансовую историю Purchase."""
+    owner = (
+        await db.execute(
+            select(Purchase.user_id, Purchase.course_id).where(Purchase.id == data.purchase_id)
+        )
+    ).one_or_none()
+    if owner is None:
+        raise HTTPException(status_code=404, detail="Purchase not found")
+    # Same lock order as every access change: course access, purchase, entitlement.
+    await AccessService.lock_course_access(db, owner.user_id, owner.course_id)
     purchase_result = await db.execute(
         select(Purchase)
         .where(Purchase.id == data.purchase_id)
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     purchase = purchase_result.scalar_one_or_none()
     if not purchase:
         raise HTTPException(status_code=404, detail="Purchase not found")
 
     entitlement_result = await db.execute(
-        select(Entitlement).where(Entitlement.source_purchase_id == purchase.id)
+        select(Entitlement)
+        .where(Entitlement.source_purchase_id == purchase.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     entitlement = entitlement_result.scalar_one_or_none()
     if entitlement is None:

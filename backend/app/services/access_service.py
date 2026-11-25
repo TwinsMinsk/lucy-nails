@@ -67,7 +67,47 @@ class AccessService:
         return int(refunded or 0) >= purchase.amount_kopecks and purchase.amount_kopecks > 0
 
     @staticmethod
+    async def lock_entitlement_for_change(
+        db: AsyncSession, entitlement_id: UUID
+    ) -> Entitlement | None:
+        """Lock an entitlement for an admin action in the one order used everywhere.
+
+        Order: the (user, course) access lock, then the source purchase, then the
+        entitlement. A full refund locks the purchase before the entitlement, so
+        locking the entitlement first deadlocked against it. The returned row is
+        re-read under its lock, so values captured from it are a consistent
+        snapshot for the audit record.
+        """
+        keys = (
+            await db.execute(
+                select(
+                    Entitlement.user_id,
+                    Entitlement.course_id,
+                    Entitlement.source_purchase_id,
+                ).where(Entitlement.id == entitlement_id)
+            )
+        ).one_or_none()
+        if keys is None:
+            return None
+        await AccessService.lock_course_access(db, keys.user_id, keys.course_id)
+        if keys.source_purchase_id is not None:
+            await db.execute(
+                select(Purchase.id)
+                .where(Purchase.id == keys.source_purchase_id)
+                .with_for_update()
+            )
+        return await db.scalar(
+            select(Entitlement)
+            .where(Entitlement.id == entitlement_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+
+    @staticmethod
     async def _lock_for_access_change(db: AsyncSession, entitlement: Entitlement) -> None:
+        # Same order as lock_entitlement_for_change; re-taking a lock this
+        # transaction already holds is a no-op.
+        await AccessService.lock_course_access(db, entitlement.user_id, entitlement.course_id)
         if entitlement.source_purchase_id is not None:
             purchase = await db.scalar(select(Purchase).where(Purchase.id == entitlement.source_purchase_id).with_for_update())
             if purchase is not None and await AccessService.is_purchase_fully_refunded(db, purchase):
