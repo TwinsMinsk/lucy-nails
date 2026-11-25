@@ -7,6 +7,7 @@ import json
 import secrets
 import re
 import time
+import traceback
 import uuid
 from contextlib import asynccontextmanager
 
@@ -37,6 +38,51 @@ logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 _CORRELATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _APP_LOG_HANDLER_NAME = "lucy-app-stderr"
+
+
+def _exception_summary(error: BaseException) -> str:
+    """Traceback frames and exception classes only, without exception messages.
+
+    A database error's message carries the driver's text, which can include
+    the values of a query (an email from an order search); the stack and the
+    class are enough to find the failing code.
+    """
+    chain: list[BaseException] = []
+    current: BaseException | None = error
+    while current is not None and all(current is not seen for seen in chain):
+        chain.append(current)
+        current = current.__cause__ or (
+            None if current.__suppress_context__ else current.__context__
+        )
+    parts = []
+    for item in reversed(chain):
+        frames = "".join(traceback.format_list(traceback.extract_tb(item.__traceback__)))
+        parts.append(
+            "Traceback (most recent call last):\n"
+            f"{frames}{type(item).__module__}.{type(item).__qualname__}: [message hidden]"
+        )
+    return "\n\nThe exception above led to the one below:\n\n".join(parts)
+
+
+class SafeExceptionFilter(logging.Filter):
+    """Replace a record's exception with a summary that holds no exception message."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.exc_info and record.exc_info[1] is not None:
+            record.exc_text = _exception_summary(record.exc_info[1])
+            record.exc_info = None
+        return True
+
+
+_SAFE_EXCEPTION_FILTER = SafeExceptionFilter()
+
+
+def install_safe_exception_filter() -> None:
+    """Apply the filter to the request log and to Uvicorn's error log."""
+    for name in ("app.main", "uvicorn.error"):
+        target = logging.getLogger(name)
+        if _SAFE_EXCEPTION_FILTER not in target.filters:
+            target.addFilter(_SAFE_EXCEPTION_FILTER)
 
 
 def silence_uvicorn_access_log() -> None:
@@ -93,6 +139,7 @@ def configure_app_logging() -> None:
     a server-generated correlation id.
     """
     silence_uvicorn_access_log()
+    install_safe_exception_filter()
     app_logger = logging.getLogger("app")
     app_logger.setLevel(logging.INFO)
     has_handler = any(
@@ -102,6 +149,8 @@ def configure_app_logging() -> None:
         handler = logging.StreamHandler()
         handler.set_name(_APP_LOG_HANDLER_NAME)
         handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
+        # Every app.* record printed by this handler gets the same treatment.
+        handler.addFilter(_SAFE_EXCEPTION_FILTER)
         app_logger.addHandler(handler)
     # httpx logs full request URLs at INFO, and Telegram URLs contain the bot token.
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -241,6 +290,7 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
 async def lifespan(app: FastAPI):
     # Uvicorn may (re)configure its loggers after importing the app.
     silence_uvicorn_access_log()
+    install_safe_exception_filter()
     if settings.ENVIRONMENT.lower() == "development":
         async with async_session_maker() as session:
             try:

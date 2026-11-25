@@ -140,3 +140,55 @@ async def test_mounted_uploads_and_unknown_paths_are_logged_by_label_only(
     assert "maria-ivanova" not in text
     routes = [json.loads(m)["route"] for m in _messages(collected) if '"http_request"' in m]
     assert routes == ["/uploads/{path}", main.UNMATCHED_ROUTE]
+
+LEAKED_EMAIL = "leak.person@example.com"
+
+
+async def _failing_order_search():
+    """A query that fails in the database driver with an email bound to it."""
+    from sqlalchemy import text
+
+    from app.core.database import engine as app_engine
+
+    async with app_engine.connect() as connection:
+        await connection.execute(text("SELECT CAST(:email AS INTEGER)"), {"email": LEAKED_EMAIL})
+
+
+def test_application_engine_hides_bound_parameters():
+    from app.core.database import engine as app_engine
+
+    assert app_engine.sync_engine.hide_parameters is True
+
+
+@pytest.mark.asyncio
+async def test_database_failure_traceback_holds_no_query_values(client: AsyncClient, collected):
+    main.install_safe_exception_filter()
+    main.app.add_api_route("/api/__test_db_failure", _failing_order_search, methods=["GET"])
+    try:
+        with pytest.raises(Exception) as raised:
+            await client.get("/api/__test_db_failure")
+    finally:
+        main.app.router.routes[:] = [
+            route for route in main.app.router.routes
+            if getattr(route, "path", None) != "/api/__test_db_failure"
+        ]
+    # What Uvicorn logs for an unhandled exception in the ASGI app.
+    logging.getLogger("uvicorn.error").error(
+        "Exception in ASGI application\n", exc_info=raised.value
+    )
+
+    formatter = logging.Formatter("%(levelname)s:%(name)s:%(message)s")
+    app_records = [r for r in collected.records if r.name == "app.main" and r.levelno >= logging.ERROR]
+    uvicorn_records = [r for r in collected.records if r.name == "uvicorn.error"]
+    assert app_records and uvicorn_records
+    for record in [*app_records, *uvicorn_records]:
+        output = formatter.format(record)
+        assert LEAKED_EMAIL not in output
+        assert "leak.person" not in output
+        assert "Traceback (most recent call last)" in output
+        assert "_failing_order_search" in output
+        assert type(raised.value).__qualname__ in output
+    request_log = json.loads(app_records[0].getMessage().splitlines()[0])
+    assert request_log["status"] == 500
+    assert request_log["route"] == "/api/__test_db_failure"
+    assert len(request_log["correlation_id"]) == 36
