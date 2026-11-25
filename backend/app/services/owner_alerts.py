@@ -21,7 +21,7 @@ from sqlalchemy.orm import aliased
 from app.core.config import settings
 from app.models.order import Order
 from app.models.outbox import OutboxMessage
-from app.models.purchase import Purchase
+from app.models.purchase import Purchase, paid_financial_filter
 from app.models.user import User
 from app.services.outbox_service import (
     enqueue_owner_telegram_alert,
@@ -141,15 +141,21 @@ async def schedule_abandoned_order_alerts(
 ) -> int:
     """Queue «⏳ Заказ не оплачен» for pending orders past the configured delay.
 
-    The selection happens in the database and is bounded: already reported
-    orders, orders older than a day and orders whose buyer has since paid
-    another order are excluded there, so they never fill the batch.
+    Only orders whose age is inside a window just past the delay are looked
+    at: from N minutes to N plus the window width, which is N but at least two
+    scan intervals, so consecutive scans leave no gap. The first scan after
+    the feature is deployed therefore never reports the backlog of older
+    unpaid orders. The selection happens in the database and is bounded:
+    already reported orders and orders whose buyer has since paid for the
+    same course are excluded there, so they never fill the batch.
     """
     minutes = settings.ORDER_ABANDONED_ALERT_MINUTES
     if minutes <= 0 or owner_alert_target() is None:
         return 0
-    cutoff = now - timedelta(minutes=minutes)
-    oldest = now - ABANDONED_ORDER_MAX_AGE
+    delay = timedelta(minutes=minutes)
+    width = max(delay, timedelta(seconds=2 * settings.LIFECYCLE_SCAN_SECONDS))
+    cutoff = now - delay
+    oldest = max(now - delay - width, now - ABANDONED_ORDER_MAX_AGE)
     dedupe_key = func.concat("order:", cast(Order.id, String), ":abandoned")
     later_order = aliased(Order)
     rows = await db.execute(
@@ -162,6 +168,7 @@ async def schedule_abandoned_order_alerts(
             ~exists().where(
                 and_(
                     func.lower(later_order.customer_email) == func.lower(Order.customer_email),
+                    later_order.course_id == Order.course_id,
                     later_order.status == "paid",
                     later_order.created_at >= Order.created_at,
                 )
@@ -199,9 +206,10 @@ async def enqueue_account_activated_alert(db: AsyncSession, user: User) -> bool:
     user_id, email = user.id, user.email
 
     async def queue() -> bool:
+        # Real payments only: historical manual grants are stored as purchases too.
         purchase = await db.scalar(
             select(Purchase)
-            .where(Purchase.user_id == user_id, Purchase.payment_status == "success")
+            .where(Purchase.user_id == user_id, paid_financial_filter())
             .order_by(Purchase.paid_at.desc().nulls_last(), Purchase.created_at.desc())
             .limit(1)
         )

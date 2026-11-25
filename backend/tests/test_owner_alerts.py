@@ -23,6 +23,7 @@ from app.core.security import create_account_activation_token, get_password_hash
 from app.models.course import Course
 from app.models.order import Order
 from app.models.outbox import OutboxMessage
+from app.models.purchase import Purchase
 from app.models.user import User
 from app.services.auth_service import AuthService
 from app.services.lifecycle_service import LifecycleService
@@ -317,32 +318,49 @@ async def test_abandoned_order_alert_once_and_only_for_recent_unpaid_orders(
 ):
     now = datetime(2026, 11, 25, 12, 0)
     course = await _course(db)
-    abandoned = _order(course, "slow@example.com", created_at=now - timedelta(hours=2))
-    fresh = _order(course, "fresh@example.com", created_at=now - timedelta(minutes=10))
-    paid = _order(course, "paid@example.com", status="paid", created_at=now - timedelta(hours=2))
+    other_course = Course(title="Дизайн ногтей", price_self=4900, price_support=9900, is_published=True)
+    db.add(other_course)
+    await db.flush()
+    minutes = timedelta(minutes=1)
+    abandoned = _order(course, "slow@example.com", created_at=now - 90 * minutes)
+    fresh = _order(course, "fresh@example.com", created_at=now - 10 * minutes)
+    later = _order(course, "later@example.com", created_at=now - 50 * minutes)
+    # Older than twice the delay at the first scan: the backlog left from before
+    # the feature ran, never reported.
+    backlog = _order(course, "backlog@example.com", created_at=now - 150 * minutes)
+    paid = _order(course, "paid@example.com", status="paid", created_at=now - 90 * minutes)
     ancient = _order(course, "old@example.com", created_at=now - timedelta(days=2))
-    retried = _order(course, "retry@example.com", created_at=now - timedelta(hours=3))
-    retried_paid = _order(course, "Retry@Example.com", status="paid", created_at=now - timedelta(hours=2))
-    db.add_all([abandoned, fresh, paid, ancient, retried, retried_paid])
+    retried = _order(course, "retry@example.com", created_at=now - 100 * minutes)
+    retried_paid = _order(course, "Retry@Example.com", status="paid", created_at=now - 80 * minutes)
+    # Paying for another course does not cover the unpaid one.
+    switched = _order(course, "switch@example.com", created_at=now - 95 * minutes)
+    switched_paid = _order(other_course, "switch@example.com", status="paid", created_at=now - 85 * minutes)
+    db.add_all([abandoned, fresh, later, backlog, paid, ancient, retried, retried_paid, switched, switched_paid])
     await db.commit()
-    abandoned_id = abandoned.id
+    abandoned_id, later_id, switched_id = abandoned.id, later.id, switched.id
 
-    assert await schedule_abandoned_order_alerts(db, now=now) == 1
+    assert await schedule_abandoned_order_alerts(db, now=now) == 2
     await db.commit()
-    assert await schedule_abandoned_order_alerts(db, now=now + timedelta(minutes=5)) == 0
+    assert await schedule_abandoned_order_alerts(db, now=now + 5 * minutes) == 0
+    await db.commit()
+    assert await schedule_abandoned_order_alerts(db, now=now + 15 * minutes) == 1
+    await db.commit()
+    assert await schedule_abandoned_order_alerts(db, now=now + 3 * timedelta(hours=1)) == 0
     await db.commit()
 
-    alerts = await _alerts(db, "owner_order_abandoned")
-    assert len(alerts) == 1
-    assert alerts[0].dedupe_key == f"order:{abandoned_id}:abandoned"
-    assert alerts[0].payload["text"] == (
+    alerts = {alert.dedupe_key: alert for alert in await _alerts(db, "owner_order_abandoned")}
+    assert set(alerts) == {
+        f"order:{abandoned_id}:abandoned",
+        f"order:{switched_id}:abandoned",
+        f"order:{later_id}:abandoned",
+    }
+    assert alerts[f"order:{abandoned_id}:abandoned"].payload["text"] == (
         "⏳ Заказ не оплачен\n"
         "Сумма: 5 900 ₽\n"
         "Курс: Маникюр с нуля\n"
         "Email: slow@example.com\n"
         f"Заказ: order|{abandoned_id}"
     )
-
 
 @pytest.mark.asyncio
 async def test_abandoned_order_alert_follows_the_setting_and_the_lifecycle_scan(
@@ -428,6 +446,53 @@ async def test_activating_an_account_without_purchase_is_not_reported(
 
     assert response.status_code == 200, response.text
     assert await _alerts(db, "owner_account_activated") == []
+
+
+@pytest.mark.asyncio
+async def test_activation_alert_ignores_historical_manual_grants(
+    client: AsyncClient, db: AsyncSession, owner_alerts
+):
+    course = await _course(db)
+    granted_only = User(email="granted@example.com", password_hash=get_password_hash("password-123456"),
+                        role="student")
+    buyer = User(email="buyer@example.com", password_hash=get_password_hash("password-123456"),
+                 role="student")
+    db.add_all([granted_only, buyer])
+    await db.flush()
+    order = _order(course, "buyer@example.com", status="paid", created_at=datetime(2026, 11, 1))
+    order.user_id = buyer.id
+    db.add(order)
+    await db.flush()
+    expires = datetime.utcnow() + timedelta(days=30)
+    db.add_all([
+        Purchase(user_id=granted_only.id, course_id=course.id, tariff="self", amount_kopecks=0,
+                 transaction_kind="manual_grant", payment_id="admin_grant_1", payment_status="success",
+                 paid_at=datetime(2026, 11, 20), expires_at=expires),
+        Purchase(user_id=buyer.id, course_id=course.id, order_id=order.id, tariff="self",
+                 amount_kopecks=590000, payment_id="prodamus-real-1", payment_status="success",
+                 paid_at=datetime(2026, 11, 1), expires_at=expires),
+        # Newer than the real payment, but not a payment.
+        Purchase(user_id=buyer.id, course_id=course.id, tariff="self", amount_kopecks=0,
+                 transaction_kind="manual_grant", payment_id="admin_grant_2", payment_status="success",
+                 paid_at=datetime(2026, 11, 22), expires_at=expires),
+    ])
+    await db.commit()
+    order_id = order.id
+    tokens = {
+        user.email: create_account_activation_token(user.id, user.token_version)
+        for user in (granted_only, buyer)
+    }
+
+    for token in tokens.values():
+        response = await client.post("/api/auth/activate", json={
+            "token": token, "new_password": "activated-password-1",
+        })
+        assert response.status_code == 200, response.text
+
+    alerts = await _alerts(db, "owner_account_activated")
+    assert [alert.payload["text"] for alert in alerts] == [
+        f"🔑 Аккаунт активирован\nEmail: buyer@example.com\nЗаказ: order|{order_id}"
+    ]
 
 
 # --- Rejected payments -------------------------------------------------------
