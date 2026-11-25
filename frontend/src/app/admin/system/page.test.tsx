@@ -87,11 +87,17 @@ describe("admin system status", () => {
 })
 
 describe("admin system load errors", () => {
+    beforeEach(() => {
+        vi.mocked(api.adminGetAuditLogs).mockResolvedValue([])
+        vi.mocked(api.adminGetRoles).mockResolvedValue([])
+        vi.mocked(api.adminGetTeamUsers).mockResolvedValue([])
+    })
+
     it("reports a 5xx as a load failure with retry, not as missing rights", async () => {
         vi.mocked(api.adminGetSystemStatus)
             .mockRejectedValueOnce(new api.ApiError(503, "Service unavailable", "HTTP 503"))
             .mockResolvedValueOnce(baseStatus)
-        render(<System />)
+        renderAuditor()
         expect(await screen.findByText(/Не удалось загрузить часть системных данных: Service unavailable/)).toBeVisible()
         screen.getByRole("button", { name: "Повторить загрузку" }).click()
         expect(await screen.findByText("Retry: 3")).toBeVisible()
@@ -100,7 +106,7 @@ describe("admin system load errors", () => {
     it("does not show a load error for a 403", async () => {
         vi.mocked(api.adminGetSystemStatus).mockResolvedValue(baseStatus)
         vi.mocked(api.adminGetAuditLogs).mockRejectedValue(new api.ApiError(403, "Permission required: audit.read", "HTTP 403"))
-        render(<System />)
+        renderAuditor()
         await screen.findByText("Retry: 3")
         expect(screen.queryByText(/Не удалось загрузить часть системных данных/)).not.toBeInTheDocument()
     })
