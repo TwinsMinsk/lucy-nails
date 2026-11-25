@@ -32,7 +32,7 @@ from app.models.purchase import Purchase, paid_financial_filter
 from app.models.rbac import UserRoleAssignment, student_account_filter
 from app.models.refund import RefundRequest
 from app.models.user import User
-from app.services.access_service import AccessService
+from app.services.access_service import MANUAL_GRANT_KEY_CONFLICT, AccessService
 from app.services.audit_service import append_audit_log
 from app.services.operations_health_service import read_worker_heartbeat
 from app.services.outbox_service import enqueue_outbox_message
@@ -341,6 +341,10 @@ class StudentCreateRequest(BaseModel):
     course_id: UUID
     access_days: int = Field(default=settings.COURSE_ACCESS_DAYS, ge=1, le=3650)
     reason: str = Field(..., min_length=5, max_length=1000)
+    # Generated once per opened form and kept across retries.
+    idempotency_key: str | None = Field(
+        default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$"
+    )
 
 
 class StudentCreateResponse(BaseModel):
@@ -846,6 +850,25 @@ async def create_student_with_access(
                 detail="Пользователь с таким email уже существует — повторите запрос",
             ) from exc
 
+    if data.idempotency_key and not user_created:
+        # A retry after a lost response or a double submit returns the first
+        # grant instead of adding a second period and a second email.
+        previous = await AccessService.find_manual_grant(
+            db, user_id=user.id, course_id=course.id, idempotency_key=data.idempotency_key
+        )
+        if previous is not None:
+            if not AccessService.manual_grant_matches(
+                previous, tariff="self", access_days=data.access_days, reason=data.reason
+            ):
+                raise HTTPException(status_code=409, detail=MANUAL_GRANT_KEY_CONFLICT)
+            stored = previous.new_value or {}
+            return StudentCreateResponse(
+                user_id=user.id,
+                user_created=bool(stored.get("user_created", False)),
+                entitlement_id=UUID(previous.object_id),
+                expires_at=datetime.fromisoformat(stored["expires_at"]),
+            )
+
     entitlement = await AccessService.grant_manual_access(
         db,
         user_id=user.id,
@@ -884,6 +907,8 @@ async def create_student_with_access(
             "access_days": data.access_days,
             "expires_at": entitlement.expires_at.isoformat(),
             "notification": notification_kind,
+            "user_created": user_created,
+            **({"idempotency_key": data.idempotency_key} if data.idempotency_key else {}),
         },
     )
     await db.commit()

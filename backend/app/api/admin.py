@@ -24,7 +24,11 @@ from app.models.entitlement import Entitlement
 from app.models.order import Order
 from app.models.certificate import Certificate
 from app.schemas.auth import UserResponse
-from app.services.access_service import AccessService, LaterAccessExistsError
+from app.services.access_service import (
+    MANUAL_GRANT_KEY_CONFLICT,
+    AccessService,
+    LaterAccessExistsError,
+)
 from app.services.audit_service import append_audit_log
 from app.services.content_audit import audit_content_event, audit_content_update, snapshot
 from app.services.email_service import format_msk_datetime
@@ -42,6 +46,10 @@ class GrantAccessRequest(BaseModel):
     tariff: Literal["self", "support"] = "self"
     access_days: int | None = Field(default=None, ge=1, le=3650)
     reason: str = Field(..., min_length=5, max_length=1000)
+    # Generated once per opened form and kept across retries; see extend.
+    idempotency_key: str | None = Field(
+        default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$"
+    )
 
 
 class GrantAccessResponse(BaseModel):
@@ -1028,14 +1036,32 @@ async def grant_course_access(
     
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
-    
+
+    access_days = data.access_days or course.access_days
+    if data.idempotency_key:
+        # A retry after a lost response or a double submit returns the first
+        # grant instead of adding a second period and a second email.
+        previous = await AccessService.find_manual_grant(
+            db, user_id=user.id, course_id=course.id, idempotency_key=data.idempotency_key
+        )
+        if previous is not None:
+            if not AccessService.manual_grant_matches(
+                previous, tariff=data.tariff, access_days=access_days, reason=data.reason
+            ):
+                raise HTTPException(status_code=409, detail=MANUAL_GRANT_KEY_CONFLICT)
+            return GrantAccessResponse(
+                message="Access granted successfully",
+                entitlement_id=UUID(previous.object_id),
+                expires_at=datetime.fromisoformat(previous.new_value["expires_at"]),
+            )
+
     # Manual access is deliberately separate from financial purchase history.
     entitlement = await AccessService.grant_manual_access(
         db,
         user_id=data.user_id,
         course_id=data.course_id,
         tariff=data.tariff,
-        access_days=data.access_days or course.access_days,
+        access_days=access_days,
         granted_by_id=admin.id,
         reason=data.reason,
     )
@@ -1055,9 +1081,10 @@ async def grant_course_access(
             "user_id": str(data.user_id),
             "course_id": str(data.course_id),
             "tariff": data.tariff,
-            "access_days": data.access_days or course.access_days,
+            "access_days": access_days,
             "expires_at": entitlement.expires_at.isoformat(),
             "notification": notification_kind,
+            **({"idempotency_key": data.idempotency_key} if data.idempotency_key else {}),
         },
     )
     await db.commit()

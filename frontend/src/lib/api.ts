@@ -646,6 +646,8 @@ export const adminGrantAccess = async (
     tariff: "self" | "support" = "self",
     reason: string,
     accessDays?: number,
+    /** Generated once per opened form and kept across retries: a repeat grants once. */
+    idempotencyKey?: string,
 ): Promise<GrantAccessResponse> => {
     return apiFetch<GrantAccessResponse>("/admin/grant-access", {
         method: "POST",
@@ -655,6 +657,7 @@ export const adminGrantAccess = async (
             tariff,
             reason,
             access_days: accessDays,
+            ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
         }),
     });
 };
@@ -1346,6 +1349,8 @@ export interface AdminCreateStudentRequest {
     course_id: string;
     access_days: number;
     reason: string;
+    /** Generated once per opened form and kept across retries: a repeat grants once. */
+    idempotency_key?: string;
 }
 
 export interface AdminCreateStudentResponse {

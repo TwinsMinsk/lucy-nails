@@ -94,6 +94,11 @@ function Users() {
     const [grantReason, setGrantReason] = useState("")
     const [saving, setSaving] = useState(false)
     const grantInFlight = useRef(false)
+    const createInFlight = useRef(false)
+    // Operation keys: one per opened form, kept across a retry after an error or a
+    // lost response (the API then returns the first grant), renewed after success.
+    const [grantKey, setGrantKey] = useState(() => crypto.randomUUID())
+    const [createKey, setCreateKey] = useState(() => crypto.randomUUID())
     const [createOpen, setCreateOpen] = useState(false)
     const [studentForm, setStudentForm] = useState(emptyStudentForm)
     const generation = useRef(0)
@@ -130,6 +135,7 @@ function Users() {
         try {
             const detail = await adminGetStudent(id)
             setSelected(detail)
+            setGrantKey(crypto.randomUUID())
             setTags(detail.tags.join(", "))
         } catch (error) {
             toast.error("Не удалось открыть карточку", { description: error instanceof Error ? error.message : undefined })
@@ -168,7 +174,8 @@ function Users() {
         grantInFlight.current = true
         setSaving(true)
         try {
-            await adminGrantAccess(selected.id, grantCourse, "self", grantReason.trim(), grantDays)
+            await adminGrantAccess(selected.id, grantCourse, "self", grantReason.trim(), grantDays, grantKey)
+            setGrantKey(crypto.randomUUID())
             setGrantReason("")
             await Promise.all([refreshSelected(), load()])
             toast.success("Доступ выдан")
@@ -179,7 +186,8 @@ function Users() {
 
     const createStudent = async (event: FormEvent) => {
         event.preventDefault()
-        if (!canCreateStudent) return
+        if (createInFlight.current || !canCreateStudent) return
+        createInFlight.current = true
         setSaving(true)
         try {
             await adminCreateStudent({
@@ -189,14 +197,16 @@ function Users() {
                 course_id: studentForm.course_id,
                 access_days: studentForm.access_days,
                 reason: studentForm.reason.trim(),
+                idempotency_key: createKey,
             })
+            setCreateKey(crypto.randomUUID())
             setCreateOpen(false)
             setStudentForm(emptyStudentForm)
             await load()
             toast.success("Ученик добавлен, письмо со ссылкой отправлено")
         } catch (error) {
             toast.error("Не удалось добавить ученика", { description: errorText(error) })
-        } finally { setSaving(false) }
+        } finally { createInFlight.current = false; setSaving(false) }
     }
 
     const sendLoginLink = async () => {
@@ -220,7 +230,7 @@ function Users() {
                     <h1 className="text-3xl font-bold">Ученики</h1>
                     <p className="mt-1 text-muted-foreground">Серверный поиск, доступы, прогресс, сертификаты, заметки и теги.</p>
                 </div>
-                {canManageAccess && <Button className="gap-2" onClick={() => setCreateOpen(true)}><UserPlus className="h-4 w-4" />Добавить ученика</Button>}
+                {canManageAccess && <Button className="gap-2" onClick={() => { setCreateKey(crypto.randomUUID()); setCreateOpen(true) }}><UserPlus className="h-4 w-4" />Добавить ученика</Button>}
             </div>
             <Card>
                 <CardHeader className="gap-4 md:flex-row md:items-center md:justify-between">

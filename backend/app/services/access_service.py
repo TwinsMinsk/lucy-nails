@@ -9,6 +9,7 @@ from sqlalchemy import Integer, and_, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.audit_log import AuditLog
 from app.models.course import Course
 from app.models.entitlement import Entitlement
 from app.models.module import Module
@@ -21,6 +22,12 @@ from app.services.outbox_service import enqueue_outbox_message
 from app.services.support_access_service import (
     has_active_support_entitlement,
     lock_support_membership_state,
+)
+
+
+MANUAL_GRANT_KEY_CONFLICT = (
+    "Эта выдача доступа уже выполнена с другими параметрами. "
+    "Закройте форму и откройте её заново."
 )
 
 
@@ -326,6 +333,41 @@ class AccessService:
         await db.flush()
         await AccessService.enqueue_support_group_restore(db, entitlement)
         return entitlement
+
+    @staticmethod
+    async def find_manual_grant(
+        db: AsyncSession, *, user_id: UUID, course_id: UUID, idempotency_key: str
+    ) -> AuditLog | None:
+        """The earlier manual grant made with this operation key, if any.
+
+        Takes the (user, course) access lock first, the same lock the grant
+        itself takes, so a concurrent repeat waits for the first request to
+        commit and then finds its audit record instead of granting again.
+        """
+        await AccessService.lock_course_access(db, user_id, course_id)
+        return await db.scalar(
+            select(AuditLog)
+            .where(
+                AuditLog.action == "entitlement.grant",
+                AuditLog.new_value["idempotency_key"].as_string() == idempotency_key,
+                AuditLog.new_value["user_id"].as_string() == str(user_id),
+                AuditLog.new_value["course_id"].as_string() == str(course_id),
+            )
+            .order_by(AuditLog.created_at)
+            .limit(1)
+        )
+
+    @staticmethod
+    def manual_grant_matches(
+        entry: AuditLog, *, tariff: str, access_days: int, reason: str
+    ) -> bool:
+        """Whether a repeated request asks for exactly what the stored grant did."""
+        stored = entry.new_value or {}
+        return (
+            stored.get("tariff") == tariff
+            and stored.get("access_days") == access_days
+            and (entry.reason or "") == reason.strip()
+        )
 
     @staticmethod
     def enqueue_manual_grant_notification(
