@@ -328,6 +328,51 @@ class AccessService:
         return entitlement
 
     @staticmethod
+    def enqueue_manual_grant_notification(
+        db: AsyncSession,
+        *,
+        user: User,
+        course: Course,
+        entitlement: Entitlement,
+        new_account: bool = False,
+    ) -> str:
+        """Queue the email for a manual grant in the granting transaction.
+
+        Shared by every manual-grant entry point. An account whose email was
+        never verified cannot use a login link, so it gets an activation link,
+        as in the payment webhook. Returns the notification kind.
+        """
+        from app.core.security import create_account_activation_token
+
+        frontend_url = settings.FRONTEND_URL.rstrip("/")
+        if new_account or user.email_verified_at is None:
+            token = create_account_activation_token(user.id, user.token_version)
+            enqueue_outbox_message(
+                db,
+                kind="account_activation",
+                recipient=user.email,
+                payload={
+                    "activation_url": f"{frontend_url}/auth/activate?token={token}",
+                    "course_title": course.title,
+                    "expires_at": entitlement.expires_at.isoformat(),
+                },
+                dedupe_key=f"admin-student:{entitlement.id}:activation",
+            )
+            return "account_activation"
+        enqueue_outbox_message(
+            db,
+            kind="access_granted",
+            recipient=user.email,
+            payload={
+                "login_url": f"{frontend_url}/auth/login",
+                "course_title": course.title,
+                "expires_at": entitlement.expires_at.isoformat(),
+            },
+            dedupe_key=f"admin-student:{entitlement.id}:access",
+        )
+        return "access_granted"
+
+    @staticmethod
     async def revoke_entitlement(
         db: AsyncSession,
         entitlement: Entitlement,

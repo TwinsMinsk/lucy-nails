@@ -838,36 +838,9 @@ async def create_student_with_access(
         granted_by_id=admin.id,
         reason=data.reason,
     )
-    frontend_url = settings.FRONTEND_URL.rstrip("/")
-    # An existing guest who never activated the account cannot use a login link,
-    # so the email kind follows email_verified_at, as in the payment webhook.
-    if user_created or user.email_verified_at is None:
-        activation_token = create_account_activation_token(user.id, user.token_version)
-        notification_kind = "account_activation"
-        enqueue_outbox_message(
-            db,
-            kind=notification_kind,
-            recipient=user.email,
-            payload={
-                "activation_url": f"{frontend_url}/auth/activate?token={activation_token}",
-                "course_title": course.title,
-                "expires_at": entitlement.expires_at.isoformat(),
-            },
-            dedupe_key=f"admin-student:{entitlement.id}:activation",
-        )
-    else:
-        notification_kind = "access_granted"
-        enqueue_outbox_message(
-            db,
-            kind=notification_kind,
-            recipient=user.email,
-            payload={
-                "login_url": f"{frontend_url}/auth/login",
-                "course_title": course.title,
-                "expires_at": entitlement.expires_at.isoformat(),
-            },
-            dedupe_key=f"admin-student:{entitlement.id}:access",
-        )
+    notification_kind = AccessService.enqueue_manual_grant_notification(
+        db, user=user, course=course, entitlement=entitlement, new_account=user_created
+    )
     if user_created:
         append_audit_log(
             db,

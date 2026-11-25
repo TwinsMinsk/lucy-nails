@@ -1039,6 +1039,10 @@ async def grant_course_access(
         granted_by_id=admin.id,
         reason=data.reason,
     )
+    # Same email choice and dedupe keys as /admin/students, in this transaction.
+    notification_kind = AccessService.enqueue_manual_grant_notification(
+        db, user=user, course=course, entitlement=entitlement
+    )
     append_audit_log(
         db,
         actor_user_id=admin.id,
@@ -1053,6 +1057,7 @@ async def grant_course_access(
             "tariff": data.tariff,
             "access_days": data.access_days or course.access_days,
             "expires_at": entitlement.expires_at.isoformat(),
+            "notification": notification_kind,
         },
     )
     await db.commit()
