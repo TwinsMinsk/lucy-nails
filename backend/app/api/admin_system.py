@@ -245,6 +245,12 @@ async def update_team_roles(
     db: AsyncSession = Depends(get_db),
     owner: User = Depends(require_permission("system.manage_roles")),
 ):
+    # Serialize every role change: the last-manager checks below compare the
+    # whole team, so two concurrent changes must not both pass them. The
+    # advisory lock comes before any row lock: otherwise one change could hold
+    # the lock and need KEY SHARE on the acting admin's row (assigned_by_id,
+    # audit actor) while another holds that row FOR UPDATE and waits here.
+    await db.execute(select(func.pg_advisory_xact_lock(ROLE_CHANGE_LOCK_KEY)))
     target = await db.scalar(
         select(User)
         .where(User.id == user_id)
@@ -253,9 +259,6 @@ async def update_team_roles(
     )
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
-    # Serialize every role change: the last-manager checks below compare the
-    # whole team, so two concurrent changes must not both pass them.
-    await db.execute(select(func.pg_advisory_xact_lock(ROLE_CHANGE_LOCK_KEY)))
 
     requested_names = sorted(set(data.roles))
     role_result = await db.execute(select(Role).where(Role.name.in_(requested_names)))

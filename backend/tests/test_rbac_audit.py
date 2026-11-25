@@ -3,17 +3,19 @@ from datetime import datetime
 
 import pytest
 from fastapi import HTTPException
-from httpx import AsyncClient
-from sqlalchemy import delete, func, select
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.api.admin_system import ensure_owner_removal_preserves_owner
+from app.api.admin_system import ROLE_CHANGE_LOCK_KEY, ensure_owner_removal_preserves_owner
 from app.core.security import get_password_hash
 from app.models.audit_log import AuditLog
 from app.models.course import Course
 from app.models.rbac import Permission, Role, UserRoleAssignment
 from app.models.user import User
-from conftest import mfa_headers
+from app.core.database import get_db
+from app.main import app
+from conftest import TestingSessionLocal, mfa_headers
 
 
 async def _staff_user(
@@ -308,3 +310,67 @@ async def test_manager_keeping_team_management_can_change_own_roles(
         headers=headers,
     )
     assert response.status_code == 200, response.text
+
+
+@pytest.mark.asyncio
+async def test_concurrent_role_edits_by_one_admin_do_not_deadlock(
+    client: AsyncClient, db: AsyncSession
+):
+    """A staff member's roles and the admin's own roles saved at the same time."""
+    owner = await _staff_user(
+        db, email="owner@example.com", role_name="owner", permissions=["system.manage_roles"]
+    )
+    staff = User(
+        email="staff@example.com",
+        password_hash=get_password_hash("staffpass1"),
+        role="student",
+        email_verified_at=datetime.utcnow(),
+    )
+    db.add_all([staff, Role(name="curator", description="Curator", is_system=True)])
+    owner.email_verified_at = datetime.utcnow()
+    await db.commit()
+    headers = await mfa_headers(client, db, owner, "staffpass1")
+    staff_id, owner_id = staff.id, owner.id
+
+    async def isolated_db():
+        async with TestingSessionLocal() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = isolated_db
+
+    async def put_roles(user_id, roles):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as other:
+            return await other.put(
+                f"/api/admin/team/users/{user_id}/roles",
+                json={"roles": roles, "reason": "Concurrent team edit"},
+                headers=headers,
+            )
+
+    async def waiting_for_role_lock() -> int:
+        async with TestingSessionLocal() as probe:
+            return await probe.scalar(
+                text("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted")
+            )
+
+    async def wait_until_waiting(expected: int) -> None:
+        for _ in range(200):
+            if await waiting_for_role_lock() >= expected:
+                return
+            await asyncio.sleep(0.02)
+        raise AssertionError("request did not reach the role-change lock")
+
+    # Hold the role-change lock so both requests queue behind it in a known
+    # order: the staff edit first, then the admin's own edit.
+    async with TestingSessionLocal() as holder:
+        await holder.execute(select(func.pg_advisory_xact_lock(ROLE_CHANGE_LOCK_KEY)))
+        staff_edit = asyncio.create_task(put_roles(staff_id, ["curator"]))
+        await wait_until_waiting(1)
+        own_edit = asyncio.create_task(put_roles(owner_id, ["curator", "owner"]))
+        await wait_until_waiting(2)
+        await holder.rollback()
+
+    responses = await asyncio.wait_for(
+        asyncio.gather(staff_edit, own_edit, return_exceptions=True), timeout=30
+    )
+
+    assert [getattr(item, "status_code", item) for item in responses] == [200, 200]
