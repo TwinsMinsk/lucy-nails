@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
-import { SUPPORT_BOT_FALLBACK_USERNAME, supportBotUrl, supportBotUsername } from "@/lib/support"
+import {
+    SUPPORT_BOT_FALLBACK_USERNAME,
+    SUPPORT_EMAIL,
+    SUPPORT_EMAIL_HREF,
+    supportBotUrl,
+    supportBotUsername,
+} from "@/lib/support"
 
 beforeEach(() => vi.stubEnv("NEXT_PUBLIC_SUPPORT_BOT_USERNAME", ""))
 afterEach(() => vi.unstubAllEnvs())
@@ -25,6 +31,11 @@ it("ignores a username Telegram would not accept", () => {
 
 it("adds a valid start parameter", () => {
     expect(supportBotUrl("o_AbC-123_xyz")).toBe("https://t.me/lucynails_bot?start=o_AbC-123_xyz")
+})
+
+it("keeps the support email next to the bot", () => {
+    expect(SUPPORT_EMAIL).toBe("Luci4ek@gmail.com")
+    expect(SUPPORT_EMAIL_HREF).toBe("mailto:Luci4ek@gmail.com")
 })
 
 it("drops a start parameter Telegram would reject", () => {

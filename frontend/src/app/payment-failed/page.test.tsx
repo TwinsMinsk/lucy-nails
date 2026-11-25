@@ -16,5 +16,7 @@ it("sends buyers to the support bot instead of a personal contact", () => {
     expect(link).toHaveAttribute("target", "_blank")
     expect(link).toHaveAttribute("rel", "noopener noreferrer")
     expect(container.querySelector('a[href*="lucysmirnova_nails"]')).toBeNull()
+    // The bot answers only once the help desk is set up: the email stays next to it.
+    expect(screen.getByRole("link", { name: "Luci4ek@gmail.com" })).toHaveAttribute("href", "mailto:Luci4ek@gmail.com")
     expect(screen.getByRole("link", { name: /Попробовать ещё раз/ })).toHaveAttribute("href", "/#pricing")
 })

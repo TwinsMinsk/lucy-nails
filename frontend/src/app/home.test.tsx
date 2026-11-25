@@ -77,6 +77,9 @@ it("points payment questions to the support bot in the pricing section", async (
     expect(support).toHaveAttribute("href", "https://t.me/lucynails_bot")
     expect(support).toHaveAttribute("rel", "noopener noreferrer")
     expect(container.querySelector("#pricing")?.contains(support)).toBe(true)
+    const email = screen.getByRole("link", { name: "Luci4ek@gmail.com" })
+    expect(email).toHaveAttribute("href", "mailto:Luci4ek@gmail.com")
+    expect(container.querySelector("#pricing")?.contains(email)).toBe(true)
     vi.unstubAllEnvs()
 })
 

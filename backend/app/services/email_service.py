@@ -36,9 +36,14 @@ DEFAULT_SUPPORT_TELEGRAM_URL = "https://t.me/lucysmirnova_nails"
 
 
 def support_telegram_url() -> str:
-    """The support bot's chat, or the previous personal contact without a bot."""
+    """The support bot's chat once the help desk answers, else the previous contact.
+
+    The bot answers customers only after the owner has set up the help desk
+    group (TELEGRAM_HELPDESK_CHAT_ID); until then emails keep pointing to the
+    contact that already works.
+    """
     username = settings.TELEGRAM_BOT_USERNAME.strip().lstrip("@")
-    if not username:
+    if not username or settings.TELEGRAM_HELPDESK_CHAT_ID is None:
         return DEFAULT_SUPPORT_TELEGRAM_URL
     return f"https://t.me/{username}"
 

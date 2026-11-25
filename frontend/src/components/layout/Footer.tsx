@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { supportBotUrl } from "@/lib/support";
+import { SUPPORT_EMAIL, SUPPORT_EMAIL_HREF, supportBotUrl } from "@/lib/support";
 
 
 export function Footer() {
@@ -37,7 +37,7 @@ export function Footer() {
                         <p>ОГРНИП: 326784700145379</p>
                     </div>
                     <p className="text-center md:text-left">
-                        Email: <a href="mailto:Luci4ek@gmail.com" className="inline-block py-1 hover:text-foreground hover:underline underline-offset-4">Luci4ek@gmail.com</a>
+                        Email: <a href={SUPPORT_EMAIL_HREF} className="inline-block py-1 hover:text-foreground hover:underline underline-offset-4">{SUPPORT_EMAIL}</a>
                         <span aria-hidden="true" className="mx-2">·</span>
                         <a href={supportBotUrl()} target="_blank" rel="noopener noreferrer" className="inline-block py-1 hover:text-foreground hover:underline underline-offset-4">Поддержка в Telegram</a>
                     </p>

@@ -20,4 +20,8 @@ it("offers the support bot for payment questions below the pay button", () => {
     expect(support).toHaveAttribute("target", "_blank")
     expect(support).toHaveAttribute("rel", "noopener noreferrer")
     expect(pay.compareDocumentPosition(support) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByRole("link", { name: "Luci4ek@gmail.com" })).toHaveAttribute("href", "mailto:Luci4ek@gmail.com")
+    expect(support.closest("p")).toHaveTextContent(
+        "Вопросы по оплате? Напишите в поддержку в Telegram или на почту Luci4ek@gmail.com",
+    )
 })

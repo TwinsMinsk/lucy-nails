@@ -9,7 +9,7 @@ import { TelegramIcon } from "@/components/support/TelegramIcon";
 import { Button } from "@/components/ui/button";
 import { getPublicApiUrl } from "@/lib/env";
 import { sendYandexGoal } from "@/lib/analytics-client";
-import { supportBotUrl } from "@/lib/support";
+import { SUPPORT_EMAIL, SUPPORT_EMAIL_HREF, supportBotUrl } from "@/lib/support";
 
 type PaymentState = "checking" | "pending" | "slow" | "paid" | "help";
 
@@ -225,19 +225,24 @@ export function PaymentStatus() {
           </Button>
         </div>
 
-        <p className="flex items-center justify-center gap-2 text-sm text-text-secondary">
-          <TelegramIcon className="h-4 w-4 shrink-0 text-[#229ED9]" />
-          <span>
-            Проблема с оплатой или доступом?{" "}
-            <a
-              href={supportBotUrl(supportStart)}
-              className="font-medium text-primary underline underline-offset-4 hover:no-underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Напишите в поддержку в Telegram
-            </a>
-          </span>
+        <p className="text-center text-sm leading-relaxed text-text-secondary">
+          <TelegramIcon className="mr-1.5 inline-block h-4 w-4 align-[-0.2em] text-[#229ED9]" />
+          Проблема с оплатой или доступом?{" "}
+          <a
+            href={supportBotUrl(supportStart)}
+            className="font-medium text-primary underline underline-offset-4 hover:no-underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Напишите в поддержку в Telegram
+          </a>{" "}
+          или на почту{" "}
+          <a
+            href={SUPPORT_EMAIL_HREF}
+            className="font-medium text-primary underline underline-offset-4 hover:no-underline"
+          >
+            {SUPPORT_EMAIL}
+          </a>
         </p>
       </div>
     </div>

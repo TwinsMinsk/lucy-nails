@@ -43,6 +43,7 @@ it("links to the support bot without an order when the order is unknown", async 
     await act(async () => {})
     expect(supportLink()).toHaveAttribute("href", "https://t.me/lucynails_bot")
     expect(container.querySelector('a[href*="lucysmirnova_nails"]')).toBeNull()
+    expect(screen.getByRole("link", { name: "Luci4ek@gmail.com" })).toHaveAttribute("href", "mailto:Luci4ek@gmail.com")
 })
 
 it("keeps checking through a temporary server error and confirms the payment", async () => {
