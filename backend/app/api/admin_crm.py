@@ -1060,6 +1060,8 @@ async def list_entitlements(
         ),
         else_=Entitlement.status,
     )
+    # Same predicate as AccessService.later_access_end: only an access valid
+    # now (as in get_active_entitlement) can make another row "not the latest".
     later = aliased(Entitlement)
     is_latest = ~(
         select(later.id)
@@ -1068,6 +1070,8 @@ async def list_entitlements(
             later.course_id == Entitlement.course_id,
             later.id != Entitlement.id,
             later.status == "active",
+            later.starts_at <= now,
+            later.expires_at > now,
             later.expires_at > Entitlement.expires_at,
         )
         .correlate(Entitlement)

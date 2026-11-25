@@ -324,3 +324,52 @@ async def test_repeated_key_returns_the_first_result_and_rejects_other_parameter
     assert other_reason.status_code == 409, other_reason.text
     async with TestingSessionLocal() as fresh:
         assert (await fresh.get(Entitlement, renewed.id)).expires_at.isoformat() == later.json()["expires_at"]
+
+@pytest.mark.asyncio
+async def test_a_later_row_that_has_already_ended_does_not_block_the_extension(
+    client: AsyncClient, db: AsyncSession
+):
+    """A ended yesterday, B an hour ago, both still marked active (lifecycle not run)."""
+    headers, older, later = await _setup(client, db)
+    now = datetime.utcnow()
+    async with TestingSessionLocal() as fresh:
+        for row_id, end in ((older.id, now - timedelta(days=1)), (later.id, now - timedelta(hours=1))):
+            row = await fresh.get(Entitlement, row_id)
+            row.starts_at = end - timedelta(days=30)
+            row.expires_at = end
+        await fresh.commit()
+
+    listed = await client.get("/api/admin/entitlements", headers=headers)
+    flags = {item["id"]: (item["status"], item["is_latest_access"]) for item in listed.json()["items"]}
+    assert flags == {str(older.id): ("expired", True), str(later.id): ("expired", True)}
+
+    response = await client.post(
+        f"/api/admin/entitlements/{older.id}/extend",
+        json={"days": 7, "reason": "Goodwill extension"},
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    async with TestingSessionLocal() as fresh:
+        extended = await fresh.get(Entitlement, older.id)
+    assert extended.status == "active"
+    assert timedelta(days=6, hours=23) < extended.expires_at - now <= timedelta(days=7, minutes=1)
+
+
+@pytest.mark.asyncio
+async def test_a_later_row_that_is_still_valid_blocks_the_extension(
+    client: AsyncClient, db: AsyncSession
+):
+    headers, older, later = await _setup(client, db)
+    now = datetime.utcnow()
+    async with TestingSessionLocal() as fresh:
+        row = await fresh.get(Entitlement, older.id)
+        row.expires_at = now - timedelta(days=1)
+        await fresh.commit()
+
+    response = await client.post(
+        f"/api/admin/entitlements/{older.id}/extend",
+        json={"days": 7, "reason": "Goodwill extension"},
+        headers=headers,
+    )
+    assert response.status_code == 409, response.text
+    assert format_msk_datetime(later.expires_at) in response.json()["detail"]

@@ -390,14 +390,23 @@ class AccessService:
         await db.flush()
 
     @staticmethod
-    async def later_access_end(db: AsyncSession, entitlement: Entitlement) -> datetime | None:
-        """End of the student's other active access to the course that outlasts this row."""
+    async def later_access_end(
+        db: AsyncSession, entitlement: Entitlement, *, now: datetime
+    ) -> datetime | None:
+        """End of the student's other access to the course, valid at ``now``, that outlasts this row.
+
+        "Valid" is the notion of get_active_entitlement: status active and
+        ``starts_at <= now < expires_at``. A row still marked active whose end
+        has passed (the lifecycle pass has not run yet) does not count.
+        """
         return await db.scalar(
             select(func.max(Entitlement.expires_at)).where(
                 Entitlement.user_id == entitlement.user_id,
                 Entitlement.course_id == entitlement.course_id,
                 Entitlement.id != entitlement.id,
                 Entitlement.status == "active",
+                Entitlement.starts_at <= now,
+                Entitlement.expires_at > now,
                 Entitlement.expires_at > entitlement.expires_at,
             )
         )
@@ -420,10 +429,11 @@ class AccessService:
         # student sees; moving it past that access would detach the added days
         # from their purchase (a refund of the later purchase would leave them).
         # The operator must extend the latest access instead.
-        later_end = await AccessService.later_access_end(db, entitlement)
+        # One moment, taken under the locks, for the check and the new expiry.
+        now = datetime.utcnow()
+        later_end = await AccessService.later_access_end(db, entitlement, now=now)
         if later_end is not None:
             raise LaterAccessExistsError(later_end)
-        now = datetime.utcnow()
         entitlement.expires_at = max(now, entitlement.expires_at) + timedelta(days=days)
         if entitlement.status == "expired":
             entitlement.status = "active"
