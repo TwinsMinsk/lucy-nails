@@ -204,6 +204,32 @@ async def test_alerts_go_to_the_payments_topic_with_the_helpdesk(
 
 
 @pytest.mark.asyncio
+async def test_delivered_alerts_keep_their_text_and_topic_through_link_redaction(
+    client: AsyncClient, db: AsyncSession, helpdesk_alerts, telegram_requests
+):
+    course = await _course(db)
+    checkout = await client.post("/api/payments/guest-link", json={
+        "course_id": str(course.id), "tariff": "self", "customer_email": "guest@example.com",
+        "offer_accepted": True, "personal_data_consent": True,
+        "attribution": {"first_touch": {"utm_source": "vk", "utm_campaign": "autumn"}},
+    })
+    assert checkout.status_code == 200
+    alert = (await _alerts(db, "owner_order_created"))[0]
+    alert_id, queued = alert.id, dict(alert.payload)
+
+    assert await outbox_service.process_outbox_batch(db) == 1
+
+    db.expire_all()
+    delivered = await db.scalar(select(OutboxMessage).where(OutboxMessage.id == alert_id))
+    assert delivered.status == "sent"
+    # Alerts carry no token-bearing link, so the post-delivery redaction of
+    # outbox payloads leaves them exactly as queued.
+    assert delivered.payload == queued
+    assert delivered.payload["message_thread_id"] == ALERTS_TOPIC
+    assert "[REDACTED]" not in delivered.payload["text"]
+
+
+@pytest.mark.asyncio
 async def test_alerts_without_the_topic_stay_with_the_owner(
     db: AsyncSession, owner_alerts, monkeypatch: pytest.MonkeyPatch
 ):
