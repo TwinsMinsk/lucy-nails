@@ -9,6 +9,7 @@ import re
 import time
 import uuid
 from contextlib import asynccontextmanager
+from urllib.parse import unquote
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,15 +39,40 @@ _CORRELATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _APP_LOG_HANDLER_NAME = "lucy-app-stderr"
 
 
+def silence_uvicorn_access_log() -> None:
+    """Drop Uvicorn's access log, whatever command line started the server."""
+    access_logger = logging.getLogger("uvicorn.access")
+    access_logger.disabled = True
+    access_logger.setLevel(logging.CRITICAL + 1)
+    access_logger.propagate = False
+
+
+def _route_template(request: Request) -> str:
+    """The matched route's path template (ids as {placeholders}), never the raw URL."""
+    # The route object FastAPI leaves in the scope carries its router-relative
+    # path, so rebuild the full template from the URL path and the path params.
+    if request.scope.get("endpoint") is None:
+        return "(unmatched)"
+    params = {str(value): name for name, value in (request.scope.get("path_params") or {}).items()}
+    segments = request.url.path.split("/")
+    return "/".join(
+        f"{{{params[unquote(segment)]}}}" if unquote(segment) in params else segment
+        for segment in segments
+    )
+
+
 def configure_app_logging() -> None:
     """Emit the application's INFO records (request log with correlation id).
 
     Uvicorn configures only its own loggers, so without this the root logger's
-    default WARNING level drops them. Uvicorn's access log is untouched. A
-    handler is added only when the root logger has none, so a host that already
-    configured logging does not print every record twice. The request log
-    carries method, path, status and timing only: no query, body or token.
+    default WARNING level drops them. A handler is added only when the root
+    logger has none, so a host that already configured logging does not print
+    every record twice. Uvicorn's own access log is silenced: it writes the raw
+    query string (order status tokens, searched emails). The application's
+    request log replaces it with method, route template, status, duration and
+    a server-generated correlation id.
     """
+    silence_uvicorn_access_log()
     app_logger = logging.getLogger("app")
     app_logger.setLevel(logging.INFO)
     has_handler = any(
@@ -152,8 +178,13 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         started = time.perf_counter()
         supplied = request.headers.get("x-correlation-id", "")
-        correlation_id = supplied if _CORRELATION_ID_PATTERN.fullmatch(supplied) else str(uuid.uuid4())
+        server_id = str(uuid.uuid4())
+        correlation_id = supplied if _CORRELATION_ID_PATTERN.fullmatch(supplied) else server_id
         request.state.correlation_id = correlation_id
+        # A client-supplied id may carry anything the header pattern allows (a
+        # phone number included), so the log only ever carries our own id; it
+        # equals the request's correlation id whenever the client sent none.
+        log_id = server_id
         try:
             response: Response = await call_next(request)
         except Exception:
@@ -161,9 +192,9 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
                 json.dumps(
                     {
                         "event": "http_request",
-                        "correlation_id": correlation_id,
+                        "correlation_id": log_id,
                         "method": request.method,
-                        "path": request.url.path,
+                        "route": _route_template(request),
                         "status": 500,
                         "duration_ms": round((time.perf_counter() - started) * 1000, 2),
                     }
@@ -175,9 +206,9 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
             json.dumps(
                 {
                     "event": "http_request",
-                    "correlation_id": correlation_id,
+                    "correlation_id": log_id,
                     "method": request.method,
-                    "path": request.url.path,
+                    "route": _route_template(request),
                     "status": response.status_code,
                     "duration_ms": round((time.perf_counter() - started) * 1000, 2),
                 }
@@ -188,6 +219,8 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Uvicorn may (re)configure its loggers after importing the app.
+    silence_uvicorn_access_log()
     if settings.ENVIRONMENT.lower() == "development":
         async with async_session_maker() as session:
             try:
