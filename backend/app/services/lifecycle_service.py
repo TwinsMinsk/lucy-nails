@@ -1,5 +1,6 @@
 """Idempotent access lifecycle notifications and operational Telegram alerts."""
 
+import logging
 import math
 from datetime import datetime
 
@@ -13,7 +14,18 @@ from app.models.outbox import OutboxMessage
 from app.models.user import User
 from app.services.analytics_service import AnalyticsService
 from app.services.access_service import AccessService
-from app.services.outbox_service import enqueue_outbox_message
+from app.services.outbox_service import (
+    enqueue_outbox_message,
+    enqueue_owner_telegram_alert,
+    owner_alert_target,
+)
+from app.services.owner_alerts import (
+    schedule_abandoned_order_alerts,
+    schedule_missing_order_created_alerts,
+)
+from app.services.telegram_helpdesk_service import prune_processed_updates
+
+logger = logging.getLogger(__name__)
 
 
 class LifecycleService:
@@ -148,11 +160,45 @@ class LifecycleService:
                 )
 
         scheduled += await cls._schedule_owner_alert(db, now=now)
+        # The customer emails are durable before anything optional runs: a
+        # reminder whose day has passed is never queued again, so a failure in
+        # a later step must not roll it back.
+        await db.commit()
+        for name, step in (
+            ("order alert recovery", schedule_missing_order_created_alerts),
+            ("abandoned order alerts", schedule_abandoned_order_alerts),
+            ("processed update clean-up", prune_processed_updates),
+        ):
+            scheduled += await cls._run_optional_step(db, name, step, now=now)
         return scheduled
+
+    @staticmethod
+    async def _run_optional_step(db: AsyncSession, name: str, step, *, now: datetime) -> int:
+        """Run one optional step in its own transaction; a failure skips only it.
+
+        The commit flushes inside the ``try``, so an insert that fails at the
+        flush is caught here as well as one that fails at its statement.
+        """
+        try:
+            result = await step(db, now=now)
+            await db.commit()
+        except Exception as exc:
+            # The exception text can carry SQL parameters, emails among them.
+            logger.warning(
+                "Lifecycle step '%s' failed (%s); the next steps still run",
+                name,
+                type(exc).__name__,
+            )
+            try:
+                await db.rollback()
+            except Exception:
+                logger.exception("Lifecycle step '%s': rollback failed", name)
+            return 0
+        return int(result or 0)
 
     @classmethod
     async def _schedule_owner_alert(cls, db: AsyncSession, *, now: datetime) -> int:
-        if not settings.TELEGRAM_BOT_TOKEN or settings.TELEGRAM_OWNER_CHAT_ID is None:
+        if owner_alert_target() is None:
             return 0
         # Rejected payments are alerted one by one when the webhook arrives, so this
         # digest only covers undelivered notifications. Alert when their number
@@ -166,18 +212,14 @@ class LifecycleService:
             return 0
         day_key = now.strftime("%Y%m%d")
         return int(
-            await cls._enqueue_once(
+            await enqueue_owner_telegram_alert(
                 db,
                 kind="system_alert",
-                channel="telegram",
-                recipient=str(settings.TELEGRAM_OWNER_CHAT_ID),
-                payload={
-                    "text": (
-                        "⚠️ Lucy Smirnova: не доставлено уведомлений: "
-                        f"{dead_letters}. Откройте админку → «Уведомления» "
-                        "и отправьте их повторно."
-                    )
-                },
+                text=(
+                    "⚠️ Lucy Smirnova: не доставлено уведомлений: "
+                    f"{dead_letters}. Откройте админку → «Уведомления» "
+                    "и отправьте их повторно."
+                ),
                 dedupe_key=f"system-alert:dead-letters:{dead_letters}:{day_key}",
             )
         )

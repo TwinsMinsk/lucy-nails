@@ -5,9 +5,11 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AlertCircle, ArrowRight, CheckCircle, Clock3, Loader2 } from "lucide-react";
 
+import { TelegramIcon } from "@/components/support/TelegramIcon";
 import { Button } from "@/components/ui/button";
 import { getPublicApiUrl } from "@/lib/env";
 import { sendYandexGoal } from "@/lib/analytics-client";
+import { SUPPORT_EMAIL, SUPPORT_EMAIL_HREF, supportBotUrl } from "@/lib/support";
 
 type PaymentState = "checking" | "pending" | "slow" | "paid" | "help";
 
@@ -56,6 +58,9 @@ export function PaymentStatus() {
   }));
   const [state, setState] = useState<PaymentState>("checking");
   const [round, setRound] = useState(0);
+  // Signed order reference from the status endpoint: the support bot then
+  // shows the operators which order this buyer is asking about.
+  const [supportStart, setSupportStart] = useState<string | null>(null);
 
   useEffect(() => {
     if (!orderId || !token) {
@@ -89,7 +94,9 @@ export function PaymentStatus() {
           course_id?: string;
           course_title?: string;
           tariff?: string;
+          support_start?: string;
         };
+        if (typeof result.support_start === "string") setSupportStart(result.support_start);
         if (result.status === "paid") {
           setState("paid");
           window.history.replaceState({}, "", "/payment-success");
@@ -218,12 +225,24 @@ export function PaymentStatus() {
           </Button>
         </div>
 
-        <p className="text-sm text-text-secondary">
-          Проблема с доступом? Напишите в{" "}
-          <a href="https://t.me/lucysmirnova_nails" className="text-primary underline underline-offset-4 hover:no-underline" target="_blank" rel="noopener noreferrer">
-            Telegram
+        <p className="text-center text-sm leading-relaxed text-text-secondary">
+          <TelegramIcon className="mr-1.5 inline-block h-4 w-4 align-[-0.2em] text-[#229ED9]" />
+          Проблема с оплатой или доступом?{" "}
+          <a
+            href={supportBotUrl(supportStart)}
+            className="font-medium text-primary underline underline-offset-4 hover:no-underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Напишите в поддержку в Telegram
+          </a>{" "}
+          или на почту{" "}
+          <a
+            href={SUPPORT_EMAIL_HREF}
+            className="font-medium text-primary underline underline-offset-4 hover:no-underline"
+          >
+            {SUPPORT_EMAIL}
           </a>
-          .
         </p>
       </div>
     </div>

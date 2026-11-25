@@ -29,7 +29,19 @@ On 8 October the API rejected assigning railwayConfigFile to new staging service
 
 Remote staging uses `ENVIRONMENT=staging`, `DEBUG=false`, `PRODAMUS_DEMO_MODE=true` with a separate form. It enforces the production security checks and requires an isolated cookie/domain namespace, e.g. frontend `staging.lucysmirnova.ru`, API `api.staging.lucysmirnova.ru`, `COOKIE_DOMAIN=staging.lucysmirnova.ru`. Production continues to reject demo payments. Keep checkout disabled until isolation and synthetic fixtures are reviewed.
 
-Frontend build variables: API URL, site URL, Metrika counter ID `NEXT_PUBLIC_YANDEX_METRIKA_ID=113921203` (build-time: after changing it, redeploy Frontend). Counter settings, goals and the verification checklist: [`../06_Tracking/YANDEX_METRIKA.md`](../06_Tracking/YANDEX_METRIKA.md).
+Frontend build variables: API URL, site URL, Metrika counter ID `NEXT_PUBLIC_YANDEX_METRIKA_ID=113921203` (build-time: after changing it, redeploy Frontend), support bot username `NEXT_PUBLIC_SUPPORT_BOT_USERNAME` (optional, without `@`; empty means `lucynails_bot`). Counter settings, goals and the verification checklist: [`../06_Tracking/YANDEX_METRIKA.md`](../06_Tracking/YANDEX_METRIKA.md).
+
+#### Telegram support bot variables
+
+Setup steps, commands and how to switch it off: [`TELEGRAM_HELPDESK.md`](TELEGRAM_HELPDESK.md). All are optional; without them the bot only links accounts and alerts go to `TELEGRAM_OWNER_CHAT_ID` as before.
+
+| Variable | Services | Value |
+| --- | --- | --- |
+| `TELEGRAM_WEBHOOK_SECRET` | Backend, Worker | Random 32-256 characters of `A-Z a-z 0-9 _ -`. Telegram sends it in `X-Telegram-Bot-Api-Secret-Token`; empty means `POST /api/telegram/webhook` answers 404. Required in production when `TELEGRAM_HELPDESK_CHAT_ID` is set. Secret: keep out of git and logs. |
+| `TELEGRAM_HELPDESK_CHAT_ID` | Backend, Worker | Negative id of the operators' private forum supergroup (`/chatid`). Empty turns the help desk off: customers are pointed to the support email. |
+| `TELEGRAM_HELPDESK_ALERTS_TOPIC_ID` | Backend, Worker | `message_thread_id` of the «Оплаты» topic (`/chatid` inside it). With both ids set every owner alert goes to that topic instead of `TELEGRAM_OWNER_CHAT_ID`. |
+| `ORDER_ABANDONED_ALERT_MINUTES` | Backend, Worker | Minutes before an unpaid order is reported once as «⏳ Заказ не оплачен»; default 60, `0` turns it off, at most 720. Only orders aged N to 2N minutes at scan time are looked at: older unpaid orders are never reported, those inside the window are, even if created before the deployment. The first worker pass after the deployment may also send up to 50 «🧾 Новый заказ» for unpaid orders of the previous 24 hours. |
+| `NEXT_PUBLIC_SUPPORT_BOT_USERNAME` | Frontend (build) | Support bot username for site links; empty means `lucynails_bot`. |
 
 
 ### Current remote staging preparation

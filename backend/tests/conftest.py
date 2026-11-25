@@ -147,6 +147,7 @@ async def db() -> AsyncGenerator[AsyncSession, None]:
         await session.execute(
             text(
                 "TRUNCATE TABLE ad_comments, ad_calendar_entries, ad_tasks, ad_files, ad_materials, ad_campaigns, "
+                "helpdesk_messages, helpdesk_threads, telegram_updates, "
                 "runtime_settings, telegram_link_tokens, student_tag_assignments, student_tags, student_notes, "
                 "auth_sessions, mfa_credentials, audit_logs, "
                 "user_role_assignments, role_permissions, permissions, roles, "

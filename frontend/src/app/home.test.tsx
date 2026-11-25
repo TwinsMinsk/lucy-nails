@@ -68,6 +68,21 @@ it("binds the canonical CMS course to displayed price access and checkout", asyn
     expect(getPublishedCourses).not.toHaveBeenCalled()
 })
 
+it("points payment questions to the support bot in the pricing section", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_BOT_USERNAME", "")
+    vi.mocked(getLandingContent).mockResolvedValue({ available: true, course: { id: "canonical", title: "Canonical", price_self: 7200, access_days: 45, lessons_count: 2, total_duration: 3600 }, hero: { ...landingCourse, instructorImageUrl: null }, modules: [], gallery: [] })
+    vi.mocked(getPublicCourseModules).mockResolvedValue([])
+    const { container } = render(await Home())
+    const support = screen.getByRole("link", { name: "Напишите в поддержку в Telegram" })
+    expect(support).toHaveAttribute("href", "https://t.me/lucynails_bot")
+    expect(support).toHaveAttribute("rel", "noopener noreferrer")
+    expect(container.querySelector("#pricing")?.contains(support)).toBe(true)
+    const email = screen.getByRole("link", { name: "Luci4ek@gmail.com" })
+    expect(email).toHaveAttribute("href", "mailto:Luci4ek@gmail.com")
+    expect(container.querySelector("#pricing")?.contains(email)).toBe(true)
+    vi.unstubAllEnvs()
+})
+
 it("does not display fabricated pricing or permit checkout with no publication", async () => {
     vi.mocked(getLandingContent).mockResolvedValue({ available: true, course: null, hero: { ...landingCourse, instructorImageUrl: null }, modules: [], gallery: [] })
     vi.mocked(getPublishedCourses).mockResolvedValue({ courses: [], total: 0 })

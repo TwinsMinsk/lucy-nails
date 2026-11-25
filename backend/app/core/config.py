@@ -13,12 +13,15 @@ from pathlib import Path
 import re
 from urllib.parse import urlparse
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/app/core/config.py -> backend = parents[2], repo root = parents[3]
 _BACKEND_DIR = Path(__file__).resolve().parents[2]
 _REPO_ROOT = _BACKEND_DIR.parent
+
+# Telegram accepts 1-256 characters of this set as a webhook secret_token.
+TELEGRAM_WEBHOOK_SECRET_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,256}")
 
 
 # Closed list of ENVIRONMENT values. "test" is used by the load-test seed
@@ -164,6 +167,18 @@ class Settings(BaseSettings):
     TELEGRAM_SUPPORT_GROUP_INVITE: str = ""
     TELEGRAM_SUPPORT_GROUP_ID: int | None = None
     TELEGRAM_OWNER_CHAT_ID: int | None = None
+    # Shared secret Telegram sends in X-Telegram-Bot-Api-Secret-Token with every
+    # webhook update. Empty disables POST /api/telegram/webhook (404).
+    TELEGRAM_WEBHOOK_SECRET: str = ""
+    # Private forum supergroup where operators answer customers (one topic per
+    # customer). Empty turns the help desk off.
+    TELEGRAM_HELPDESK_CHAT_ID: int | None = None
+    # Topic «Оплаты» in that group; with both ids set, owner alerts go there.
+    TELEGRAM_HELPDESK_ALERTS_TOPIC_ID: int | None = None
+    # A pending order without payment after this many minutes is reported once;
+    # 0 turns the alert off. Only orders aged N to 2N minutes at scan time are looked
+    # at, so the older backlog is never reported (younger ones may predate a deploy).
+    ORDER_ABANDONED_ALERT_MINUTES: int = Field(default=60, ge=0, le=720)
     LIFECYCLE_SCAN_SECONDS: int = 300
     
     # === Frontend ===
@@ -348,6 +363,26 @@ class Settings(BaseSettings):
             errors.append("Telegram bot token and username are required in production")
         if self.TELEGRAM_OWNER_CHAT_ID is None:
             errors.append("TELEGRAM_OWNER_CHAT_ID is required for production alerts")
+        webhook_secret_valid = bool(TELEGRAM_WEBHOOK_SECRET_PATTERN.fullmatch(self.TELEGRAM_WEBHOOK_SECRET))
+        if self.TELEGRAM_HELPDESK_CHAT_ID is not None:
+            if not webhook_secret_valid:
+                errors.append(
+                    "TELEGRAM_WEBHOOK_SECRET (32-256 characters of A-Z a-z 0-9 _ -) is "
+                    "required when TELEGRAM_HELPDESK_CHAT_ID is set"
+                )
+            if self.TELEGRAM_HELPDESK_CHAT_ID >= 0:
+                errors.append("TELEGRAM_HELPDESK_CHAT_ID must be a negative supergroup id")
+        elif self.TELEGRAM_WEBHOOK_SECRET and not webhook_secret_valid:
+            errors.append(
+                "TELEGRAM_WEBHOOK_SECRET must be 32-256 characters of A-Z a-z 0-9 _ -"
+            )
+        if (
+            self.TELEGRAM_HELPDESK_ALERTS_TOPIC_ID is not None
+            and self.TELEGRAM_HELPDESK_CHAT_ID is None
+        ):
+            errors.append(
+                "TELEGRAM_HELPDESK_ALERTS_TOPIC_ID requires TELEGRAM_HELPDESK_CHAT_ID"
+            )
 
         if errors:
             raise ValueError("; ".join(errors))

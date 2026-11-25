@@ -1,6 +1,7 @@
 # False positives: test-only fixture secrets and a localStorage key name.
 a95d891998282d5780e3d7d703928c1a11e18fb6:backend/tests/test_production_hardening.py:generic-api-key:15
 2543e62f0a38969142a7682fe913ff0a46317070:frontend/src/lib/attribution.ts:generic-api-key:1
+1dd227eaa987f55aa88c3cf0155c644dd33126d2:backend/tests/test_telegram_helpdesk.py:generic-api-key:867
 
 # Exact reviewed historical Kinescope expired/truncated documentation examples.
 b63204b9d986ed53b2ade85509c8c0eab07fac0e:Docs/integrations/KINESCOPE_API.md:generic-api-key:663

@@ -1,51 +1,54 @@
 # bot
 
 **Parent context:** `../AGENTS.md`
-**Generated:** 2026-07-06 · **Updated:** 2026-10-30
+**Generated:** 2026-07-06 · **Updated:** 2026-11-25
 
 ## Purpose
-Отдельный Telegram-бот на библиотеке `python-telegram-bot` (не aiogram) для привязки Telegram-аккаунта студента к аккаунту на сайте через deep link с одноразовым токеном. Это **самостоятельный процесс**, не роутер FastAPI и не запускается вместе с `uvicorn` — свой entry point (`main.py`), свой запуск (`python -m app.bot.main`, процесс `bot` в `backend/Procfile`; локально `scripts/run_bot.ps1` из корня репозитория), long polling.
+Telegram-бот школы: привязка Telegram к аккаунту сайта (`/start <token>`) и бот поддержки (диалог клиента с операторами в группе с темами). Вся обработка обновлений — один сервис [`app/services/telegram_helpdesk_service.py`](../services/telegram_helpdesk_service.py) (`process_update(db, update_dict)`), у него два транспорта:
 
-Бот обрабатывает только входящий `/start`. Исходящие уведомления и управление участниками группы поддержки отправляет не он, а outbox-воркер (`app/services/outbox_service.py`) через Telegram HTTP API с тем же `TELEGRAM_BOT_TOKEN`.
+- **production** — вебхук `POST /api/telegram/webhook` ([`app/api/telegram_webhook.py`](../api/telegram_webhook.py)); отдельный процесс бота не нужен, вебхук включает [`backend/scripts/telegram_webhook.py`](../../scripts/telegram_webhook.py) `set`;
+- **локальная разработка** — этот каталог: long polling на `python-telegram-bot` (`python -m app.bot.main`, процесс `bot` в `backend/Procfile`, `scripts/run_bot.ps1`). Polling работает, только пока у бота нет вебхука.
+
+Уведомления о доступе и алерты владельцу отправляет не бот, а outbox-воркер (`app/services/outbox_service.py`) через Telegram HTTP API с тем же `TELEGRAM_BOT_TOKEN`.
 
 ## Key Files
 | File | Description |
 |------|-------------|
-| `main.py` | Точка входа: проверяет `settings.TELEGRAM_BOT_TOKEN` (иначе логирует ошибку и выходит без исключения), строит `ApplicationBuilder().token(...).build()`, регистрирует `CommandHandler("start", start)`, запускает `application.run_polling()`. Вручную добавляет `backend/` в `sys.path` (`sys.path.append(...)`), чтобы работал и запуск как скрипта. При `InvalidToken` пишет сообщение без токена и выходит с кодом 1; логгер `httpx` держится на WARNING, потому что на INFO он пишет URL с токеном. |
-| `handlers/start.py` | Хендлер команды `/start`. Без аргументов — приветствие. С аргументом (`context.args[0]`) — трактует его как одноразовый токен deep link, шлёт промежуточное сообщение «⏳ Проверяю данные...», вызывает `BotAuthService.link_account`, затем редактирует то же сообщение результатом (`edit_message_text`). |
+| `main.py` | Точка входа polling: проверяет `settings.TELEGRAM_BOT_TOKEN` (иначе логирует ошибку и выходит без исключения), строит `ApplicationBuilder().token(...).build()`, регистрирует `TypeHandler(Update, handle_update)` для всех обновлений и `run_polling(allowed_updates=ALLOWED_UPDATES)`. Вручную добавляет `backend/` в `sys.path`. При `InvalidToken` пишет сообщение без токена и выходит с кодом 1; логгер `httpx` держится на WARNING, потому что на INFO он пишет URL с токеном. |
+| `handlers/updates.py` | `handle_update`: `update.to_dict()` → `process_update` в своей сессии `async_session_maker()`. `HelpdeskTransientError` только логируется (getUpdates уже сдвинул offset). |
 | `handlers/__init__.py` | Пустой файл-маркер пакета. |
-| `services/auth.py` | `BotAuthService.link_account(token, telegram_user)` — вся логика привязки аккаунта. |
+| `services/auth.py` | `BotAuthService.link_account(token, telegram_user)` — вся логика привязки аккаунта; вызывается из `telegram_helpdesk_service` для `/start <token>` в обоих транспортах. |
 | `services/__init__.py` | Пустой файл-маркер пакета. |
 
 ## For AI Agents
 
 ### Working In This Directory
-- Токен выпускает `POST /api/telegram/link` (`app/api/telegram.py`): случайный `secrets.token_urlsafe(32)` с TTL 15 минут, в БД хранится только SHA-256 в `TelegramLinkToken.token_hash`, прежние неиспользованные токены пользователя удаляются. Это не JWT — `BotAuthService.link_account` ищет строку по хешу и `JWT_SECRET_KEY` не использует. Ссылка: `https://t.me/<TELEGRAM_BOT_USERNAME>?start=<token>`.
-- Логика линковки: блокирует `User` и затем токен (`with_for_update`, повторное чтение с `populate_existing`), отказывает, если токен не найден, уже использован или истёк; если email не подтверждён и пользователь не admin; если `telegram_id` уже привязан к **другому** пользователю; если у пользователя уже привязан другой Telegram. Иначе записывает `telegram_id`/`telegram_username`, ставит `used_at` и делает commit. Порядок блокировок не менять.
-- После привязки, при активном entitlement с тарифом `support` и заданном `TELEGRAM_SUPPORT_GROUP_INVITE`, добавляет к ответу ссылку на чат поддержки.
-- Сессия БД открывается напрямую через `async_session_maker()` (не через `Depends(get_db)`, т.к. это не FastAPI-контекст) — при добавлении новых операций в боте следуй этому же паттерну и не забывай `commit`/`rollback` вручную.
-- Ошибки логируются через `logger.exception`, пользователь получает нейтральный текст. Токен и его хеш не логировать.
-- Новые команды добавляются как хендлеры в `handlers/` и регистрируются в `main.py` через `application.add_handler(CommandHandler(...))`.
+- Новую логику бота добавлять в `telegram_helpdesk_service.py`, а не в хендлеры PTB: иначе вебхук и polling разойдутся.
+- **Исключение из правила outbox.** Пересылка сообщений клиент ↔ тема операторов, подтверждения клиенту и ответы на команды — живой диалог, поэтому сервис зовёт Bot API напрямую через `outbox_service.call_telegram_api` (маскировка токена, таймаут 10 с, `TelegramApiError` с `status_code`/`description`/`transient`). Неудачная пересылка ответа оператора сообщается в теме, неудачная пересылка сообщения клиента — клиенту; временная ошибка (`transient`) даёт 503 и повторную доставку. Алерты владельцу по-прежнему только через outbox.
+- Токен выпускает `POST /api/telegram/link` (`app/api/telegram.py`): случайный `secrets.token_urlsafe(32)` (43 символа) с TTL 15 минут, в БД хранится только SHA-256 в `TelegramLinkToken.token_hash`. Ссылка: `https://t.me/<TELEGRAM_BOT_USERNAME>?start=<token>`. Параметр `o_<43 символа>` — подписанная ссылка на заказ (`app/services/support_links.py`), а не токен привязки; 43-символьный токен, случайно начавшийся с `o_`, по-прежнему идёт в привязку.
+- Логика привязки (`services/auth.py`): блокирует `User` и затем токен (`with_for_update`, повторное чтение с `populate_existing`), отказывает, если токен не найден, уже использован или истёк; если email не подтверждён и пользователь не admin; если `telegram_id` уже привязан к **другому** пользователю; если у пользователя уже привязан другой Telegram. Иначе записывает `telegram_id`/`telegram_username`, ставит `used_at` и делает commit. Порядок блокировок не менять. Тексты ответов не менять.
+- После привязки, при активном entitlement с тарифом `support` и заданном `TELEGRAM_SUPPORT_GROUP_INVITE`, добавляет к ответу ссылку на чат поддержки старого тарифа (не путать с группой операторов `TELEGRAM_HELPDESK_CHAT_ID`).
+- Сессия БД в `services/auth.py` открывается напрямую через `async_session_maker()` и сама коммитит.
+- Ошибки логируются через `logger.exception`, пользователь получает нейтральный текст. Токен, его хеш, тексты сообщений и email клиентов не логировать.
 
 ### Testing Requirements
-Отдельного тестового файла нет: `BotAuthService` проверяется в `backend/tests/test_telegram_notifications.py` (`test_telegram_link_is_one_time_and_connects_account`) и `backend/tests/test_email_ownership.py`; `backend/tests/conftest.py` подменяет `async_session_maker` в `app.bot.services.auth`. Хендлеры и `main.py` тестами не покрыты, проверка вручную:
+`backend/tests/test_telegram_helpdesk.py` — вебхук (секрет, размер тела, идемпотентность, 503), `/start` во всех вариантах, пересылка в обе стороны, команды, флуд-лимит, карточка клиента; Bot API подменяется на уровне httpx в `outbox_service`. `BotAuthService` — в `test_telegram_notifications.py` и `test_email_ownership.py`; `conftest.py` подменяет `async_session_maker` в `app.bot.services.auth`. Запуск polling с неверным токеном — `test_telegram_token_redaction.py`. Вручную:
 ```powershell
 .\scripts\run_bot.ps1
 ```
-(требует `TELEGRAM_BOT_TOKEN` в корневом `.env` или `backend/.env`; активирует `venv`, выставляет `PYTHONPATH`, запускает `python app/bot/main.py`).
+(требует `TELEGRAM_BOT_TOKEN` тестового бота без вебхука в корневом `.env` или `backend/.env`).
 
 ### Common Patterns
-- `TelegramUser` (из `telegram`) используется только для чтения (`user.id`, `user.first_name`, `user.username`) — не путать с ORM `app.models.user.User`.
-- Асинхронные хендлеры `python-telegram-bot`: `async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE)`.
-- Статические методы в сервисах бота (`BotAuthService` — все методы `@staticmethod`), в отличие от `app/services/*`, где сервисы чаще модуль-функции или классы с DI сессии.
+- Обновления — сырые dict Bot API (`update.to_dict()` в polling), а не объекты PTB: сервис не зависит от транспорта.
+- Статические методы в `BotAuthService`; хелпдеск — модуль функций.
 
 ## Dependencies
 
 ### Internal
-`app.core.config.settings` (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_SUPPORT_GROUP_INVITE`), `app.core.database.async_session_maker`, `app.models.user.User`, `app.models.telegram_link.TelegramLinkToken`, `app.models.entitlement.Entitlement`.
+`app.services.telegram_helpdesk_service`, `app.core.config.settings` (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_SUPPORT_GROUP_INVITE`), `app.core.database.async_session_maker`, `app.models.user.User`, `app.models.telegram_link.TelegramLinkToken`, `app.models.entitlement.Entitlement`.
 
 ### External
-`python-telegram-bot` (`telegram`, `telegram.ext`), `sqlalchemy` (async `select`).
+`python-telegram-bot` (только polling-транспорт и тип `telegram.User`), `sqlalchemy` (async `select`).
 
 ## Manual Notes
 

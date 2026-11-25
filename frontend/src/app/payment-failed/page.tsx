@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, XCircle } from "lucide-react";
 
+import { PaymentSupportNote } from "@/components/support/PaymentSupportNote";
 import { Button } from "@/components/ui/button";
 
 // Prodamus sends buyers here (cabinet "Fail URL"); payment links have no per-link fail URL.
@@ -55,18 +56,8 @@ export default function PaymentFailedPage() {
           </Button>
         </div>
 
-        <p className="text-sm text-text-secondary">
-          Вопросы по оплате? Напишите в{" "}
-          <a
-            href="https://t.me/lucysmirnova_nails"
-            className="text-primary underline underline-offset-4 hover:no-underline"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Telegram
-          </a>
-          .
-        </p>
+        {/* Prodamus does not tell this page which order failed: plain link to the bot */}
+        <PaymentSupportNote />
       </div>
     </div>
   );

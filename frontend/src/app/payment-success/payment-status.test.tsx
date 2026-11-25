@@ -17,11 +17,33 @@ beforeEach(() => {
     fetchMock.mockReset()
     vi.mocked(sendYandexGoal).mockReset()
     vi.stubGlobal("fetch", fetchMock)
+    vi.stubEnv("NEXT_PUBLIC_SUPPORT_BOT_USERNAME", "")
 })
 afterEach(() => {
     cleanup()
     vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
     vi.useRealTimers()
+})
+
+const supportLink = () => screen.getByRole("link", { name: "Напишите в поддержку в Telegram" })
+
+it("links to the support bot with the order the status endpoint signed", async () => {
+    fetchMock.mockResolvedValueOnce(json(200, { status: "pending", support_start: "o_signedOrderRef-123" }))
+    render(<PaymentStatus />)
+    await act(async () => {})
+    expect(supportLink()).toHaveAttribute("href", "https://t.me/lucynails_bot?start=o_signedOrderRef-123")
+    expect(supportLink()).toHaveAttribute("target", "_blank")
+    expect(supportLink()).toHaveAttribute("rel", "noopener noreferrer")
+})
+
+it("links to the support bot without an order when the order is unknown", async () => {
+    fetchMock.mockResolvedValueOnce(json(404))
+    const { container } = render(<PaymentStatus />)
+    await act(async () => {})
+    expect(supportLink()).toHaveAttribute("href", "https://t.me/lucynails_bot")
+    expect(container.querySelector('a[href*="lucysmirnova_nails"]')).toBeNull()
+    expect(screen.getByRole("link", { name: "Luci4ek@gmail.com" })).toHaveAttribute("href", "mailto:Luci4ek@gmail.com")
 })
 
 it("keeps checking through a temporary server error and confirms the payment", async () => {

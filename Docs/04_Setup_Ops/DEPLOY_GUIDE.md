@@ -94,8 +94,13 @@ git push -u origin main
 | `TELEGRAM_BOT_USERNAME` | Username production bot |
 | `TELEGRAM_OWNER_CHAT_ID` | Обязательный канал operational alerts |
 | `TELEGRAM_SUPPORT_GROUP_INVITE`| Ссылка support-тарифа |
+| `TELEGRAM_WEBHOOK_SECRET` | Бот поддержки: секрет вебхука (32+ символа `A-Z a-z 0-9 _ -`), см. [`TELEGRAM_HELPDESK.md`](TELEGRAM_HELPDESK.md) |
+| `TELEGRAM_HELPDESK_CHAT_ID` | Бот поддержки: id группы операторов (отрицательный); пусто — поддержка выключена |
+| `TELEGRAM_HELPDESK_ALERTS_TOPIC_ID` | Бот поддержки: id темы «Оплаты»; вместе с id группы алерты идут туда |
+| `ORDER_ABANDONED_ALERT_MINUTES` | Через сколько минут неоплаченный заказ попадает в алерт (по умолчанию 60, `0` — выключено) |
 | `NEXT_PUBLIC_SITE_URL` | `https://<твое-frontend-домен>.up.railway.app` (появится после деплоя фронта) |
 | `NEXT_PUBLIC_API_URL` | `https://<твой-backend-домен>.up.railway.app/api` |
+| `NEXT_PUBLIC_SUPPORT_BOT_USERNAME` | Username бота поддержки без `@` для ссылок на сайте; пусто — `lucynails_bot` |
 
 > **Важно:** Переменные, начинающиеся с `NEXT_PUBLIC_...`, нужно добавить **ТАКЖЕ** и в сервис **frontend**! Frontend собирается (Build) с этими переменными, поэтому они должны быть доступны на этапе сборки.
 

@@ -47,6 +47,9 @@
 | **Уведомления и аналитика** | |
 | `test_outbox.py` | Повторы и доставка outbox, Telegram-группа и устаревшие команды, claim пакета, воркер `app/workers/outbox.py`, `format_rub`. |
 | `test_telegram_notifications.py` | Привязка Telegram одноразовой ссылкой, `LifecycleService.schedule`, сводка владельцу по `dead_letter`. |
+| `test_telegram_helpdesk.py` | Бот поддержки через вебхук: секрет (нет, неверный, верный, выключен), 413, битые updates, cookie без CSRF, двойная доставка, 503 и повтор, `/start` (без аргумента, подписанный и подделанный заказ, токен привязки), тема создаётся один раз, ответ оператора, недоставка, чужая группа, General и «Оплаты», `/close`, `/block`, флуд-лимит, email текстом ничего не раскрывает, карточка клиента, подпись `o_…`, production-проверки секрета вебхука, скрипт `scripts/telegram_webhook.py` в подпроцессе. Bot API подменяется фикстурой `telegram` на уровне `outbox_service.httpx`. |
+| `test_owner_alerts.py` | Маршрутизация алертов (чат владельца или тема «Оплаты», старые строки без темы), «🧾 Новый заказ» из всех трёх точек оформления, «⏳ Заказ не оплачен» (один раз, не для оплаченных, старых и повторно оплаченных), «🔑 Аккаунт активирован», email заказа и email формы в алерте об отказе. |
+| `test_support_contact.py` | Ссылка «напишите нам в Telegram» в письме ведёт на бота `TELEGRAM_BOT_USERNAME`, без него — на прежний контакт. |
 | `test_telegram_token_redaction.py` | Токен бота не попадает в исключения, `DeliveryAttempt.error`, `last_error` и логи; запуск бота с неверным токеном; скрипт `scripts/ops/redact_telegram_tokens.py`. Запросы подменяются через `httpx.MockTransport`. |
 | `test_environment_casing.py` | `ENVIRONMENT` с другим регистром и пробелами работает как обычное значение: `Settings`, `demo_mode` в ссылке Prodamus, режим production в Kinescope. |
 | `test_email_service.py` | SMTP-транспорт и STARTTLS. |

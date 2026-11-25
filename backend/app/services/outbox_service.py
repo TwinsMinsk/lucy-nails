@@ -3,6 +3,7 @@
 import re
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 import httpx
@@ -60,7 +61,29 @@ class TelegramApiError(RuntimeError):
 
     The request URL contains the bot token, so httpx exceptions, whose text and
     attributes carry that URL, must not leave _telegram_request.
+
+    ``status_code`` is the HTTP status (None when Telegram was not reached),
+    ``description`` Telegram's own redacted explanation. ``transient`` marks a
+    failure a later retry can fix: network trouble, 429 or a server error.
+    ``uncertain`` marks a failure after the request may already have reached
+    Telegram (a read timeout, a dropped connection, an unreadable answer): the
+    call may have taken effect, so repeating it blindly can duplicate it.
     """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        description: str = "",
+        transient: bool = False,
+        uncertain: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.description = description
+        self.transient = transient
+        self.uncertain = uncertain
 
 
 def redact_telegram_token(text: str) -> str:
@@ -69,7 +92,18 @@ def redact_telegram_token(text: str) -> str:
     return TELEGRAM_TOKEN_PATTERN.sub(REDACTED, text)
 
 
-async def _telegram_request(method: str, payload: dict) -> None:
+def _telegram_description(response: httpx.Response) -> str:
+    try:
+        body = response.json()
+    except ValueError:
+        return ""
+    if not isinstance(body, dict):
+        return ""
+    return redact_telegram_token(str(body.get("description") or ""))[:200]
+
+
+async def _telegram_request(method: str, payload: dict) -> Any:
+    """Call the Bot API and return its ``result``; raise TelegramApiError otherwise."""
     if not settings.TELEGRAM_BOT_TOKEN:
         raise RuntimeError("Telegram bot is not configured")
     url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/{method}"
@@ -77,19 +111,52 @@ async def _telegram_request(method: str, payload: dict) -> None:
         async with httpx.AsyncClient(timeout=TELEGRAM_API_TIMEOUT_SECONDS) as client:
             response = await client.post(url, json=payload)
     except httpx.HTTPError as exc:
+        # Nothing was sent when the connection was never made; otherwise
+        # Telegram may have acted on the request before the answer was lost.
+        not_sent = isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout))
         raise TelegramApiError(
-            f"Telegram API {method} failed: {type(exc).__name__}"
+            f"Telegram API {method} failed: {type(exc).__name__}",
+            transient=True,
+            uncertain=not not_sent,
         ) from None
     if not response.is_success:
+        description = _telegram_description(response)
         raise TelegramApiError(
             f"Telegram API {method} failed with HTTP {response.status_code}"
+            + (f": {description}" if description else ""),
+            status_code=response.status_code,
+            description=description,
+            transient=response.status_code == 429 or response.status_code >= 500,
         )
-    if not response.json().get("ok"):
+    try:
+        body = response.json()
+    except ValueError:
+        raise TelegramApiError(
+            f"Telegram API {method} returned an unreadable response",
+            transient=True,
+            uncertain=True,
+        ) from None
+    if not isinstance(body, dict) or not body.get("ok"):
         raise TelegramApiError(f"Telegram API rejected {method}")
+    return body.get("result")
 
 
-async def send_telegram_message(recipient: str, text: str) -> None:
-    await _telegram_request("sendMessage", {"chat_id": recipient, "text": text})
+async def call_telegram_api(method: str, payload: dict) -> Any:
+    """Bot API call with the outbox's token redaction and timeout.
+
+    Only the live help desk conversation (app/services/telegram_helpdesk_service.py)
+    calls Telegram outside the outbox; everything else enqueues.
+    """
+    return await _telegram_request(method, payload)
+
+
+async def send_telegram_message(
+    recipient: str, text: str, *, message_thread_id: int | None = None
+) -> None:
+    payload: dict[str, Any] = {"chat_id": recipient, "text": text}
+    if message_thread_id is not None:
+        payload["message_thread_id"] = message_thread_id
+    await _telegram_request("sendMessage", payload)
 
 
 async def remove_telegram_group_member(group_id: str, user_id: str) -> None:
@@ -133,6 +200,27 @@ def format_rub(kopecks: int) -> str:
     return f"{amount} ₽"
 
 
+def owner_alert_target() -> tuple[str, int | None] | None:
+    """Chat (and forum topic) that receives owner alerts, or None when off.
+
+    With the help desk group and its «Оплаты» topic configured, alerts go there
+    so both operators see them; otherwise to the owner's own chat.
+    """
+    if not settings.TELEGRAM_BOT_TOKEN:
+        return None
+    if (
+        settings.TELEGRAM_HELPDESK_CHAT_ID is not None
+        and settings.TELEGRAM_HELPDESK_ALERTS_TOPIC_ID is not None
+    ):
+        return (
+            str(settings.TELEGRAM_HELPDESK_CHAT_ID),
+            settings.TELEGRAM_HELPDESK_ALERTS_TOPIC_ID,
+        )
+    if settings.TELEGRAM_OWNER_CHAT_ID is not None:
+        return str(settings.TELEGRAM_OWNER_CHAT_ID), None
+    return None
+
+
 async def enqueue_owner_telegram_alert(
     db: AsyncSession,
     *,
@@ -142,22 +230,28 @@ async def enqueue_owner_telegram_alert(
 ) -> bool:
     """Queue a Telegram message to the shop owner once per dedupe key.
 
-    Does nothing unless both the bot token and the owner chat id are set.
-    The message joins the caller's transaction (transactional outbox).
+    Does nothing unless the bot token and an alert chat (see
+    owner_alert_target) are set. The message joins the caller's transaction
+    (transactional outbox).
     """
-    if not settings.TELEGRAM_BOT_TOKEN or settings.TELEGRAM_OWNER_CHAT_ID is None:
+    target = owner_alert_target()
+    if target is None:
         return False
     existing = await db.scalar(
         select(OutboxMessage.id).where(OutboxMessage.dedupe_key == dedupe_key)
     )
     if existing is not None:
         return False
+    recipient, topic_id = target
+    payload: dict[str, Any] = {"text": text}
+    if topic_id is not None:
+        payload["message_thread_id"] = topic_id
     enqueue_outbox_message(
         db,
         kind=kind,
         channel="telegram",
-        recipient=str(settings.TELEGRAM_OWNER_CHAT_ID),
-        payload={"text": text},
+        recipient=recipient,
+        payload=payload,
         dedupe_key=dedupe_key,
     )
     return True
@@ -174,7 +268,16 @@ async def deliver_outbox_message(message: OutboxMessage) -> None:
                 str(message.payload["group_id"]), message.recipient
             )
         else:
-            await send_telegram_message(message.recipient, message.payload["text"])
+            topic_id = message.payload.get("message_thread_id")
+            if topic_id is not None:
+                await send_telegram_message(
+                    message.recipient,
+                    message.payload["text"],
+                    message_thread_id=int(topic_id),
+                )
+            else:
+                # Rows queued before alerts could target a topic carry text only.
+                await send_telegram_message(message.recipient, message.payload["text"])
         return
     if message.channel != "email":
         raise ValueError(f"Unsupported outbox channel: {message.channel}")

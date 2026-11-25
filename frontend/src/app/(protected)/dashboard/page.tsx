@@ -27,8 +27,10 @@ import {
     UserResponse,
 } from "@/lib/api";
 import { parseApiDate } from "@/lib/format";
+import { supportBotUrl } from "@/lib/support";
 import { toast } from "sonner";
 import { CertificateClaimDialog } from "@/components/certificate/CertificateClaimDialog";
+import { TelegramIcon } from "@/components/support/TelegramIcon";
 
 export default function DashboardPage() {
     const router = useRouter();
@@ -117,9 +119,17 @@ export default function DashboardPage() {
                     </p>
                 </div>
                 {/* Secondary on purpose: the main action here is "continue" on the course card */}
-                <Button asChild variant="outline" className="rounded-full bg-white/70">
-                    <Link href="/#program">Программа курса</Link>
-                </Button>
+                <div className="flex flex-wrap gap-3">
+                    <Button asChild variant="outline" className="rounded-full bg-white/70">
+                        <Link href="/#program">Программа курса</Link>
+                    </Button>
+                    <Button asChild variant="outline" className="rounded-full bg-white/70">
+                        <a href={supportBotUrl()} target="_blank" rel="noopener noreferrer">
+                            <TelegramIcon className="w-4 h-4 mr-2 text-[#229ED9]" />
+                            Поддержка
+                        </a>
+                    </Button>
+                </div>
             </div>
 
             {/* Courses Grid */}

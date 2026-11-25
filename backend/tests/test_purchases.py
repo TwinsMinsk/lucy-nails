@@ -26,6 +26,7 @@ from app.models.payment_event import PaymentEvent
 from app.models.purchase import Purchase
 from app.models.user import User
 from app.services.prodamus_service import _make_signature
+from app.services.support_links import issue_order_start_param
 from conftest import mfa_login
 
 
@@ -1080,6 +1081,7 @@ async def test_checkout_order_keeps_original_price_when_course_price_changes(
         "course_id": str(course.id),
         "course_title": course.title,
         "tariff": "self",
+        "support_start": issue_order_start_param(uuid.UUID(order_id.split("|", 1)[1])),
     }
 
     purchase_result = await db.execute(

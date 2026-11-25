@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { captureCheckoutAttribution } from "@/lib/attribution";
 import { sendYandexGoal } from "@/lib/analytics-client";
 import { CONSENT_VERSION } from "@/lib/legal";
+import { PaymentSupportNote } from "@/components/support/PaymentSupportNote";
 
 const CONSENT_ID = "guest-checkout-consent";
 
@@ -178,6 +179,7 @@ export function GuestCheckoutDialog({
                 Войти
               </Link>
             </p>
+            <PaymentSupportNote />
           </DialogFooter>
         </form>
       </DialogContent>

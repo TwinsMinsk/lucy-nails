@@ -59,6 +59,8 @@ from app.services.payment_event_service import (
 )
 from app.services.analytics_service import AnalyticsService
 from app.services.analytics_service import clean_attribution_value
+from app.services.owner_alerts import enqueue_order_created_alert, payment_alert_email_lines
+from app.services.support_links import issue_order_start_param
 
 logger = logging.getLogger(__name__)
 
@@ -264,6 +266,7 @@ async def _create_checkout_order(
     )
     db.add(order)
     await db.flush()
+    await enqueue_order_created_alert(db, order)
     event_values = {
         "anonymous_id": attribution.get("anonymous_id"),
         "user_id": user_id,
@@ -961,14 +964,26 @@ async def _record_rejected_webhook(
             stable_payload, ensure_ascii=False, sort_keys=True, default=str, separators=(",", ":")
         )
     identity_hash = hashlib.sha256(identity.encode("utf-8")).hexdigest()
-    email = str(payload.get("customer_email") or "").strip()[:320] or "—"
+    form_email = str(payload.get("customer_email") or "").strip()[:320]
     order_reference = event_data.order_reference or event_data.external_event_id or "—"
+    # Support is asked about the checkout email's account, so a notification
+    # that names an order shows that email (legacy callbacks swap the fields).
+    matched_order_id = (
+        order_id
+        or _parse_persisted_order_id(event_data.order_reference or "")
+        or _parse_persisted_order_id(event_data.external_event_id or "")
+    )
+    if matched_order_id is not None:
+        # Name the order itself, not whatever field the provider put it in.
+        order_reference = f"order|{matched_order_id}"
+    async with async_session_maker() as db:
+        email_lines = await payment_alert_email_lines(db, matched_order_id, form_email)
     if processing_status == "ignored":
         # Declines and cancellations: no money was taken.
         text = (
             f"ℹ️ Неуспешная попытка оплаты (статус: {event_data.event_type})\n"
-            f"Email: {email}\n"
-            f"Заказ: {order_reference}"
+            + email_lines
+            + f"Заказ: {order_reference}"
         )
     else:
         amount = (
@@ -979,8 +994,8 @@ async def _record_rejected_webhook(
         text = (
             f"⚠️ Платёж не обработан: {error_code}\n"
             f"Сумма: {amount}\n"
-            f"Email: {email}\n"
-            f"Заказ: {order_reference}"
+            + email_lines
+            + f"Заказ: {order_reference}"
         )
     async with async_session_maker() as db:
         try:
@@ -1362,4 +1377,6 @@ async def get_order_status(order_id: str, token: str) -> dict[str, str | int | f
         "course_id": str(order.course_id),
         "course_title": order.course_title,
         "tariff": order.tariff,
+        # Signed deep link parameter for the support bot (t.me/<bot>?start=...).
+        "support_start": issue_order_start_param(order.id),
     }

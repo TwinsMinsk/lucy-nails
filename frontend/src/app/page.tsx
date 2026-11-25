@@ -17,6 +17,7 @@ import {
 import Image from "next/image";
 import { NailsGallery } from "@/components/landing/NailsGallery";
 import { PaymentButton } from "@/components/landing/PaymentButton";
+import { PaymentSupportNote } from "@/components/support/PaymentSupportNote";
 import { GoalOnView } from "@/components/analytics/GoalOnView";
 import { ProgramSection } from "@/components/landing/ProgramSection";
 import { getPublicCourseModules, type ModuleResponse } from "@/lib/api";
@@ -256,6 +257,7 @@ export default async function Home() {
                     оферты
                   </Link>
                 </p>
+                <PaymentSupportNote className="pt-1" />
               </CardFooter>
             </Card>
           </div>
