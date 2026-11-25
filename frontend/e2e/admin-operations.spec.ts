@@ -16,7 +16,7 @@ async function staff(page: Page, role: string, permissions: string[]) {
         else if (path === "/api/admin/reconciliation") body = { stale_pending_orders: 0, successful_purchases_without_active_entitlement: 0, processed_payment_errors: 0, dead_letter_notifications: 0 }
         else if (path === "/api/admin/orders") {
             const offset = Number(url.searchParams.get("offset") || 0)
-            body = { items: [{ id: `order-${offset}`, customer_email: `buyer-${offset}@example.test`, course_title: "Course", tariff: "self", amount_kopecks: 10000, currency: "RUB", access_days: 30, status: "paid", purchase_id: "purchase-1", created_at: "2026-10-07T22:30:00" }], total: 201, limit: 50, offset }
+            body = { items: [{ id: `order-${offset}`, customer_email: `buyer-${offset}@example.test`, course_title: "Course", tariff: "self", amount_kopecks: 10000, currency: "RUB", access_days: 30, status: "paid", order_status: "paid", purchase_id: "purchase-1", refunded_kopecks: 0, refundable_kopecks: 10000, created_at: "2026-10-07T22:30:00" }], total: 201, limit: 50, offset }
         } else if (path === "/api/admin/notifications") {
             const offset = Number(url.searchParams.get("offset") || 0)
             body = { items: [{ id: `message-${offset}`, kind: "activation", channel: "email", recipient: `target-${offset}@example.test`, status: "dead_letter", attempts: 5, max_attempts: 5, created_at: "2026-10-07T22:30:00" }], total: 201, limit: 50, offset }
@@ -94,4 +94,16 @@ test("students and access retain search and pages past 200 on reload", async ({ 
     await page.reload()
     await expect(page.getByPlaceholder("Email ученика")).toHaveValue("student")
     await expect(page.getByText("student-150@example.test", { exact: true })).toBeVisible()
+})
+
+test("orders filter by derived status, including expired", async ({ page }) => {
+    const requests = await staff(page, "analyst", ["analytics.read", "commerce.read", "audit.read"])
+    await page.goto("/admin/orders")
+    await expect(page.getByText("Заказы (201)")).toBeVisible()
+    await page.getByLabel("Статус заказа").selectOption("expired")
+    await expect(page).toHaveURL(/status=expired/)
+    await expect.poll(() => requests.some((url) => url.pathname === "/api/admin/orders" && url.searchParams.get("status") === "expired")).toBe(true)
+    for (const option of ["partially_refunded", "refunded", "failed"]) {
+        await expect(page.getByLabel("Статус заказа").locator(`option[value="${option}"]`)).toHaveCount(1)
+    }
 })
