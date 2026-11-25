@@ -367,7 +367,7 @@ function HeroSection({ courseId }: { courseId: string }) {
                 </div>
 
                 <div>
-                    <Label>Статистика hero (3 карточки)</Label>
+                    <Label>Статистика hero (обычно 3 карточки)</Label>
                     <div className="space-y-2">
                         {(hero.landing_hero_stats ?? []).map((stat, idx) => (
                             <div key={idx} className="grid grid-cols-2 gap-2">
@@ -395,7 +395,7 @@ function HeroSection({ courseId }: { courseId: string }) {
                 </div>
 
                 <div>
-                    <Label>Преимущества (3 пункта)</Label>
+                    <Label>Преимущества (обычно 3 пункта)</Label>
                     <div className="space-y-2">
                         {(hero.landing_benefits ?? []).map((benefit, idx) => (
                             <Input
@@ -465,14 +465,15 @@ function HeroSection({ courseId }: { courseId: string }) {
     );
 }
 
+// Keep every stored item (the API accepts more than three); only pad short lists.
 function padHeroStats(items: HeroStat[]): HeroStat[] {
-    const result = items.slice(0, HERO_STAT_SLOTS);
+    const result = [...items];
     while (result.length < HERO_STAT_SLOTS) result.push({ label: "", value: "" });
     return result;
 }
 
 function padBenefits(items: string[]): string[] {
-    const result = items.slice(0, BENEFIT_SLOTS);
+    const result = [...items];
     while (result.length < BENEFIT_SLOTS) result.push("");
     return result;
 }

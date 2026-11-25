@@ -71,3 +71,25 @@ describe("landing hero editor", () => {
         await waitFor(() => expect(api.adminUpdateCourseLandingHero).toHaveBeenCalledWith("course-b", { landing_subtitle: "Bravo new subtitle" }))
     })
 })
+
+describe("landing hero arrays", () => {
+    it("keeps all four stored benefits when the first one is edited", async () => {
+        vi.mocked(api.adminGetCourseLandingHero).mockResolvedValue({
+            ...hero("Alpha"),
+            landing_benefits: ["one", "two", "three", "four"],
+            landing_hero_stats: [
+                { label: "a", value: "1" }, { label: "b", value: "2" },
+                { label: "c", value: "3" }, { label: "d", value: "4" },
+            ],
+        })
+        render(<Landing />)
+        expect(await screen.findByDisplayValue("four")).toBeVisible()
+        expect(screen.getByDisplayValue("d")).toBeVisible()
+        fireEvent.change(screen.getByDisplayValue("one"), { target: { value: "one edited" } })
+        fireEvent.click(screen.getByRole("button", { name: /Сохранить hero/ }))
+        await waitFor(() => expect(api.adminUpdateCourseLandingHero).toHaveBeenCalledTimes(1))
+        expect(api.adminUpdateCourseLandingHero).toHaveBeenCalledWith("course-a", {
+            landing_benefits: ["one edited", "two", "three", "four"],
+        })
+    })
+})
