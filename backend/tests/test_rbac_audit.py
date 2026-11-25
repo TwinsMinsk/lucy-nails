@@ -13,6 +13,7 @@ from app.models.audit_log import AuditLog
 from app.models.course import Course
 from app.models.rbac import Permission, Role, UserRoleAssignment
 from app.models.user import User
+from app.services.session_service import SessionService
 from app.core.database import get_db
 from app.main import app
 from conftest import TestingSessionLocal, mfa_headers
@@ -374,3 +375,123 @@ async def test_concurrent_role_edits_by_one_admin_do_not_deadlock(
     )
 
     assert [getattr(item, "status_code", item) for item in responses] == [200, 200]
+
+
+async def _owner_and_admin(client: AsyncClient, db: AsyncSession):
+    """Owner A and admin B, both able to manage the team, B signed in with MFA."""
+    manage_roles = Permission(name="system.manage_roles", description="Manage roles")
+    owner_role = Role(name="owner", description="Owner", is_system=True)
+    admin_role = Role(name="admin", description="Admin", is_system=True)
+    owner_role.permissions = [manage_roles]
+    admin_role.permissions = [manage_roles]
+    now = datetime.utcnow()
+    owner = User(email="owner-a@example.com", password_hash=get_password_hash("ownerpass1"), role="admin", email_verified_at=now)
+    admin = User(email="admin-b@example.com", password_hash=get_password_hash("adminpass1"), role="admin", email_verified_at=now)
+    db.add_all([owner_role, admin_role, owner, admin])
+    await db.flush()
+    db.add_all(
+        [
+            UserRoleAssignment(user_id=owner.id, role_id=owner_role.id),
+            UserRoleAssignment(user_id=admin.id, role_id=admin_role.id),
+        ]
+    )
+    await db.commit()
+    admin_headers = await mfa_headers(client, db, admin, "adminpass1")
+    return owner, admin, admin_role, admin_headers
+
+
+async def _queued_self_promotion(admin_id, headers, change_while_queued):
+    """Queue admin B's self-promotion on the role lock, apply a change committed
+    by the lock holder meanwhile, and return B's response."""
+
+    async def isolated_db():
+        async with TestingSessionLocal() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = isolated_db
+
+    async def self_promote():
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as other:
+            return await other.put(
+                f"/api/admin/team/users/{admin_id}/roles",
+                json={"roles": ["admin", "owner"], "reason": "Promote myself"},
+                headers=headers,
+            )
+
+    async def waiting_for_role_lock() -> int:
+        async with TestingSessionLocal() as probe:
+            return await probe.scalar(
+                text("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted")
+            )
+
+    async with TestingSessionLocal() as holder:
+        # The holder plays owner A's role change: it takes the role lock first.
+        await holder.execute(select(func.pg_advisory_xact_lock(ROLE_CHANGE_LOCK_KEY)))
+        request = asyncio.create_task(self_promote())
+        for _ in range(200):
+            if await waiting_for_role_lock() >= 1:
+                break
+            await asyncio.sleep(0.02)
+        else:
+            raise AssertionError("B's request did not reach the role-change lock")
+        await change_while_queued(holder)
+        await holder.commit()  # commits A's change and releases the lock
+
+    return await asyncio.wait_for(request, timeout=30)
+
+
+async def _role_names(user_id) -> list[str]:
+    async with TestingSessionLocal() as session:
+        return sorted(
+            (
+                await session.execute(
+                    select(Role.name)
+                    .join(UserRoleAssignment, UserRoleAssignment.role_id == Role.id)
+                    .where(UserRoleAssignment.user_id == user_id)
+                )
+            ).scalars()
+        )
+
+
+@pytest.mark.asyncio
+async def test_demoted_admin_waiting_on_role_lock_cannot_promote_itself(
+    client: AsyncClient, db: AsyncSession
+):
+    owner, admin, admin_role, headers = await _owner_and_admin(client, db)
+    admin_id = admin.id
+
+    async def owner_removes_admin_role(holder: AsyncSession) -> None:
+        # What PUT /team/users/{B}/roles with roles=[] by owner A writes.
+        await holder.execute(delete(UserRoleAssignment).where(UserRoleAssignment.user_id == admin_id))
+        demoted = await holder.get(User, admin_id)
+        demoted.role = "student"
+        demoted.token_version += 1
+        await SessionService.revoke_all(holder, admin_id)
+
+    response = await _queued_self_promotion(admin_id, headers, owner_removes_admin_role)
+
+    assert response.status_code == 401, response.text
+    assert await _role_names(admin_id) == []
+    async with TestingSessionLocal() as session:
+        stored = await session.get(User, admin_id)
+        assert stored.role == "student"
+
+
+@pytest.mark.asyncio
+async def test_admin_losing_manage_roles_while_queued_gets_403(
+    client: AsyncClient, db: AsyncSession
+):
+    owner, admin, admin_role, headers = await _owner_and_admin(client, db)
+    admin_id, admin_role_id = admin.id, admin_role.id
+
+    async def permission_removed_from_role(holder: AsyncSession) -> None:
+        await holder.execute(
+            text("DELETE FROM role_permissions WHERE role_id = :role_id"),
+            {"role_id": admin_role_id},
+        )
+
+    response = await _queued_self_promotion(admin_id, headers, permission_removed_from_role)
+
+    assert response.status_code == 403, response.text
+    assert response.json()["detail"] == "Permission required: system.manage_roles"
+    assert await _role_names(admin_id) == ["admin"]

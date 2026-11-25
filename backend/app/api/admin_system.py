@@ -95,6 +95,60 @@ TEAM_MANAGEMENT_PERMISSION = "system.manage_roles"
 ROLE_CHANGE_LOCK_KEY = 761941013
 
 
+async def recheck_caller_under_role_lock(
+    db: AsyncSession,
+    request: Request,
+    caller_id: UUID,
+) -> User:
+    """Re-read the caller after the role-change lock is held.
+
+    Role changes are serialized by the lock, so a check made here sees every
+    change committed while this request waited: the caller must still hold
+    system.manage_roles, still have the token version and the session the
+    request was authenticated with, and that session must still satisfy MFA.
+    """
+    from app.services.mfa_service import MfaService
+
+    session_gone = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    caller = await db.scalar(
+        select(User)
+        .where(User.id == caller_id)
+        .execution_options(populate_existing=True)
+    )
+    if caller is None or caller.token_version != getattr(
+        request.state, "auth_token_version", None
+    ):
+        raise session_gone
+    session_id = getattr(request.state, "auth_session_id", None)
+    if session_id is not None:
+        auth_session = await db.scalar(
+            select(AuthSession)
+            .where(
+                AuthSession.id == session_id,
+                AuthSession.user_id == caller.id,
+                AuthSession.revoked_at.is_(None),
+                AuthSession.expires_at > datetime.utcnow(),
+            )
+            .execution_options(populate_existing=True)
+        )
+        if auth_session is None or not await MfaService.session_satisfies_mfa(
+            db, caller, auth_session
+        ):
+            raise session_gone
+    elif await MfaService.requires_mfa(db, caller.id):
+        raise session_gone
+    if not await user_has_permission(db, caller, TEAM_MANAGEMENT_PERMISSION):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Permission required: {TEAM_MANAGEMENT_PERMISSION}",
+        )
+    return caller
+
+
 async def ensure_team_keeps_a_manager(db: AsyncSession, target_id: UUID) -> None:
     """Refuse a change that leaves no account able to manage the team.
 
@@ -251,6 +305,9 @@ async def update_team_roles(
     # the lock and need KEY SHARE on the acting admin's row (assigned_by_id,
     # audit actor) while another holds that row FOR UPDATE and waits here.
     await db.execute(select(func.pg_advisory_xact_lock(ROLE_CHANGE_LOCK_KEY)))
+    # The permission dependency ran before this request queued on the lock;
+    # a role change committed meanwhile may have demoted the caller.
+    owner = await recheck_caller_under_role_lock(db, request, owner.id)
     target = await db.scalar(
         select(User)
         .where(User.id == user_id)
