@@ -290,7 +290,10 @@ def test_exact_cors_origins_and_hosts_still_pass():
         CORS_ORIGINS="https://lucysmirnova.ru,https://www.lucysmirnova.ru",
         TRUSTED_HOSTS="api.lucysmirnova.ru,lucysmirnova.ru",
     )
-    assert config.CORS_ORIGINS.startswith("https://lucysmirnova.ru")
+    origins = [entry.strip() for entry in config.CORS_ORIGINS.split(",")]
+    hosts = [entry.strip() for entry in config.TRUSTED_HOSTS.split(",")]
+    assert origins == ["https://lucysmirnova.ru", "https://www.lucysmirnova.ru"]
+    assert hosts == ["api.lucysmirnova.ru", "lucysmirnova.ru"]
 
 
 @pytest.mark.parametrize("proxies", ["10.1.2.3/8", "87.232.67.155/24", "2001:db8::1/32"])
