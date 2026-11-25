@@ -1,4 +1,4 @@
-"""Audit log reader view without pii.read (audit B6)."""
+"""Audit log reader view without pii.read (audit B6, review 1)."""
 
 from datetime import datetime
 
@@ -10,7 +10,7 @@ from app.core.security import get_password_hash
 from app.models.audit_log import AuditLog
 from app.models.rbac import Permission, Role, UserRoleAssignment
 from app.models.user import User
-from app.services.audit_service import REDACTED_FREE_TEXT, mask_personal_data
+from app.services.audit_service import REDACTED_FREE_TEXT
 
 
 async def _login(client: AsyncClient, email: str, password: str) -> dict[str, str]:
@@ -40,41 +40,54 @@ async def _staff(
     return await _login(client, email, "staffpass1")
 
 
+SERVER_CORRELATION = "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+
+
 async def _seed_audit(db: AsyncSession) -> None:
     db.add_all(
         [
             AuditLog(
                 action="refund.create",
                 object_type="refund_request",
-                object_id="r1",
+                object_id="8d0e1f2a-3b4c-4d5e-8f90-123456789abc",
                 reason="Клиентка anna.k@example.com просит вернуть, тел. +7 (999) 123-45-67",
-                new_value={"purchase_id": "8d0e1f2a-3b4c-4d5e-8f90-123456789abc", "amount_kopecks": 500000},
-                correlation_id="c1",
+                new_value={"purchase_id": "8d0e1f2a-3b4c-4d5e-8f90-123456789abc", "amount_kopecks": 500000, "status": "requested"},
+                correlation_id=SERVER_CORRELATION,
             ),
             AuditLog(
                 action="refund.status.update",
                 object_type="refund_request",
-                object_id="r1",
+                object_id="8d0e1f2a-3b4c-4d5e-8f90-123456789abc",
                 reason="Возврат подтверждён в кабинете",
                 old_value={"status": "submitted", "note": None},
                 new_value={"status": "processed", "provider_reference": "P-1", "note": "Позвонила 89991234567"},
-                correlation_id="c2",
+                correlation_id="89991234567",
             ),
             AuditLog(
-                action="student.note.create",
-                object_type="student_note",
-                object_id="n1",
-                reason="Записала: ученица болеет",
-                new_value={"user_id": "11111111-2222-3333-4444-555555555555"},
-                correlation_id="c3",
+                action="entitlement.suspend",
+                object_type="entitlement",
+                object_id="11111111-2222-3333-4444-555555555555",
+                reason="Иванова Мария Петровна, больничный до конца месяца",
+                old_value={"status": "active", "expires_at": "2026-12-25T10:00:00"},
+                new_value={"status": "suspended", "expires_at": "2026-12-25T10:00:00"},
+                correlation_id="crm-suspend",
             ),
             AuditLog(
                 action="entitlement.grant",
                 object_type="entitlement",
-                object_id="e1",
-                reason="Подарок для maria@example.com",
-                new_value={"user_email": "maria@example.com", "expires_at": "2026-12-25T10:00:00"},
-                correlation_id="c4",
+                object_id="11111111-2222-3333-4444-555555555556",
+                reason="Подарок для мария@пример.рф",
+                new_value={"user_email": "мария@пример.рф", "access_days": 30, "tariff": "self", "expires_at": "2026-12-25T10:00:00.123456"},
+                correlation_id=SERVER_CORRELATION,
+            ),
+            AuditLog(
+                action="student.tags.update",
+                object_type="user",
+                object_id="11111111-2222-3333-4444-555555555557",
+                reason="Сегментация",
+                old_value={"tags": ["vip"]},
+                new_value={"tags": ["болеет", "vip"]},
+                correlation_id=SERVER_CORRELATION,
             ),
         ]
     )
@@ -82,7 +95,7 @@ async def _seed_audit(db: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
-async def test_audit_reader_without_pii_read_sees_masked_records(
+async def test_audit_reader_without_pii_read_sees_only_structured_fields(
     client: AsyncClient, db: AsyncSession
 ):
     headers = await _staff(client, db, "audit-analyst@example.com", ["audit.read"])
@@ -92,28 +105,39 @@ async def test_audit_reader_without_pii_read_sees_masked_records(
     assert response.status_code == 200, response.text
     by_action = {item["action"]: item for item in response.json()}
 
+    # Free-text suspension reason with a full name and a medical detail.
+    suspend = by_action["entitlement.suspend"]
+    assert suspend["reason"] == REDACTED_FREE_TEXT
+    assert suspend["new_value"] == {"status": "suspended", "expires_at": "2026-12-25T10:00:00"}
+    assert suspend["object_id"] == "11111111-2222-3333-4444-555555555555"
+
+    # A Cyrillic-domain email in the reason and in a value.
+    grant = by_action["entitlement.grant"]
+    assert grant["reason"] == REDACTED_FREE_TEXT
+    assert grant["new_value"]["user_email"] == REDACTED_FREE_TEXT
+    assert grant["new_value"]["access_days"] == 30
+    assert grant["new_value"]["tariff"] == "self"
+    assert grant["new_value"]["expires_at"] == "2026-12-25T10:00:00.123456"
+
     refund = by_action["refund.create"]
     assert refund["reason"] == REDACTED_FREE_TEXT
-    assert refund["new_value"]["purchase_id"] == "8d0e1f2a-3b4c-4d5e-8f90-123456789abc"
     assert refund["new_value"]["amount_kopecks"] == 500000
+    assert refund["new_value"]["purchase_id"] == "8d0e1f2a-3b4c-4d5e-8f90-123456789abc"
 
     status_update = by_action["refund.status.update"]
-    assert status_update["reason"] == REDACTED_FREE_TEXT
     assert status_update["new_value"]["note"] == REDACTED_FREE_TEXT
+    assert status_update["new_value"]["provider_reference"] == REDACTED_FREE_TEXT
     assert status_update["new_value"]["status"] == "processed"
-    assert status_update["old_value"]["note"] is None
+    # A digits-only client correlation id is not shown; a server one is.
+    assert status_update["correlation_id"] == REDACTED_FREE_TEXT
+    assert suspend["correlation_id"] == REDACTED_FREE_TEXT
+    assert refund["correlation_id"] == SERVER_CORRELATION
 
-    note = by_action["student.note.create"]
-    assert note["reason"] == REDACTED_FREE_TEXT
-    assert note["new_value"]["user_id"] == "11111111-2222-3333-4444-555555555555"
+    tags = by_action["student.tags.update"]
+    assert tags["new_value"]["tags"] == REDACTED_FREE_TEXT
 
-    grant = by_action["entitlement.grant"]
-    assert grant["reason"] == "Подарок для m***@example.com"
-    assert grant["new_value"]["user_email"] == "m***@example.com"
-    assert grant["new_value"]["expires_at"] == "2026-12-25T10:00:00"
-    assert "maria@example.com" not in response.text
-    assert "anna.k@example.com" not in response.text
-    assert "123-45-67" not in response.text
+    for secret in ("мария@пример.рф", "Иванова", "больничный", "89991234567", "anna.k@example.com", "болеет", "123-45-67"):
+        assert secret not in response.text
 
 
 @pytest.mark.asyncio
@@ -127,16 +151,6 @@ async def test_audit_reader_with_pii_read_sees_full_records(
     assert response.status_code == 200, response.text
     by_action = {item["action"]: item for item in response.json()}
     assert "anna.k@example.com" in by_action["refund.create"]["reason"]
-    assert by_action["refund.status.update"]["new_value"]["note"] == "Позвонила 89991234567"
-    assert by_action["entitlement.grant"]["new_value"]["user_email"] == "maria@example.com"
-
-
-def test_mask_personal_data_leaves_identifiers_and_numbers_alone():
-    assert mask_personal_data("+7 999 123-45-67") == "***4567"
-    assert mask_personal_data("call 8(999)1234567 now") == "call ***4567 now"
-    assert mask_personal_data("12345678-1234-1234-1234-123456789012") == (
-        "12345678-1234-1234-1234-123456789012"
-    )
-    assert mask_personal_data("2026-11-25T10:00:00") == "2026-11-25T10:00:00"
-    assert mask_personal_data("Order 500000") == "Order 500000"
-    assert mask_personal_data({"a": ["x@y.ru", 5]}) == {"a": ["x***@y.ru", 5]}
+    assert by_action["entitlement.suspend"]["reason"].startswith("Иванова")
+    assert by_action["entitlement.grant"]["new_value"]["user_email"] == "мария@пример.рф"
+    assert by_action["refund.status.update"]["correlation_id"] == "89991234567"
