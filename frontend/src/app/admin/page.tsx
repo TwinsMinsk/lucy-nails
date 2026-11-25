@@ -1,18 +1,20 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useContext, useEffect, useState } from "react"
 import { AlertTriangle, Banknote, KeyRound, Loader2, MailWarning, ReceiptText, Users } from "lucide-react"
 import { toast } from "sonner"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { adminGetDashboard, adminGetReconciliation, AdminDashboardResponse, AdminReconciliation } from "@/lib/api"
-import { useAdminPermission } from "@/app/admin/permissions"
+import { AdminPermissionsContext, useAdminPermission } from "@/app/admin/permissions"
+import { canOpenAdminRoute } from "@/lib/admin-access"
 
 const money = (kopecks: number) => `${(kopecks / 100).toLocaleString("ru-RU")} ₽`
 
 export default function AdminDashboardPage() {
     const canReadCommerce = useAdminPermission("commerce.read")
+    const granted = useContext(AdminPermissionsContext)
     const [data, setData] = useState<AdminDashboardResponse | null>(null)
     const [reconciliation, setReconciliation] = useState<AdminReconciliation | null>(null)
     const [loading, setLoading] = useState(true)
@@ -54,8 +56,8 @@ export default function AdminDashboardPage() {
                 <p className="mt-1 text-muted-foreground">Продажи, доступы и проблемы, требующие внимания прямо сейчас.</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {cards.map((item) => (
-                    <Link href={item.href} key={item.title}>
+                {cards.map((item) => {
+                    const card = (
                         <Card className="h-full transition-colors hover:border-primary/50">
                             <CardHeader className="flex flex-row items-center justify-between pb-2">
                                 <CardTitle className="text-sm text-muted-foreground">{item.title}</CardTitle>
@@ -63,8 +65,12 @@ export default function AdminDashboardPage() {
                             </CardHeader>
                             <CardContent><p className="text-3xl font-bold">{item.value}</p></CardContent>
                         </Card>
-                    </Link>
-                ))}
+                    )
+                    // Link only to sections this user may open.
+                    return canOpenAdminRoute(granted, item.href)
+                        ? <Link href={item.href} key={item.title}>{card}</Link>
+                        : <div key={item.title}>{card}</div>
+                })}
             </div>
             <div className="grid gap-5 lg:grid-cols-2">
                 <Card>

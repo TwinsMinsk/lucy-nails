@@ -31,20 +31,21 @@ import {
 } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { AdminPermissionsContext } from "@/app/admin/permissions"
+import { ADMIN_ROUTE_PERMISSIONS, hasAnyPermission } from "@/lib/admin-access"
 
 const adminNavItems = [
-    { href: "/admin", icon: LayoutDashboard, label: "Главная", permissions: ["analytics.read"] },
-    { href: "/admin/users", icon: Users, label: "Ученики", permissions: ["users.read"] },
-    { href: "/admin/access", icon: KeyRound, label: "Доступы", permissions: ["users.read"] },
-    { href: "/admin/orders", icon: ReceiptText, label: "Заказы и оплаты", permissions: ["commerce.read"] },
-    { href: "/admin/courses", icon: BookOpen, label: "Курсы и контент", permissions: ["content.manage"] },
-    { href: "/admin/landing", icon: ImageIcon, label: "Лендинг и медиа", permissions: ["content.manage"] },
-    { href: "/admin/ads", icon: Megaphone, label: "Реклама", permissions: ["ads.read"] },
-    { href: "/admin/certificates", icon: GraduationCap, label: "Сертификаты", permissions: ["certificates.manage"] },
-    { href: "/admin/notifications", icon: Send, label: "Уведомления", permissions: ["notifications.manage"] },
-    { href: "/admin/analytics", icon: BarChart3, label: "Аналитика", permissions: ["analytics.read"] },
-    { href: "/admin/system", icon: ShieldCheck, label: "Аудит и система", permissions: ["audit.read", "system.manage_roles"] },
-]
+    { href: "/admin", icon: LayoutDashboard, label: "Главная" },
+    { href: "/admin/users", icon: Users, label: "Ученики" },
+    { href: "/admin/access", icon: KeyRound, label: "Доступы" },
+    { href: "/admin/orders", icon: ReceiptText, label: "Заказы и оплаты" },
+    { href: "/admin/courses", icon: BookOpen, label: "Курсы и контент" },
+    { href: "/admin/landing", icon: ImageIcon, label: "Лендинг и медиа" },
+    { href: "/admin/ads", icon: Megaphone, label: "Реклама" },
+    { href: "/admin/certificates", icon: GraduationCap, label: "Сертификаты" },
+    { href: "/admin/notifications", icon: Send, label: "Уведомления" },
+    { href: "/admin/analytics", icon: BarChart3, label: "Аналитика" },
+    { href: "/admin/system", icon: ShieldCheck, label: "Аудит и система" },
+].map((item) => ({ ...item, permissions: ADMIN_ROUTE_PERMISSIONS[item.href] }))
 
 const adminRouteRules = [
     ...adminNavItems.filter((item) => item.href !== "/admin").map((item) => ({
@@ -61,9 +62,7 @@ const adminRouteRules = [
     },
 ]
 
-const hasAnyPermission = (granted: string[], required: string[]) => (
-    granted.includes("*") || required.some((permission) => granted.includes(permission))
-)
+
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<UserResponse | null>(null)
