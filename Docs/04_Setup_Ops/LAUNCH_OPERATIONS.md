@@ -40,7 +40,7 @@ Setup steps, commands and how to switch it off: [`TELEGRAM_HELPDESK.md`](TELEGRA
 | `TELEGRAM_WEBHOOK_SECRET` | Backend, Worker | Random 32-256 characters of `A-Z a-z 0-9 _ -`. Telegram sends it in `X-Telegram-Bot-Api-Secret-Token`; empty means `POST /api/telegram/webhook` answers 404. Required in production when `TELEGRAM_HELPDESK_CHAT_ID` is set. Secret: keep out of git and logs. |
 | `TELEGRAM_HELPDESK_CHAT_ID` | Backend, Worker | Negative id of the operators' private forum supergroup (`/chatid`). Empty turns the help desk off: customers are pointed to the support email. |
 | `TELEGRAM_HELPDESK_ALERTS_TOPIC_ID` | Backend, Worker | `message_thread_id` of the «Оплаты» topic (`/chatid` inside it). With both ids set every owner alert goes to that topic instead of `TELEGRAM_OWNER_CHAT_ID`. |
-| `ORDER_ABANDONED_ALERT_MINUTES` | Backend, Worker | Minutes before an unpaid order is reported once as «⏳ Заказ не оплачен»; default 60, `0` turns it off, at most 720. Orders older than a day are never reported. |
+| `ORDER_ABANDONED_ALERT_MINUTES` | Backend, Worker | Minutes before an unpaid order is reported once as «⏳ Заказ не оплачен»; default 60, `0` turns it off, at most 720. Only orders aged N to 2N minutes are looked at, so the backlog of older unpaid orders, including those from before the deployment, is never reported. |
 | `NEXT_PUBLIC_SUPPORT_BOT_USERNAME` | Frontend (build) | Support bot username for site links; empty means `lucynails_bot`. |
 
 

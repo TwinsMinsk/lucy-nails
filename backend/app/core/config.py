@@ -176,7 +176,8 @@ class Settings(BaseSettings):
     # Topic «Оплаты» in that group; with both ids set, owner alerts go there.
     TELEGRAM_HELPDESK_ALERTS_TOPIC_ID: int | None = None
     # A pending order without payment after this many minutes is reported once;
-    # 0 turns the alert off. Orders older than a day are never reported.
+    # 0 turns the alert off. Only orders aged N to 2N minutes are looked at, so the
+    # backlog from before the feature ran is never reported.
     ORDER_ABANDONED_ALERT_MINUTES: int = Field(default=60, ge=0, le=720)
     LIFECYCLE_SCAN_SECONDS: int = 300
     
