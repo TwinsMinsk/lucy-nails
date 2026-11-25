@@ -144,3 +144,14 @@ describe("orders page load errors", () => {
         expect(await screen.findByText("buyer@example.test")).toBeVisible()
     })
 })
+describe("extension only on the latest access", () => {
+    it("offers «Продлить» only on the student's latest access for the course", async () => {
+        vi.mocked(api.adminGetEntitlements).mockResolvedValue({ items: [
+            { ...entitlement, id: "ent-old", is_latest_access: false, expires_at: "2026-11-30T00:00:00" },
+            { ...entitlement, id: "ent-new", is_latest_access: true, expires_at: "2026-12-30T00:00:00" },
+        ], total: 2, limit: 50, offset: 0 })
+        withPermissions(["users.read", "access.manage"], <Access />)
+        expect(await screen.findAllByRole("button", { name: "Продлить" })).toHaveLength(1)
+        expect(screen.getByText("Продлевается последний доступ")).toBeVisible()
+    })
+})

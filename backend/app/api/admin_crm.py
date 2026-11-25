@@ -387,6 +387,9 @@ class EntitlementListItem(BaseModel):
     expires_at: datetime
     reason: str | None
     revoked_at: datetime | None
+    # False when the student has another active access to the course that ends
+    # later: only the latest access may be extended.
+    is_latest_access: bool = True
 
 
 class EntitlementPage(BaseModel):
@@ -1067,6 +1070,19 @@ async def list_entitlements(
         ),
         else_=Entitlement.status,
     )
+    later = aliased(Entitlement)
+    is_latest = ~(
+        select(later.id)
+        .where(
+            later.user_id == Entitlement.user_id,
+            later.course_id == Entitlement.course_id,
+            later.id != Entitlement.id,
+            later.status == "active",
+            later.expires_at > Entitlement.expires_at,
+        )
+        .correlate(Entitlement)
+        .exists()
+    )
     conditions = []
     if search:
         conditions.append(User.email.ilike(f"%{search.strip()}%"))
@@ -1083,7 +1099,7 @@ async def list_entitlements(
     )
     rows = (
         await db.execute(
-            select(Entitlement, User.email, Course.title, effective_status.label("effective_status"))
+            select(Entitlement, User.email, Course.title, effective_status.label("effective_status"), is_latest.label("is_latest"))
             .join(User, User.id == Entitlement.user_id)
             .join(Course, Course.id == Entitlement.course_id)
             .where(*conditions)
@@ -1107,8 +1123,9 @@ async def list_entitlements(
                 expires_at=item.expires_at,
                 reason=item.reason,
                 revoked_at=item.revoked_at,
+                is_latest_access=bool(latest),
             )
-            for item, email, course_title, row_status in rows
+            for item, email, course_title, row_status, latest in rows
         ],
         total=int(total or 0),
         limit=limit,

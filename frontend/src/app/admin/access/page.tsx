@@ -199,7 +199,8 @@ function Access() {
                                         <td className="p-3">{date(item.expires_at)}</td>
                                         <td className="p-3">
                                             <div className="flex justify-end gap-2">
-                                                {canManageAccess && item.status !== "revoked" && <Button size="sm" variant="outline" disabled={busy} onClick={() => openExtend(item)}>Продлить</Button>}
+                                                {canManageAccess && item.status !== "revoked" && item.is_latest_access !== false && <Button size="sm" variant="outline" disabled={busy} onClick={() => openExtend(item)}>Продлить</Button>}
+                                                {canManageAccess && item.status !== "revoked" && item.is_latest_access === false && <span className="self-center text-xs text-muted-foreground">Продлевается последний доступ</span>}
                                                 {canManageAccess && item.status === "active" && <Button size="sm" variant="outline" disabled={busy} onClick={() => void changeState(item, "suspend")}>Приостановить</Button>}
                                                 {canManageAccess && item.status === "suspended" && <Button size="sm" variant="outline" disabled={busy} onClick={() => void changeState(item, "restore")}>Восстановить</Button>}
                                                 {canManageAccess && ["active", "suspended"].includes(item.status) && <Button size="sm" variant="destructive" disabled={busy} onClick={() => openRevoke(item)}>Отозвать</Button>}
@@ -229,7 +230,7 @@ function Access() {
                 <DialogContent>
                     <DialogHeader><DialogTitle>Продлить доступ</DialogTitle></DialogHeader>
                     <p className="text-sm text-muted-foreground">{extendItem?.user_email} · {extendItem?.course_title}</p>
-                    <p className="text-xs text-muted-foreground">Дни добавляются к текущему окончанию доступа ученика к курсу.</p>
+                    <p className="text-xs text-muted-foreground">Дни добавляются к окончанию этого доступа.</p>
                     <Input aria-label="Дней продления" type="number" min={1} max={3650} value={extendDays} onChange={(event) => setExtendDays(event.target.value)} />
                     <Textarea value={extendReason} onChange={(event) => setExtendReason(event.target.value)} placeholder="Причина продления (обязательно)" />
                     {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}

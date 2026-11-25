@@ -984,6 +984,8 @@ export interface AdminEntitlement {
     expires_at: string;
     reason?: string | null;
     revoked_at?: string | null;
+    /** False when a later active access to the same course exists; only the latest can be extended. */
+    is_latest_access?: boolean;
 }
 
 export interface AdminStudentDetail {

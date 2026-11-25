@@ -24,6 +24,14 @@ from app.services.support_access_service import (
 )
 
 
+class LaterAccessExistsError(Exception):
+    """The student has another active access to the course that ends later."""
+
+    def __init__(self, access_end: datetime) -> None:
+        super().__init__("A later access to this course exists")
+        self.access_end = access_end
+
+
 @dataclass(frozen=True)
 class ActiveCourseAccess:
     course: Course
@@ -337,20 +345,17 @@ class AccessService:
         await db.flush()
 
     @staticmethod
-    async def _course_access_end(
-        db: AsyncSession, entitlement: Entitlement, *, now: datetime
-    ) -> datetime:
-        """max(now, this row's expiry, latest expiry of the student's other active rows)."""
-        other_end = await db.scalar(
+    async def later_access_end(db: AsyncSession, entitlement: Entitlement) -> datetime | None:
+        """End of the student's other active access to the course that outlasts this row."""
+        return await db.scalar(
             select(func.max(Entitlement.expires_at)).where(
                 Entitlement.user_id == entitlement.user_id,
                 Entitlement.course_id == entitlement.course_id,
                 Entitlement.id != entitlement.id,
                 Entitlement.status == "active",
-                Entitlement.expires_at > now,
+                Entitlement.expires_at > entitlement.expires_at,
             )
         )
-        return max(now, entitlement.expires_at, other_end or now)
 
     @staticmethod
     async def extend_entitlement(
@@ -366,13 +371,15 @@ class AccessService:
         await AccessService._lock_for_access_change(db, entitlement)
         if entitlement.status == "revoked":
             raise ValueError("Revoked access cannot be extended")
+        # Extending a row that a later access already outlasts changes nothing the
+        # student sees; moving it past that access would detach the added days
+        # from their purchase (a refund of the later purchase would leave them).
+        # The operator must extend the latest access instead.
+        later_end = await AccessService.later_access_end(db, entitlement)
+        if later_end is not None:
+            raise LaterAccessExistsError(later_end)
         now = datetime.utcnow()
-        # Same base as renewals and manual grants: the student's current access
-        # end for the course, so extending an older row after an early renewal
-        # still moves the end the student sees.
-        entitlement.expires_at = (
-            await AccessService._course_access_end(db, entitlement, now=now)
-        ) + timedelta(days=days)
+        entitlement.expires_at = max(now, entitlement.expires_at) + timedelta(days=days)
         if entitlement.status == "expired":
             entitlement.status = "active"
             entitlement.revoked_at = None

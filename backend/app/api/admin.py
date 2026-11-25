@@ -24,9 +24,10 @@ from app.models.entitlement import Entitlement
 from app.models.order import Order
 from app.models.certificate import Certificate
 from app.schemas.auth import UserResponse
-from app.services.access_service import AccessService
+from app.services.access_service import AccessService, LaterAccessExistsError
 from app.services.audit_service import append_audit_log
 from app.services.content_audit import audit_content_event, audit_content_update, snapshot
+from app.services.email_service import format_msk_datetime
 
 
 router = APIRouter()
@@ -1094,18 +1095,28 @@ async def extend_entitlement(
     if data.idempotency_key:
         # The row lock above serializes repeats, so a committed first attempt is
         # visible here and the days are never added twice.
-        already_done = await db.scalar(
-            select(AuditLog.id).where(
+        first = await db.scalar(
+            select(AuditLog).where(
                 AuditLog.action == "entitlement.extend",
                 AuditLog.object_id == str(entitlement.id),
                 AuditLog.new_value["idempotency_key"].as_string() == data.idempotency_key,
-            ).limit(1)
+            ).order_by(AuditLog.created_at).limit(1)
         )
-        if already_done is not None:
+        if first is not None:
+            stored = first.new_value or {}
+            if stored.get("days") != data.days or (first.reason or "") != data.reason.strip():
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Этот запрос на продление уже выполнен с другими параметрами "
+                        f"({stored.get('days')} дн.). Закройте окно и откройте продление заново."
+                    ),
+                )
+            # Exact repeat: answer with the result of the first operation.
             return EntitlementActionResponse(
                 entitlement_id=entitlement.id,
-                status=entitlement.status,
-                expires_at=entitlement.expires_at,
+                status=stored["status"],
+                expires_at=datetime.fromisoformat(stored["expires_at"]),
             )
     old_value = {
         "status": entitlement.status,
@@ -1118,6 +1129,15 @@ async def extend_entitlement(
             days=data.days,
             reason=data.reason,
         )
+    except LaterAccessExistsError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "У ученика есть более поздний доступ к этому курсу — до "
+                f"{format_msk_datetime(exc.access_end)}. Продлите этот последний доступ: "
+                "продление этой записи не изменит срок, который видит ученик."
+            ),
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     append_audit_log(
