@@ -19,6 +19,12 @@ from app.schemas.auth import UserRegister, UserLogin, Token
 from app.services.outbox_service import enqueue_outbox_message
 
 
+# bcrypt hash (passlib scheme, cost 12 like get_password_hash) of a random
+# password that was discarded. Precomputed so that no request ever hashes on
+# the event loop; test_auth.py checks that its scheme and cost match.
+DUMMY_PASSWORD_HASH = "$2b$12$Ex.RaMxoreaCc1zxvXKTaevuTs5mmfM.pwVkSAgmod7snxUSavhZC"
+
+
 class AuthService:
     """Сервис для работы с аутентификацией."""
     
@@ -104,8 +110,11 @@ class AuthService:
         user = result.scalar_one_or_none()
 
         if not user:
+            # Spend the same bcrypt work as for a real account, so response
+            # time does not tell which addresses are registered.
+            await run_in_threadpool(verify_password, data.password, DUMMY_PASSWORD_HASH)
             return None
-        
+
         if not await run_in_threadpool(verify_password, data.password, user.password_hash):
             return None
         

@@ -5,15 +5,15 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, require_permission
+from app.core.dependencies import get_current_user, require_permission, user_has_permission
 from app.models.audit_log import AuditLog
 from app.models.auth_security import AuthSession
-from app.models.rbac import Role, UserRoleAssignment
+from app.models.rbac import Permission, Role, UserRoleAssignment
 from app.models.user import User
 from app.services.audit_service import append_audit_log
 from app.services.runtime_settings_service import RuntimeSettingsService
@@ -81,7 +81,7 @@ class CheckoutToggleRequest(BaseModel):
 
 async def ensure_owner_removal_preserves_owner(db: AsyncSession) -> None:
     """Serialize and validate removal of an owner assignment."""
-    await db.execute(select(func.pg_advisory_xact_lock(761941013)))
+    await db.execute(select(func.pg_advisory_xact_lock(ROLE_CHANGE_LOCK_KEY)))
     owners_count = await db.scalar(
         select(func.count(UserRoleAssignment.id))
         .join(Role, Role.id == UserRoleAssignment.role_id)
@@ -89,6 +89,43 @@ async def ensure_owner_removal_preserves_owner(db: AsyncSession) -> None:
     )
     if int(owners_count or 0) <= 1:
         raise HTTPException(status_code=422, detail="Cannot remove the last owner")
+
+
+TEAM_MANAGEMENT_PERMISSION = "system.manage_roles"
+ROLE_CHANGE_LOCK_KEY = 761941013
+
+
+async def ensure_team_keeps_a_manager(db: AsyncSession, target_id: UUID) -> None:
+    """Refuse a change that leaves no account able to manage the team.
+
+    Counts RBAC holders of system.manage_roles and legacy administrators
+    (role="admin" without any assignment, who get every permission).
+    Callers hold the role-change advisory lock.
+    """
+    holds_permission = (
+        select(UserRoleAssignment.id)
+        .join(Role, Role.id == UserRoleAssignment.role_id)
+        .join(Role.permissions)
+        .where(
+            UserRoleAssignment.user_id == User.id,
+            Permission.name == TEAM_MANAGEMENT_PERMISSION,
+        )
+        .exists()
+    )
+    has_assignment = (
+        select(UserRoleAssignment.id).where(UserRoleAssignment.user_id == User.id).exists()
+    )
+    other_managers = await db.scalar(
+        select(func.count(User.id)).where(
+            User.id != target_id,
+            or_(holds_permission, and_(User.role == "admin", ~has_assignment)),
+        )
+    )
+    if not other_managers:
+        raise HTTPException(
+            status_code=422,
+            detail="Cannot remove team management from the last account that has it",
+        )
 
 
 class CheckoutToggleResponse(BaseModel):
@@ -208,7 +245,18 @@ async def update_team_roles(
     db: AsyncSession = Depends(get_db),
     owner: User = Depends(require_permission("system.manage_roles")),
 ):
-    target = await db.get(User, user_id)
+    # Serialize every role change: the last-manager checks below compare the
+    # whole team, so two concurrent changes must not both pass them. The
+    # advisory lock comes before any row lock: otherwise one change could hold
+    # the lock and need KEY SHARE on the acting admin's row (assigned_by_id,
+    # audit actor) while another holds that row FOR UPDATE and waits here.
+    await db.execute(select(func.pg_advisory_xact_lock(ROLE_CHANGE_LOCK_KEY)))
+    target = await db.scalar(
+        select(User)
+        .where(User.id == user_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     if target is None:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -224,8 +272,32 @@ async def update_team_roles(
         .where(UserRoleAssignment.user_id == user_id)
     )
     old_names = sorted(old_result.scalars().all())
+    if set(requested_names) - set(old_names) and target.email_verified_at is None:
+        # Registration stores the chosen password before the mailbox is proven,
+        # so whoever registered this address may not be the staff member.
+        # Confirming the address sets a new password and revokes sessions.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Почта этого аккаунта не подтверждена. Роль можно назначить "
+                "после того, как сотрудник подтвердит адрес по ссылке из письма."
+            ),
+        )
     if "owner" in old_names and "owner" not in requested_names:
         await ensure_owner_removal_preserves_owner(db)
+    keeps_team_management = bool(roles) and await db.scalar(
+        select(Permission.id)
+        .join(Permission.roles)
+        .where(
+            Role.id.in_([role.id for role in roles]),
+            Permission.name == TEAM_MANAGEMENT_PERMISSION,
+        )
+        .limit(1)
+    ) is not None
+    if not keeps_team_management and await user_has_permission(
+        db, target, TEAM_MANAGEMENT_PERMISSION
+    ):
+        await ensure_team_keeps_a_manager(db, target.id)
 
     await db.execute(delete(UserRoleAssignment).where(UserRoleAssignment.user_id == user_id))
     for role in roles:
@@ -237,18 +309,20 @@ async def update_team_roles(
             )
         )
     privileged_roles = {"owner", "admin"}
-    privileged_assignment_changed = bool(
-        (set(old_names) ^ set(requested_names)) & privileged_roles
-    )
+    old_legacy_role = target.role
     target.role = (
         "admin"
         if any(role.name in privileged_roles for role in roles)
         else "student"
     )
-    if privileged_assignment_changed:
+    # Dropping the legacy role="admin" also removes the all-permission fallback.
+    assignment_changed = (
+        set(old_names) != set(requested_names) or old_legacy_role != target.role
+    )
+    if assignment_changed:
         # Permissions are read from the database on each request. Invalidate
-        # every pre-promotion token as well, otherwise an already authenticated
-        # student could exercise owner/admin powers without an MFA login.
+        # every token issued before the change, for every role, so rights are
+        # only ever exercised from a login made after the assignment.
         target.token_version = (target.token_version or 0) + 1
         await SessionService.revoke_all(db, target.id)
     append_audit_log(
@@ -260,7 +334,7 @@ async def update_team_roles(
         old_value={"roles": old_names},
         new_value={
             "roles": requested_names,
-            "reauthentication_required": privileged_assignment_changed,
+            "reauthentication_required": assignment_changed,
         },
         reason=data.reason,
         correlation_id=request.state.correlation_id,

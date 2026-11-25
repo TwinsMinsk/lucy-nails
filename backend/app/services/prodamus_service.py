@@ -220,9 +220,10 @@ class ProdamusService:
         if customer_phone:
             params["customer_phone"] = str(customer_phone).strip()
 
-        # demo_mode=1 for test payments: always outside production, and on demand
-        # in production via PRODAMUS_DEMO_MODE (for test payments on a live deploy).
-        if settings.PRODAMUS_DEMO_MODE or settings.ENVIRONMENT.lower() != "production":
+        # demo_mode=1 for test payments: in the explicitly non-production
+        # environments, or when PRODAMUS_DEMO_MODE is on (rejected at startup in
+        # production, required in staging).
+        if ProdamusService.demo_payments_allowed():
             params["demo_mode"] = "1"
 
         # The signature MUST be computed over the NESTED structure that Prodamus
@@ -241,8 +242,9 @@ class ProdamusService:
 
     @staticmethod
     def demo_payments_allowed() -> bool:
-        """Test payments are honoured outside production or when forced on."""
-        return settings.PRODAMUS_DEMO_MODE or settings.ENVIRONMENT.lower() != "production"
+        """Test payments are honoured only in a named non-production environment
+        or when forced on (the config rejects the flag in production)."""
+        return settings.PRODAMUS_DEMO_MODE or settings.is_non_production
 
     @staticmethod
     def verify_signature(

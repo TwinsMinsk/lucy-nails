@@ -14,7 +14,7 @@ from app.models.outbox import OutboxMessage
 from app.models.purchase import Purchase
 from app.models.refund import RefundRequest
 from app.models.user import User
-from app.services.auth_service import AuthService
+from conftest import mfa_headers
 
 
 @pytest.mark.asyncio
@@ -168,8 +168,7 @@ async def test_reports_use_confirmed_money_and_expose_csv(
     )
     await db.commit()
 
-    token = AuthService.create_tokens(admin.id, admin.token_version).access_token
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = await mfa_headers(client, db, admin)
     date_from = (now - timedelta(days=7)).date().isoformat()
     date_to = (now + timedelta(days=1)).date().isoformat()
 
@@ -218,7 +217,7 @@ async def test_reports_use_confirmed_money_and_expose_csv(
     assert "instagram" in csv_response.text
 
 
-async def _report_fixture(db):
+async def _report_fixture(client, db):
     now = datetime.utcnow()
     admin = User(
         email="report-regression-admin@example.com",
@@ -236,13 +235,12 @@ async def _report_fixture(db):
     )
     db.add_all([admin, student, course])
     await db.flush()
-    token = AuthService.create_tokens(admin.id, admin.token_version).access_token
-    return now, admin, student, course, {"Authorization": f"Bearer {token}"}
+    return now, admin, student, course, await mfa_headers(client, db, admin)
 
 
 @pytest.mark.asyncio
 async def test_manual_legacy_grant_is_not_money_and_legacy_payment_is(client, db):
-    now, admin, student, course, headers = await _report_fixture(db)
+    now, admin, student, course, headers = await _report_fixture(client, db)
     for payment_id, amount in [
         ("admin_grant_legacy", 90000),
         ("real-historical-payment", 10000),
@@ -280,7 +278,7 @@ async def test_manual_legacy_grant_is_not_money_and_legacy_payment_is(client, db
 async def test_sources_money_uses_payment_date_with_separate_acquisition_cohort(
     client, db
 ):
-    now, admin, student, course, headers = await _report_fixture(db)
+    now, admin, student, course, headers = await _report_fixture(client, db)
     paid_at = datetime(2026, 10, 5, 12)
     order = Order(
         user_id=student.id,
@@ -353,7 +351,7 @@ async def test_sources_money_uses_payment_date_with_separate_acquisition_cohort(
 
 @pytest.mark.asyncio
 async def test_funnel_finds_later_valid_sequence_after_orphan_cta(client, db):
-    now, admin, student, course, headers = await _report_fixture(db)
+    now, admin, student, course, headers = await _report_fixture(client, db)
     for index, name in enumerate(
         [
             "cta_click",
@@ -384,7 +382,7 @@ async def test_funnel_finds_later_valid_sequence_after_orphan_cta(client, db):
 
 @pytest.mark.asyncio
 async def test_learning_activity_reports_visit_without_progress_update(client, db):
-    now, admin, student, course, headers = await _report_fixture(db)
+    now, admin, student, course, headers = await _report_fixture(client, db)
     db.add(
         AnalyticsEvent(
             event_id="repeat-lesson-activity",
@@ -416,7 +414,7 @@ async def test_learning_activity_reports_visit_without_progress_update(client, d
     ],
 )
 async def test_sources_csv_escapes_all_user_controlled_text(client, db, hostile):
-    now, admin, student, course, headers = await _report_fixture(db)
+    now, admin, student, course, headers = await _report_fixture(client, db)
     order = Order(
         user_id=student.id,
         course_id=course.id,
@@ -463,7 +461,7 @@ async def test_sources_csv_escapes_all_user_controlled_text(client, db, hostile)
 async def test_funnel_counts_each_order_and_does_not_get_stuck_on_abandoned_checkout(
     client, db
 ):
-    now, admin, student, course, headers = await _report_fixture(db)
+    now, admin, student, course, headers = await _report_fixture(client, db)
     orders = []
     for index in range(3):
         order = Order(
@@ -514,7 +512,7 @@ async def test_funnel_counts_each_order_and_does_not_get_stuck_on_abandoned_chec
 async def test_explicit_manual_grant_and_its_refund_do_not_change_financial_reports(
     client, db
 ):
-    now, admin, student, course, headers = await _report_fixture(db)
+    now, admin, student, course, headers = await _report_fixture(client, db)
     purchase = Purchase(
         user_id=student.id,
         course_id=course.id,

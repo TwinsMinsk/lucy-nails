@@ -4,7 +4,7 @@ Admin endpoints for landing-page editor: course hero, module landing copy and ga
 
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +24,7 @@ from app.schemas.landing import (
     LandingModuleResponse,
     LandingModuleUpdate,
 )
+from app.services.content_audit import audit_content_event, audit_content_update, snapshot
 
 
 router = APIRouter()
@@ -47,6 +48,7 @@ async def get_course_landing_hero(
 async def update_course_landing_hero(
     course_id: UUID,
     data: LandingHeroUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("content.manage")),
 ) -> LandingHeroResponse:
@@ -61,6 +63,10 @@ async def update_course_landing_hero(
             stat.model_dump() if hasattr(stat, "model_dump") else stat
             for stat in update_data["landing_hero_stats"]
         ]
+    audit_content_update(
+        db, request, admin.id, object_type="course_landing", object_id=course.id,
+        entity=course, update_data=update_data,
+    )
     for key, value in update_data.items():
         setattr(course, key, value)
 
@@ -88,6 +94,7 @@ async def list_course_landing_modules(
 async def update_module_landing(
     module_id: UUID,
     data: LandingModuleUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("content.manage")),
 ) -> LandingModuleResponse:
@@ -96,6 +103,10 @@ async def update_module_landing(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Module not found")
 
     update_data = data.model_dump(exclude_unset=True)
+    audit_content_update(
+        db, request, admin.id, object_type="module_landing", object_id=module.id,
+        entity=module, update_data=update_data,
+    )
     for key, value in update_data.items():
         setattr(module, key, value)
 
@@ -120,11 +131,16 @@ async def list_gallery(
 @router.post("/gallery", response_model=GalleryItemResponse, status_code=status.HTTP_201_CREATED)
 async def create_gallery_item(
     data: GalleryItemCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("content.manage")),
 ) -> GalleryItemResponse:
     item = GalleryItem(id=uuid4(), **data.model_dump())
     db.add(item)
+    audit_content_event(
+        db, request, admin.id, action="create", object_type="gallery_item",
+        object_id=item.id, new_value=snapshot(item),
+    )
     await db.commit()
     await db.refresh(item)
     return GalleryItemResponse.model_validate(item)
@@ -133,6 +149,7 @@ async def create_gallery_item(
 @router.put("/gallery/reorder", response_model=list[GalleryItemResponse])
 async def reorder_gallery(
     items: list[GalleryReorderItem],
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("content.manage")),
 ) -> list[GalleryItemResponse]:
@@ -146,6 +163,17 @@ async def reorder_gallery(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Gallery items not found: {', '.join(missing)}",
+        )
+    moved = {
+        str(it.id): (by_id[it.id].order_index, it.order_index)
+        for it in items
+        if by_id[it.id].order_index != it.order_index
+    }
+    if moved:
+        audit_content_event(
+            db, request, admin.id, action="reorder", object_type="gallery", object_id=None,
+            old_value={"order_index": {key: old for key, (old, _) in moved.items()}},
+            new_value={"order_index": {key: new for key, (_, new) in moved.items()}},
         )
     for it in items:
         by_id[it.id].order_index = it.order_index
@@ -161,13 +189,19 @@ async def reorder_gallery(
 async def update_gallery_item(
     item_id: UUID,
     data: GalleryItemUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("content.manage")),
 ) -> GalleryItemResponse:
     item = await db.get(GalleryItem, item_id)
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Gallery item not found")
-    for key, value in data.model_dump(exclude_unset=True).items():
+    update_data = data.model_dump(exclude_unset=True)
+    audit_content_update(
+        db, request, admin.id, object_type="gallery_item", object_id=item.id,
+        entity=item, update_data=update_data,
+    )
+    for key, value in update_data.items():
         setattr(item, key, value)
     await db.commit()
     await db.refresh(item)
@@ -177,11 +211,16 @@ async def update_gallery_item(
 @router.delete("/gallery/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_gallery_item(
     item_id: UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_permission("content.manage")),
 ) -> None:
     item = await db.get(GalleryItem, item_id)
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Gallery item not found")
+    audit_content_event(
+        db, request, admin.id, action="delete", object_type="gallery_item",
+        object_id=item.id, old_value=snapshot(item),
+    )
     await db.delete(item)
     await db.commit()

@@ -10,6 +10,7 @@ from app.models.lesson import Lesson
 from app.models.module import Module
 from app.models.user import User
 from app.services.kinescope_service import kinescope_service
+from conftest import mfa_login
 
 
 async def _admin_headers(client: AsyncClient, db: AsyncSession) -> dict[str, str]:
@@ -20,10 +21,7 @@ async def _admin_headers(client: AsyncClient, db: AsyncSession) -> dict[str, str
     )
     db.add(admin)
     await db.commit()
-    response = await client.post(
-        "/api/auth/login",
-        json={"email": admin.email, "password": "content-admin-pass"},
-    )
+    response = await mfa_login(client, db, admin.email, "content-admin-pass")
     client.cookies.clear()
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 

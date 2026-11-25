@@ -45,6 +45,59 @@ _payment_event_module.async_session_maker = TestingSessionLocal
 _bot_auth_module.async_session_maker = TestingSessionLocal
 
 
+async def mfa_login(
+    client: AsyncClient,
+    db: AsyncSession,
+    email: str,
+    password: str,
+):
+    """Log in an account that needs MFA (owner/admin, legacy admin).
+
+    Enrols an enabled TOTP credential when the account has none and signs in
+    with a fresh single-use backup code, so repeated logins in one test never
+    hit TOTP replay protection.
+    """
+    import secrets
+    from datetime import datetime
+
+    from sqlalchemy import func, select
+
+    from app.models.user import User
+    from app.services.mfa_service import MfaService, _backup_hash
+
+    user = await db.scalar(select(User).where(func.lower(User.email) == email.lower()))
+    assert user is not None, email
+    credential = await MfaService.get_credential(db, user.id)
+    if credential is None or credential.enabled_at is None:
+        credential, _, _ = await MfaService.get_or_create_setup(db, user)
+        credential.enabled_at = datetime.utcnow()
+    code = secrets.token_hex(5).upper()
+    credential.backup_code_hashes = [*(credential.backup_code_hashes or []), _backup_hash(code)]
+    await db.commit()
+    return await client.post(
+        "/api/auth/login",
+        json={"email": email, "password": password, "mfa_code": code},
+    )
+
+
+async def mfa_headers(client: AsyncClient, db: AsyncSession, user, password: str | None = None) -> dict[str, str]:
+    """Bearer headers of a session obtained through the real login with MFA.
+
+    Privileged accounts are served only from such a session. Without a known
+    password the helper sets one, so fixtures may keep placeholder hashes.
+    """
+    from app.core.security import get_password_hash
+
+    if password is None:
+        password = "test-mfa-login-password"
+        user.password_hash = get_password_hash(password)
+        await db.commit()
+    response = await mfa_login(client, db, user.email, password)
+    assert response.status_code == 200, response.text
+    client.cookies.clear()
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
 @pytest.fixture(scope="session")
 def event_loop() -> Generator:
     """Create an instance of the default event loop for each test case."""

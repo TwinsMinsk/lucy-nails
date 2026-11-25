@@ -26,6 +26,7 @@ from app.models.payment_event import PaymentEvent
 from app.models.purchase import Purchase
 from app.models.user import User
 from app.services.prodamus_service import _make_signature
+from conftest import mfa_login
 
 
 async def _published_course(db: AsyncSession, title: str) -> Course:
@@ -653,10 +654,7 @@ async def test_admin_grant_creates_entitlement_without_fake_purchase(
     await db.refresh(admin)
     await db.refresh(student)
 
-    login = await client.post(
-        "/api/auth/login",
-        json={"email": admin.email, "password": "adminpass1"},
-    )
+    login = await mfa_login(client, db, admin.email, "adminpass1")
     token = login.json()["access_token"]
     client.cookies.clear()
 
@@ -984,10 +982,7 @@ async def test_admin_can_toggle_checkout_without_deploy(
     )
     db.add(admin)
     await db.commit()
-    login = await client.post(
-        "/api/auth/login",
-        json={"email": admin.email, "password": "checkout-operator-pass"},
-    )
+    login = await mfa_login(client, db, admin.email, "checkout-operator-pass")
     client.cookies.clear()
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
@@ -1547,9 +1542,7 @@ async def test_admin_revoke_access(client: AsyncClient, db: AsyncSession):
     await db.commit()
     await db.refresh(purchase)
 
-    login = await client.post(
-        "/api/auth/login", json={"email": "admin-revoke@example.com", "password": "adminpass1"}
-    )
+    login = await mfa_login(client, db, "admin-revoke@example.com", "adminpass1")
     token = login.json()["access_token"]
     client.cookies.clear()
 

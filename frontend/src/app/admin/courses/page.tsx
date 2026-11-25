@@ -13,10 +13,12 @@ import {
     adminUploadFile,
     adminCheckVideoHealth,
     AdminCourseFullResponse,
+    ApiError,
     CourseCreateRequest,
     VideoHealthResponse,
 } from "@/lib/api";
 import { toast } from "sonner";
+import { useAdminPermission } from "@/app/admin/permissions";
 import {
     Table,
     TableBody,
@@ -62,6 +64,8 @@ export default function AdminCoursesPage() {
     const [isUploading, setIsUploading] = useState(false);
     const [videoHealth, setVideoHealth] = useState<VideoHealthResponse | null>(null);
     const [isCheckingVideos, setIsCheckingVideos] = useState(false);
+    // Prices and access duration are commercial terms with their own permission.
+    const canManagePricing = useAdminPermission("commerce.manage_pricing");
 
     // Form state
     const [formData, setFormData] = useState<CourseCreateRequest>({
@@ -129,18 +133,33 @@ export default function AdminCoursesPage() {
         }
 
         setIsSaving(true);
+        // Without the pricing permission the commercial terms are not sent at all:
+        // the server keeps the stored (or default) values, and a price the owner
+        // changed meanwhile cannot turn the editor's text save into a 403.
+        const payload: CourseCreateRequest = { ...formData };
+        if (!canManagePricing) {
+            delete payload.price_self;
+            delete payload.price_support;
+            delete payload.access_days;
+        }
         try {
             if (editingCourse) {
-                await adminUpdateCourse(editingCourse.id, formData);
+                await adminUpdateCourse(editingCourse.id, payload);
                 toast.success("Курс обновлён");
             } else {
-                await adminCreateCourse(formData);
+                await adminCreateCourse(payload);
                 toast.success("Курс создан");
             }
             setIsDialogOpen(false);
             resetForm();
             fetchCourses();
         } catch (error) {
+            if (error instanceof ApiError && error.status === 403) {
+                toast.error("Недостаточно прав", {
+                    description: "Цены и срок доступа может менять только владелец или администратор.",
+                });
+                return;
+            }
             const errorMessage = error instanceof Error ? error.message : "Ошибка сохранения";
             toast.error("Ошибка", { description: errorMessage });
         } finally {
@@ -315,6 +334,8 @@ export default function AdminCoursesPage() {
                                             id="price_self"
                                             type="number"
                                             value={formData.price_self}
+                                            readOnly={!canManagePricing}
+                                            disabled={!canManagePricing}
                                             onChange={(e) => setFormData({ ...formData, price_self: parseInt(e.target.value) || 0 })}
                                         />
                                     </div>
@@ -324,6 +345,8 @@ export default function AdminCoursesPage() {
                                             id="price_support"
                                             type="number"
                                             value={formData.price_support}
+                                            readOnly={!canManagePricing}
+                                            disabled={!canManagePricing}
                                             onChange={(e) => setFormData({ ...formData, price_support: parseInt(e.target.value) || 0 })}
                                         />
                                     </div>
@@ -337,6 +360,8 @@ export default function AdminCoursesPage() {
                                         min={1}
                                         max={3650}
                                         value={formData.access_days}
+                                        readOnly={!canManagePricing}
+                                        disabled={!canManagePricing}
                                         onChange={(event) => setFormData({
                                             ...formData,
                                             access_days: Math.max(1, parseInt(event.target.value) || 1),
@@ -345,6 +370,11 @@ export default function AdminCoursesPage() {
                                     <p className="text-xs text-text-secondary">
                                         Этот срок фиксируется в заказе при начале оплаты.
                                     </p>
+                                    {!canManagePricing && (
+                                        <p className="text-xs text-text-secondary">
+                                            Цены и срок доступа меняет владелец или администратор.
+                                        </p>
+                                    )}
                                 </div>
 
                                 <div className="flex items-center justify-between p-3 bg-primary/5 rounded-lg">

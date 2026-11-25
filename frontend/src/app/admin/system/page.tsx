@@ -60,7 +60,12 @@ export default function AdminSystemPage() {
     const toggleRole = (role: string) => setSelectedRoles((current) => current.includes(role) ? current.filter((item) => item !== role) : [...current, role])
     const saveRoles = async () => {
         if (!editing || reason.trim().length < 5) return
-        await adminUpdateTeamRoles(editing.id, selectedRoles, reason.trim())
+        try {
+            await adminUpdateTeamRoles(editing.id, selectedRoles, reason.trim())
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Не удалось изменить роли")
+            return
+        }
         toast.success("Роли обновлены"); setEditing(null); await load()
     }
     const toggleCheckout = async () => {

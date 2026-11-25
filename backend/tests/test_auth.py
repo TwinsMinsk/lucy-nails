@@ -168,3 +168,42 @@ async def test_register_records_consent(client: AsyncClient, db: AsyncSession):
     assert user.consent_version == CONSENT_VERSION
     assert user.offer_accepted_at is not None and user.offer_accepted_at >= before
     assert user.personal_data_consent_at is not None and user.personal_data_consent_at >= before
+
+
+@pytest.mark.asyncio
+async def test_login_with_unknown_email_still_compares_a_bcrypt_hash(
+    client: AsyncClient, monkeypatch
+):
+    import app.services.auth_service as auth_service_module
+
+    checked_hashes: list[str] = []
+    real_verify = auth_service_module.verify_password
+
+    def recording_verify(password: str, password_hash: str) -> bool:
+        checked_hashes.append(password_hash)
+        return real_verify(password, password_hash)
+
+    monkeypatch.setattr(auth_service_module, "verify_password", recording_verify)
+
+    def no_hashing_during_login(_password: str) -> str:
+        raise AssertionError("login must not compute a bcrypt hash")
+
+    monkeypatch.setattr(auth_service_module, "get_password_hash", no_hashing_during_login)
+
+    response = await client.post(
+        "/api/auth/login",
+        json={"email": "nobody-here@example.com", "password": "password123"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Incorrect email or password"
+    assert checked_hashes == [auth_service_module.DUMMY_PASSWORD_HASH]
+
+
+def test_dummy_hash_has_the_working_scheme_and_cost():
+    from app.core.security import get_password_hash, verify_password
+    from app.services.auth_service import DUMMY_PASSWORD_HASH
+
+    # "$2b$12$": same identifier and cost, hence the same verification time.
+    assert DUMMY_PASSWORD_HASH[:7] == get_password_hash("any-password")[:7]
+    assert verify_password("password123", DUMMY_PASSWORD_HASH) is False

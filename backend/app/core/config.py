@@ -8,6 +8,7 @@
 Переменные из окружения ОС имеют приоритет над файлами.
 """
 
+import ipaddress
 from pathlib import Path
 import re
 from urllib.parse import urlparse
@@ -18,6 +19,34 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # backend/app/core/config.py -> backend = parents[2], repo root = parents[3]
 _BACKEND_DIR = Path(__file__).resolve().parents[2]
 _REPO_ROOT = _BACKEND_DIR.parent
+
+
+# Closed list of ENVIRONMENT values. "test" is used by the load-test seed
+# (scripts/load); everything except "production" is non-production.
+ALLOWED_ENVIRONMENTS = ("development", "test", "staging", "production")
+NON_PRODUCTION_ENVIRONMENTS = frozenset({"development", "test", "staging"})
+
+
+def _split_list(value: str) -> list[str]:
+    return [item.strip() for item in (value or "").split(",") if item.strip()]
+
+
+def _invalid_proxy_entries(value: str) -> list[str]:
+    """Entries of a proxy list that are not a single address or a bounded network."""
+    invalid: list[str] = []
+    for entry in _split_list(value):
+        # Same parsing as Uvicorn's proxy middleware: a network is parsed strictly
+        # (no host bits), anything it cannot parse silently becomes a literal
+        # that never matches the proxy address.
+        try:
+            if "/" in entry:
+                if ipaddress.ip_network(entry).prefixlen == 0:
+                    invalid.append(entry)
+            else:
+                ipaddress.ip_address(entry)
+        except ValueError:
+            invalid.append(entry)
+    return invalid
 
 
 def _env_files() -> tuple[Path, ...]:
@@ -152,7 +181,26 @@ class Settings(BaseSettings):
     def normalize_environment(cls, v: str | None) -> str:
         # "Production" must behave exactly like "production" everywhere
         # (demo payment links, mock Kinescope embeds, dev seed).
-        return (v or "development").strip().lower()
+        # The default applies only when the variable is absent (pydantic does
+        # not run this validator for defaults). A variable that is set but
+        # empty is a broken deploy config, not a request for development.
+        if v is None:
+            return "development"
+        value = str(v).strip().lower()
+        if not value:
+            raise ValueError(
+                "ENVIRONMENT is set but empty; set it to one of: "
+                + ", ".join(ALLOWED_ENVIRONMENTS)
+                + " (or remove the variable for local development)"
+            )
+        # A typo must not silently skip the production checks and allow demo
+        # payments, so only the known names start the application.
+        if value not in ALLOWED_ENVIRONMENTS:
+            raise ValueError(
+                f"ENVIRONMENT={value!r} is not supported; use one of: "
+                + ", ".join(ALLOWED_ENVIRONMENTS)
+            )
+        return value
 
     # === Dev seed (development only) ===
     # Passwords for the startup seed (admin@/student@). Empty -> generated and
@@ -188,6 +236,23 @@ class Settings(BaseSettings):
     @property
     def is_deployed(self) -> bool:
         return self.ENVIRONMENT.lower() in {"production", "staging"}
+
+    @property
+    def is_non_production(self) -> bool:
+        """True only for the explicitly non-production environment names."""
+        return self.ENVIRONMENT.lower() in NON_PRODUCTION_ENVIRONMENTS
+
+    @model_validator(mode="after")
+    def validate_no_wildcard_origins(self):
+        """CORS always runs with credentials, so no environment may allow any origin."""
+        errors: list[str] = []
+        if any("*" in entry for entry in _split_list(self.CORS_ORIGINS)):
+            errors.append("CORS_ORIGINS must list exact origins: wildcards are not allowed with credentials")
+        if any("*" in entry for entry in _split_list(self.TRUSTED_HOSTS)):
+            errors.append("TRUSTED_HOSTS must list exact host names: wildcards are not allowed")
+        if errors:
+            raise ValueError("; ".join(errors))
+        return self
 
     @model_validator(mode="after")
     def validate_production_safety(self):
@@ -262,10 +327,19 @@ class Settings(BaseSettings):
             errors.append("FRONTEND_URL must be public in production")
         if "localhost" in self.BACKEND_URL or "127.0.0.1" in self.BACKEND_URL:
             errors.append("BACKEND_URL must be public in production")
-        if not self.TRUSTED_HOSTS:
+        # Checked after splitting: a value of spaces or commas would otherwise
+        # count as set while main.py and Uvicorn end up with an empty list.
+        if not _split_list(self.TRUSTED_HOSTS):
             errors.append("TRUSTED_HOSTS is required in production")
-        if not self.FORWARDED_ALLOW_IPS or self.FORWARDED_ALLOW_IPS.strip() == "*":
+        if not _split_list(self.FORWARDED_ALLOW_IPS) or self.FORWARDED_ALLOW_IPS.strip() == "*":
             errors.append("FORWARDED_ALLOW_IPS must list trusted proxy IPs/CIDRs in production")
+        else:
+            invalid = _invalid_proxy_entries(self.FORWARDED_ALLOW_IPS)
+            if invalid:
+                errors.append(
+                    "FORWARDED_ALLOW_IPS must list proxy IP addresses or CIDR networks "
+                    "without wildcards or /0 networks; rejected: " + ", ".join(invalid)
+                )
         if not self.COOKIE_DOMAIN:
             errors.append("COOKIE_DOMAIN is required in production for sibling frontend/API hosts")
         if not self.REDIS_URL:
