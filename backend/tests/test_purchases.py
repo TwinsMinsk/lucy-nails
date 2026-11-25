@@ -1583,7 +1583,7 @@ async def test_admin_revoke_access(client: AsyncClient, db: AsyncSession):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert purchases.status_code == 200, purchases.text
-    item = next(row for row in purchases.json()["items"] if row["id"] == str(purchase.id))
+    item = next(row for row in purchases.json() if row["id"] == str(purchase.id))
     assert item["payment_status"] == "success"
     assert item["access_status"] == "revoked"
     assert item["entitlement_id"] == str(entitlement.id)

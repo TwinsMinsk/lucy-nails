@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { adminGetPurchases, adminRevokeAccess, AdminPurchaseKind, AdminPurchaseResponse } from "@/lib/api";
+import { adminGetPurchases, adminRevokeAccess, AdminPurchaseKind, AdminPurchaseResponse, ApiError, PageResponse } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,7 +18,15 @@ const KIND_LABELS: Record<AdminPurchaseKind, string> = {
     all: "Все записи",
 };
 
-const formatMoney = (kopecks: number) => `${(kopecks / 100).toLocaleString("ru-RU")} ₽`;
+const BACKEND_OUTDATED = "сервер ещё не обновлён до новой версии страницы покупок. Обновите страницу после завершения деплоя.";
+
+const isPurchasePage = (value: unknown): value is PageResponse<AdminPurchaseResponse> => (
+    typeof value === "object" && value !== null && !Array.isArray(value)
+    && Array.isArray((value as { items?: unknown }).items)
+    && typeof (value as { total?: unknown }).total === "number"
+);
+
+const formatMoney =(kopecks: number) => `${(kopecks / 100).toLocaleString("ru-RU")} ₽`;
 const formatDate = formatApiDate;
 
 const isActive = (purchase: AdminPurchaseResponse) =>
@@ -43,8 +51,14 @@ export default function AdminPurchasesPage() {
         setIsLoading(true);
         setLoadError(null);
         try {
-            const page = await adminGetPurchases({ kind, limit: PAGE_SIZE, offset });
+            const page: unknown = await adminGetPurchases({ kind, limit: PAGE_SIZE, offset });
             if (request !== generation.current) return;
+            if (!isPurchasePage(page)) {
+                setPurchases([]);
+                setTotal(0);
+                setLoadError(BACKEND_OUTDATED);
+                return;
+            }
             setPurchases(page.items);
             setTotal(page.total);
         } catch (error) {
@@ -52,7 +66,9 @@ export default function AdminPurchasesPage() {
             // A failed load must not look like "no purchases".
             setPurchases([]);
             setTotal(0);
-            setLoadError(error instanceof Error ? error.message : "Попробуйте обновить страницу");
+            // The previous backend has no /admin/purchases/page yet.
+            if (error instanceof ApiError && error.status === 404) setLoadError(BACKEND_OUTDATED);
+            else setLoadError(error instanceof Error ? error.message : "Попробуйте обновить страницу");
         } finally {
             if (request === generation.current) setIsLoading(false);
         }

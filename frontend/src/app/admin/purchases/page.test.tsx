@@ -61,3 +61,17 @@ describe("admin purchases", () => {
         expect(await screen.findByText("b***@example.test")).toBeVisible()
     })
 })
+
+describe("admin purchases against a backend not yet updated", () => {
+    it("explains a 404 from the new path instead of crashing", async () => {
+        vi.mocked(api.adminGetPurchases).mockRejectedValueOnce(new api.ApiError(404, "Not Found", "HTTP 404"))
+        renderAs(["commerce.read"])
+        expect(await screen.findByRole("alert")).toHaveTextContent("сервер ещё не обновлён")
+    })
+
+    it("explains a plain list (old contract) instead of crashing", async () => {
+        vi.mocked(api.adminGetPurchases).mockResolvedValueOnce([purchase] as unknown as api.PageResponse<api.AdminPurchaseResponse>)
+        renderAs(["commerce.read"])
+        expect(await screen.findByRole("alert")).toHaveTextContent("сервер ещё не обновлён")
+    })
+})

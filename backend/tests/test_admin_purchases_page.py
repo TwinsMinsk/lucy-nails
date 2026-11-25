@@ -1,4 +1,7 @@
-"""/admin/purchases pages and separates real payments from manual grants (audit I8)."""
+"""/admin/purchases/page pages and separates real payments from manual grants (audit I8).
+
+/admin/purchases keeps the plain list of master for tabs left open across a deploy.
+"""
 
 from datetime import datetime, timedelta
 
@@ -75,14 +78,14 @@ async def test_purchases_are_paginated_and_default_to_real_payments(
     client.cookies.clear()
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
-    default = await client.get("/api/admin/purchases", headers=headers)
+    default = await client.get("/api/admin/purchases/page", headers=headers)
     assert default.status_code == 200, default.text
     assert default.json()["total"] == 3
     assert [item["payment_id"] for item in default.json()["items"]] == ["real-2", "real-1", "real-0"]
     assert {item["kind"] for item in default.json()["items"]} == {"paid"}
 
     manual_page = await client.get(
-        "/api/admin/purchases?kind=manual&limit=50&offset=200", headers=headers
+        "/api/admin/purchases/page?kind=manual&limit=50&offset=200", headers=headers
     )
     assert manual_page.status_code == 200, manual_page.text
     assert manual_page.json()["total"] == 205
@@ -90,8 +93,15 @@ async def test_purchases_are_paginated_and_default_to_real_payments(
     assert len(manual_page.json()["items"]) == 5
     assert {item["kind"] for item in manual_page.json()["items"]} == {"manual"}
 
-    everything = await client.get("/api/admin/purchases?kind=all&limit=1", headers=headers)
+    everything = await client.get("/api/admin/purchases/page?kind=all&limit=1", headers=headers)
     assert everything.json()["total"] == 208
     assert len(everything.json()["items"]) == 1
 
-    assert (await client.get("/api/admin/purchases?kind=bogus", headers=headers)).status_code == 422
+    assert (await client.get("/api/admin/purchases/page?kind=bogus", headers=headers)).status_code == 422
+
+    # The legacy URL still answers the plain list of the last 200 rows of any kind.
+    legacy = await client.get("/api/admin/purchases", headers=headers)
+    assert legacy.status_code == 200, legacy.text
+    assert isinstance(legacy.json(), list)
+    assert len(legacy.json()) == 200
+    assert {"id", "payment_id", "user_email", "access_status"} <= set(legacy.json()[0])

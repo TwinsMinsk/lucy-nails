@@ -844,38 +844,8 @@ async def delete_lesson(
 
 # === Analytics ===
 
-@router.get("/purchases", response_model=AdminPurchasePage)
-async def get_all_purchases(
-    kind: Literal["paid", "manual", "all"] = Query(default="paid"),
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-    db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_permission("commerce.read")),
-):
-    """Покупки для админ-панели: по умолчанию только реальные оплаты."""
-    is_paid = paid_financial_filter()
-    conditions = []
-    if kind == "paid":
-        conditions.append(is_paid)
-    elif kind == "manual":
-        conditions.append(~is_paid)
-    total = await db.scalar(select(func.count(Purchase.id)).where(*conditions))
-    query = (
-        select(Purchase, is_paid.label("is_paid"))
-        .where(*conditions)
-        .options(
-            selectinload(Purchase.user),
-            selectinload(Purchase.course),
-            selectinload(Purchase.entitlement),
-        )
-        .order_by(Purchase.created_at.desc(), Purchase.id.desc())
-        .offset(offset)
-        .limit(limit)
-    )
-    result = await db.execute(query)
-    rows = result.all()
-    paid_ids = {purchase.id for purchase, paid in rows if paid}
-    purchases = [purchase for purchase, _ in rows]
+async def _purchase_rows(db: AsyncSession, admin: User, rows) -> list[AdminPurchaseResponse]:
+    """Serialize (Purchase, is_paid) rows with PII masking for readers without pii.read."""
     can_read_pii = await user_has_permission(db, admin, "pii.read")
     now = datetime.utcnow()
 
@@ -887,7 +857,7 @@ async def get_all_purchases(
             return "expired"
         return entitlement.status
 
-    items = [
+    return [
         AdminPurchaseResponse(
             id=purchase.id,
             payment_id=purchase.payment_id,
@@ -913,11 +883,68 @@ async def get_all_purchases(
             access_expires_at=(
                 purchase.entitlement.expires_at if purchase.entitlement else None
             ),
-            kind="paid" if purchase.id in paid_ids else "manual",
+            kind="paid" if is_paid else "manual",
         )
-        for purchase in purchases
+        for purchase, is_paid in rows
     ]
-    return AdminPurchasePage(items=items, total=int(total or 0), limit=limit, offset=offset)
+
+
+def _purchase_query(*conditions):
+    return (
+        select(Purchase, paid_financial_filter().label("is_paid"))
+        .where(*conditions)
+        .options(
+            selectinload(Purchase.user),
+            selectinload(Purchase.course),
+            selectinload(Purchase.entitlement),
+        )
+    )
+
+
+@router.get("/purchases", response_model=list[AdminPurchaseResponse])
+async def get_all_purchases(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_permission("commerce.read")),
+):
+    """Последние 200 покупок списком — прежний контракт для открытых старых вкладок.
+
+    Новая страница использует /purchases/page.
+    """
+    rows = (
+        await db.execute(_purchase_query().order_by(Purchase.created_at.desc()).limit(200))
+    ).all()
+    return await _purchase_rows(db, admin, rows)
+
+
+@router.get("/purchases/page", response_model=AdminPurchasePage)
+async def get_purchases_page(
+    kind: Literal["paid", "manual", "all"] = Query(default="paid"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_permission("commerce.read")),
+):
+    """Покупки страницами: по умолчанию только реальные оплаты."""
+    conditions = []
+    if kind == "paid":
+        conditions.append(paid_financial_filter())
+    elif kind == "manual":
+        conditions.append(~paid_financial_filter())
+    total = await db.scalar(select(func.count(Purchase.id)).where(*conditions))
+    rows = (
+        await db.execute(
+            _purchase_query(*conditions)
+            .order_by(Purchase.created_at.desc(), Purchase.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+    ).all()
+    return AdminPurchasePage(
+        items=await _purchase_rows(db, admin, rows),
+        total=int(total or 0),
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/analytics", response_model=AnalyticsResponse)

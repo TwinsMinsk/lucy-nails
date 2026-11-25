@@ -930,7 +930,8 @@ export const adminGetPurchases = async (
     if (params.kind) query.set("kind", params.kind);
     if (params.limit) query.set("limit", String(params.limit));
     if (params.offset) query.set("offset", String(params.offset));
-    return apiFetch<PageResponse<AdminPurchaseResponse>>(`/admin/purchases${query.size ? `?${query}` : ""}`);
+    // Paginated form lives at its own path; /admin/purchases keeps the legacy plain list.
+    return apiFetch<PageResponse<AdminPurchaseResponse>>(`/admin/purchases/page${query.size ? `?${query}` : ""}`);
 };
 
 export const adminCheckVideoHealth = async (courseId?: string): Promise<VideoHealthResponse> => {
